@@ -18,7 +18,10 @@ async fn test_state() -> AppState {
     let database_url = format!("sqlite://{}", db_path.display());
     let db = connect_sqlite(&database_url).await.expect("connect");
     run_migrations(&db).await.expect("migrate");
-    AppState { db }
+    AppState {
+        db,
+        external_api_token: None,
+    }
 }
 
 #[tokio::test]

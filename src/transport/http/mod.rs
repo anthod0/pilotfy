@@ -5,6 +5,7 @@ use axum::{
 
 use crate::application::AppState;
 
+pub mod external;
 pub mod health;
 pub mod internal;
 
@@ -12,5 +13,34 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/internal/v1/events", post(internal::post_event))
+        .route("/external/v1/sessions", get(external::list_sessions))
+        .route(
+            "/external/v1/sessions/{session_id}",
+            get(external::get_session),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/turns",
+            get(external::list_turns),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/turns/{turn_id}",
+            get(external::get_turn),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/events",
+            get(external::list_session_events),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/turns/{turn_id}/events",
+            get(external::list_turn_events),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/artifacts",
+            get(external::list_artifacts),
+        )
+        .route(
+            "/external/v1/artifacts/{artifact_id}",
+            get(external::get_artifact),
+        )
         .with_state(state)
 }

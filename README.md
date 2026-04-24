@@ -1,6 +1,6 @@
 # llmparty
 
-`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 2: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, and Internal Event API v1.
+`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 3: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, Internal Event API v1, and the authenticated External API read-only query surface.
 
 ## Requirements
 
@@ -21,7 +21,7 @@ Configuration is loaded from environment variables first. `.env` is only a local
 | --- | --- | --- |
 | `LLMPARTY_BIND_ADDR` | `127.0.0.1:8080` | HTTP bind address |
 | `LLMPARTY_DATABASE_URL` | `sqlite://./data/llmparty.db` | SQLite database URL |
-| `LLMPARTY_EXTERNAL_API_TOKEN` | unset | Future External API bearer token source |
+| `LLMPARTY_EXTERNAL_API_TOKEN` | unset | Bearer token required by `/external/v1/*` APIs |
 | `LLMPARTY_RUN_MIGRATIONS` | `true` | Run SQLx migrations on startup |
 
 ## Development commands
@@ -63,6 +63,15 @@ curl -X POST http://127.0.0.1:8080/internal/v1/events \
     "payload":{}
   }'
 # {"accepted":true,"duplicate":false,"event_id":"evt_example",...}
+```
+
+Query External API state with a configured bearer token:
+
+```bash
+LLMPARTY_EXTERNAL_API_TOKEN=dev-token cargo run
+curl http://127.0.0.1:8080/external/v1/sessions \
+  -H 'Authorization: Bearer dev-token'
+# {"data":{"sessions":[...]},"meta":{},"error":null}
 ```
 
 ## Project structure
