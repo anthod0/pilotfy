@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::application::SessionCapabilities;
+use crate::{application::SessionCapabilities, error::Result};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeStartRequest {
@@ -20,6 +20,13 @@ pub struct RuntimeStartResult {
     pub runtime_kind: String,
     pub runtime_ref: String,
     pub capabilities: SessionCapabilities,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentInput {
+    pub session_id: String,
+    pub turn_id: String,
+    pub input: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -38,6 +45,10 @@ impl GenericRuntimeManager {
                 artifact_sources: false,
             },
         }
+    }
+
+    pub fn submit_input(&self, _input: AgentInput) -> Result<()> {
+        Ok(())
     }
 }
 

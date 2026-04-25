@@ -23,7 +23,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/external/v1/sessions/{session_id}/turns",
-            get(external::list_turns),
+            get(external::list_turns).post(external::submit_turn),
         )
         .route(
             "/external/v1/sessions/{session_id}/turns/{turn_id}",

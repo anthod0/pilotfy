@@ -8,7 +8,10 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
-    application::{AppState, CreateSessionRequest, ExternalQueryService, SessionCommandService},
+    application::{
+        AppState, CreateSessionRequest, ExternalQueryService, SessionCommandService,
+        SubmitTurnRequest, TurnCommandService,
+    },
     error::Error,
 };
 
@@ -66,6 +69,28 @@ pub async fn get_session(
         .await?
         .ok_or_else(|| ExternalApiError::not_found(format!("session {session_id} not found")))?;
     Ok(ok(json!({ "session": session })))
+}
+
+pub async fn submit_turn(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(request): Json<SubmitTurnRequest>,
+) -> Result<Response, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let idempotency_key = headers
+        .get("Idempotency-Key")
+        .and_then(|value| value.to_str().ok());
+    let service = TurnCommandService::new(state.db);
+    let outcome = service
+        .submit_turn(&session_id, request, idempotency_key)
+        .await?;
+    let status = if outcome.duplicate {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok((status, ok(outcome.data)).into_response())
 }
 
 pub async fn list_turns(
@@ -213,11 +238,21 @@ impl ExternalApiError {
             message: message.into(),
         }
     }
+
+    fn state_conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "state_conflict",
+            message: message.into(),
+        }
+    }
 }
 
 impl From<Error> for ExternalApiError {
     fn from(error: Error) -> Self {
         match error {
+            Error::StateConflict(message) => Self::state_conflict(message),
+            Error::NotFound(message) => Self::not_found(message),
             Error::Domain(message) => Self {
                 status: StatusCode::BAD_REQUEST,
                 code: "invalid_request",

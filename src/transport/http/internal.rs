@@ -136,9 +136,14 @@ impl ApiError {
 impl From<Error> for ApiError {
     fn from(error: Error) -> Self {
         match error {
-            Error::Domain(message) => Self {
+            Error::Domain(message) | Error::StateConflict(message) => Self {
                 status: StatusCode::CONFLICT,
                 code: "state_conflict",
+                message,
+            },
+            Error::NotFound(message) => Self {
+                status: StatusCode::NOT_FOUND,
+                code: "not_found",
                 message,
             },
             other => Self {

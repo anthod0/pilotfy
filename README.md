@@ -1,6 +1,6 @@
 # llmparty
 
-`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 4: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, Internal Event API v1, the authenticated External API query surface, and session creation/startup through a minimal generic runtime binding.
+`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 5: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, Internal Event API v1, the authenticated External API query surface, session creation/startup through a minimal generic runtime binding, and External API turn submission with event-driven execution projection.
 
 ## Requirements
 
@@ -79,6 +79,13 @@ curl -X POST http://127.0.0.1:8080/external/v1/sessions \
 curl http://127.0.0.1:8080/external/v1/sessions \
   -H 'Authorization: Bearer dev-token'
 # {"data":{"sessions":[...]},"meta":{},"error":null}
+
+curl -X POST http://127.0.0.1:8080/external/v1/sessions/sess_example/turns \
+  -H 'Authorization: Bearer dev-token' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: demo-turn-1' \
+  -d '{"input":"Continue with the next task","metadata":{"source":"demo"}}'
+# {"data":{"turn":{..."state":"queued"...}},"meta":{},"error":null}
 ```
 
 ## Project structure

@@ -19,6 +19,12 @@ pub enum Error {
     #[error("domain error: {0}")]
     Domain(String),
 
+    #[error("state conflict: {0}")]
+    StateConflict(String),
+
+    #[error("not found: {0}")]
+    NotFound(String),
+
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 }
