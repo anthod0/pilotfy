@@ -6,7 +6,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{application::SessionCapabilities, error::Result};
+use crate::{
+    adapters::{AdapterCapabilities, AgentEventSource, AgentInputSink, GenericTestAdapter},
+    application::SessionCapabilities,
+    error::Result,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeStartRequest {
@@ -32,23 +36,31 @@ pub struct AgentInput {
 #[derive(Debug, Clone, Default)]
 pub struct GenericRuntimeManager;
 
+impl From<AdapterCapabilities> for SessionCapabilities {
+    fn from(capabilities: AdapterCapabilities) -> Self {
+        Self {
+            accept_task: capabilities.accept_task,
+            report_turn_started: capabilities.report_turn_started,
+            report_turn_finished: capabilities.report_turn_finished,
+            interrupt: capabilities.interrupt,
+            stream_output: capabilities.stream_output,
+            heartbeat: capabilities.heartbeat,
+            artifact_sources: capabilities.artifact_sources,
+        }
+    }
+}
+
 impl GenericRuntimeManager {
     pub fn start_session(&self, request: RuntimeStartRequest) -> RuntimeStartResult {
         RuntimeStartResult {
             runtime_kind: request.client_type,
             runtime_ref: format!("generic:{}", request.session_id),
-            capabilities: SessionCapabilities {
-                accept_task: true,
-                interrupt: false,
-                stream_output: false,
-                heartbeat: false,
-                artifact_sources: false,
-            },
+            capabilities: GenericTestAdapter.capabilities().into(),
         }
     }
 
-    pub fn submit_input(&self, _input: AgentInput) -> Result<()> {
-        Ok(())
+    pub fn submit_input(&self, input: AgentInput) -> Result<()> {
+        GenericTestAdapter.accept_input(input)
     }
 
     pub fn terminate_session(&self, _session_id: &str) -> Result<()> {

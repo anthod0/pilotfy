@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use sqlx::{Row, SqlitePool};
 
 use crate::{
+    adapters::ArtifactRegistration,
     config::AppConfig,
     domain::{
         DomainEvent, EventSource, EventType, ProjectionState, SessionProjection, SessionState,
@@ -38,6 +39,8 @@ pub async fn initialize(config: &AppConfig) -> Result<AppState> {
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionCapabilities {
     pub accept_task: bool,
+    pub report_turn_started: bool,
+    pub report_turn_finished: bool,
     pub interrupt: bool,
     pub stream_output: bool,
     pub heartbeat: bool,
@@ -111,6 +114,45 @@ pub struct ArtifactView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactContent {
     pub bytes: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct ArtifactRegistrationService {
+    pool: SqlitePool,
+}
+
+impl ArtifactRegistrationService {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn register(&self, artifact: ArtifactRegistration) -> Result<()> {
+        sqlx::query(
+            r#"INSERT INTO artifacts
+               (artifact_id, session_id, turn_id, kind, name, source_ref, size_bytes, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(artifact_id) DO UPDATE SET
+                   session_id = excluded.session_id,
+                   turn_id = excluded.turn_id,
+                   kind = excluded.kind,
+                   name = excluded.name,
+                   source_ref = excluded.source_ref,
+                   size_bytes = excluded.size_bytes,
+                   metadata = excluded.metadata,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
+        )
+        .bind(&artifact.artifact_id)
+        .bind(&artifact.session_id)
+        .bind(&artifact.turn_id)
+        .bind(&artifact.kind)
+        .bind(&artifact.name)
+        .bind(&artifact.source_ref)
+        .bind(artifact.size_bytes)
+        .bind(serde_json::to_string(&artifact.metadata)?)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

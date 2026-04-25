@@ -1,6 +1,6 @@
 # llmparty
 
-`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 6: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, Internal Event API v1, the authenticated External API query surface, session creation/startup through a minimal generic runtime binding, External API turn submission with event-driven execution projection, and runtime lifecycle controls for interrupt, terminate, and restart.
+`llmparty` is an MVP backend-only, HTTP-only Coding Agent Control Plane. The current implementation includes Milestone 8: Rust project skeleton, SQLite/SQLx wiring, configuration, health check, domain session/turn/event models, event store, reducer-driven state projections, Internal Event API v1, the authenticated External API query surface, session creation/startup through a minimal generic runtime binding, External API turn submission with event-driven execution projection, runtime lifecycle controls for interrupt/terminate/restart, artifact content reads, and a generic client adapter contract validation substitute.
 
 ## Requirements
 
@@ -101,6 +101,13 @@ curl -X DELETE http://127.0.0.1:8080/external/v1/sessions/sess_example \
   -H 'Idempotency-Key: demo-terminate-1'
 # {"data":{"session":{..."state":"exited"...}},"meta":{},"error":null}
 ```
+
+
+## Generic adapter contract
+
+Milestone 8 validates that the Control Plane does not depend on a specific coding-agent client. The generic adapter contract exposes capability metadata (`accept_task`, `report_turn_started`, `report_turn_finished`, `interrupt`, `stream_output`, `heartbeat`, `artifact_sources`), accepts Control Plane-assigned `session_id` / `turn_id` turn input, reports facts back through the Internal Event API, and registers artifact sources in the Control Plane artifact index.
+
+The built-in generic test adapter is a validation substitute, not a pi / Claude Code / Codex deep adapter. Unsupported capabilities remain explicit; for example, the default generic runtime keeps `interrupt: false` and External API interrupt calls return `capability_unavailable` without forging interrupt events.
 
 ## Project structure
 
