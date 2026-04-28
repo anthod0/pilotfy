@@ -75,6 +75,7 @@ impl GenericRuntimeManager {
         let llmparty_dir = workspace.join(".llmparty");
         std::fs::create_dir_all(&llmparty_dir)?;
         let log_path = llmparty_dir.join("runtime.log");
+        let adapter_event_log = llmparty_dir.join("adapter-events.jsonl");
         std::fs::File::create(&log_path)?;
         let script_path = llmparty_dir.join("runtime.sh");
         write_runtime_script(&script_path, &log_path, &request)?;
@@ -102,6 +103,7 @@ impl GenericRuntimeManager {
             .map_err(|err| Error::Domain(format!("invalid runtime timestamp: {err}")))?;
         let workspace = workspace.display().to_string();
         let log_path = log_path.display().to_string();
+        let adapter_event_log = adapter_event_log.display().to_string();
         Ok(RuntimeStartResult {
             runtime_kind: "tmux".to_string(),
             runtime_ref: tmux_session.clone(),
@@ -111,6 +113,7 @@ impl GenericRuntimeManager {
                 "tmux_session": tmux_session,
                 "workspace": workspace,
                 "log_path": log_path,
+                "adapter_event_log": adapter_event_log,
                 "started_at": started_at,
                 "restart_count": restart_count,
             }),
@@ -267,6 +270,7 @@ export LLMPARTY_SESSION_ID={}
 export LLMPARTY_CLIENT_TYPE={}
 export LLMPARTY_WORKSPACE={}
 export LLMPARTY_RUNTIME_LOG={}
+export LLMPARTY_ADAPTER_EVENT_LOG={}
 {}
 {}
 "#,
@@ -274,6 +278,12 @@ export LLMPARTY_RUNTIME_LOG={}
         shell_quote(&request.client_type),
         shell_quote(&workspace.display().to_string()),
         shell_quote(&log_path.display().to_string()),
+        shell_quote(
+            &workspace
+                .join(".llmparty/adapter-events.jsonl")
+                .display()
+                .to_string()
+        ),
         log_setup,
         runtime_body,
     );

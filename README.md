@@ -159,9 +159,11 @@ The M0/M1.5 pi path validates that the Control Plane can:
 3. preserve Control Plane-assigned `session_id` / `turn_id` on pi turns
 4. dispatch submitted turn input into the corresponding long-running tmux pi TUI
 5. project `turn.started` only after tmux dispatch succeeds
-6. project `turn.failed` when dispatch cannot reach the runtime
-7. preserve generic adapter behavior without using the generic test adapter for pi turns
-8. avoid leaking client-specific fields into External API events
+6. project `turn.output`, `turn.completed`, or adapter-reported `turn.failed` from confirmed non-RPC JSONL facts in `$LLMPARTY_ADAPTER_EVENT_LOG`
+7. project `turn.failed` when dispatch cannot reach the runtime
+8. report malformed adapter outbox records as explicit `session.error` adapter errors without forging turn completion/failure
+9. preserve generic adapter behavior without using the generic test adapter for pi turns
+10. avoid leaking client-specific fields into External API events
 
 Run the automated pi coverage with:
 
@@ -170,7 +172,7 @@ cargo test --test pi_adapter_m0 -- --test-threads=1
 cargo test --test pi_adapter_m15 -- --test-threads=1
 ```
 
-For deterministic tests, set `LLMPARTY_PI_TUI_COMMAND` to a long-running TUI substitute. In normal local use the default pi runtime command is `pi`, launched inside the tmux session. The current M1.5 bridge confirms dispatch/start only; it does not infer `turn.completed` / `turn.failed` from pi internals unless the dispatch itself fails.
+For deterministic tests, set `LLMPARTY_PI_TUI_COMMAND` to a long-running TUI substitute. In normal local use the default pi runtime command is `pi`, launched inside the tmux session. The runtime exports `LLMPARTY_ADAPTER_EVENT_LOG=$LLMPARTY_WORKSPACE/.llmparty/adapter-events.jsonl`; a pi hook or wrapper may append newline-delimited JSON facts such as `{"session_id":"...","turn_id":"...","type":"turn.output","payload":{"output":{"summary":"..."}}}` and `turn.completed`. The Control Plane ingests only these explicit adapter facts and malformed records become adapter error events; it still does not infer completion from TUI internals.
 
 ## Generic adapter contract
 

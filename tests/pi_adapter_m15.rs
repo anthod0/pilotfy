@@ -11,7 +11,7 @@ use axum::{
 use http_body_util::BodyExt;
 use llmparty::{
     adapters::GenericTestAdapter,
-    application::AppState,
+    application::{AppState, PiAdapterEventOutboxService},
     storage::sqlite::{connect_sqlite, run_migrations},
     transport::http,
 };
@@ -130,6 +130,32 @@ async fn wait_for_file_contains(path: &Path, expected: &str) {
 }
 
 #[tokio::test]
+async fn pi_runtime_binding_exposes_adapter_event_log() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m15_pi_adapter_event_log").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let adapter_event_log = metadata["adapter_event_log"]
+        .as_str()
+        .expect("adapter event log");
+    assert_eq!(
+        adapter_event_log,
+        workspace
+            .path()
+            .join(".llmparty/adapter-events.jsonl")
+            .display()
+            .to_string()
+    );
+
+    cleanup_tmux(&tmux_session);
+}
+
+#[tokio::test]
 async fn pi_turn_dispatch_failure_projects_failed_without_started() {
     let workspace = tempfile::tempdir().expect("workspace");
     let state = test_state("m15_pi_dispatch_failure").await;
@@ -177,6 +203,161 @@ async fn pi_turn_dispatch_failure_projects_failed_without_started() {
         event_types,
         vec!["turn.created", "turn.queued", "turn.failed"]
     );
+}
+
+#[tokio::test]
+async fn pi_adapter_event_outbox_projects_output_and_completed() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m15_pi_outbox_completed").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let (status, body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/turns"),
+        Some(json!({"input":"dispatch and await outbox facts"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    let turn_id = body["data"]["turn"]["turn_id"].as_str().expect("turn id");
+
+    let adapter_event_log = metadata["adapter_event_log"]
+        .as_str()
+        .expect("adapter event log");
+    std::fs::write(
+        adapter_event_log,
+        format!(
+            "{}\n{}\n",
+            json!({
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "type": "turn.output",
+                "payload": { "output": { "summary": "partial output" } }
+            }),
+            json!({
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "type": "turn.completed",
+                "payload": { "output": { "summary": "done", "artifact_ids": [] } }
+            })
+        ),
+    )
+    .expect("write adapter event log");
+
+    PiAdapterEventOutboxService::new(state.db.clone())
+        .observe_session(&session_id)
+        .await
+        .expect("observe adapter outbox");
+
+    let (turn_status, turn_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(turn_status, StatusCode::OK, "{turn_body:?}");
+    let turn = &turn_body["data"]["turn"];
+    assert_eq!(turn["state"], "completed");
+    assert_eq!(turn["output"]["summary"], "partial output");
+    assert!(turn["completed_at"].as_str().is_some());
+
+    let (events_status, events_body) = request_json(
+        state,
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}/events"),
+        None,
+    )
+    .await;
+    assert_eq!(events_status, StatusCode::OK);
+    let events = events_body["data"]["events"].as_array().unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event["type"] == "turn.output" && event["source"] == "agent_adapter")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event["type"] == "turn.completed" && event["source"] == "agent_adapter")
+    );
+
+    cleanup_tmux(&tmux_session);
+}
+
+#[tokio::test]
+async fn pi_adapter_event_outbox_reports_malformed_records_without_forging_turn_failure() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m15_pi_outbox_malformed").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let (status, body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/turns"),
+        Some(json!({"input":"dispatch before malformed adapter event"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    let turn_id = body["data"]["turn"]["turn_id"].as_str().expect("turn id");
+
+    let adapter_event_log = metadata["adapter_event_log"]
+        .as_str()
+        .expect("adapter event log");
+    std::fs::write(adapter_event_log, "{not-json}\n").expect("write malformed adapter event");
+
+    PiAdapterEventOutboxService::new(state.db.clone())
+        .observe_session(&session_id)
+        .await
+        .expect("observe adapter outbox");
+
+    let (turn_events_status, turn_events_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}/events"),
+        None,
+    )
+    .await;
+    assert_eq!(turn_events_status, StatusCode::OK);
+    let turn_event_types: Vec<&str> = turn_events_body["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["type"].as_str().unwrap())
+        .collect();
+    assert!(!turn_event_types.contains(&"turn.failed"));
+
+    let (session_events_status, session_events_body) = request_json(
+        state,
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/events"),
+        None,
+    )
+    .await;
+    assert_eq!(session_events_status, StatusCode::OK);
+    let session_error = session_events_body["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["type"] == "session.error" && event["source"] == "agent_adapter")
+        .expect("adapter session.error");
+    assert_eq!(
+        session_error["payload"]["adapter_error"]["kind"],
+        "malformed_record"
+    );
+    assert_eq!(session_error["payload"]["adapter_error"]["line"], 1);
+
+    cleanup_tmux(&tmux_session);
 }
 
 #[tokio::test]

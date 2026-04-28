@@ -120,7 +120,7 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 # - [x] Milestone 1.5：pi Adapter Bridge 与 Turn Dispatch
 
-**状态：已完成（第一阶段：tmux + pi TUI dispatch；不使用 pi RPC；不伪造 completed / failed）**
+**状态：已完成（tmux + pi TUI dispatch；不使用 pi RPC；通过显式 adapter event outbox 回传 output / completed / failed；不从 TUI 内部状态伪造事实）**
 
 ## 目标
 
@@ -135,8 +135,8 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 - [x] turn 与 session runtime binding 的一致性校验
 - [x] dispatch 失败、runtime 不可用的错误语义
 - [x] 真实 pi TUI dispatch 的本地验收脚本或集成测试策略
-- [ ] `turn.output` / `turn.completed` 事件映射（等待明确非 RPC hook / 事件出口，不能从 TUI 内部状态伪造）
-- [ ] adapter 回传异常的完整错误语义（等待后续 hook/事件出口）
+- [x] `turn.output` / `turn.completed` 事件映射（通过 workspace 内 `.llmparty/adapter-events.jsonl` 显式非 RPC 事件出口；不从 TUI 内部状态伪造）
+- [x] adapter 回传异常的完整错误语义（malformed / unsupported outbox record 产生明确 adapter error 事件，不伪造 turn terminal fact）
 
 ## 依赖
 
@@ -150,7 +150,7 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 - [x] pi adapter bridge 通过 Internal Event API 回传确认过的领域事实：dispatch 成功后 `turn.started`
 - [x] queued pi turn 能基于真实 adapter 事件进入 started；dispatch failure 进入 failed
 - [x] README 说明真实 pi turn dispatch 的本地验收流程
-- [ ] completed / output 回传等待明确 hook，不在本阶段伪造
+- [x] completed / output 仅通过明确 adapter event outbox 回传，不在本阶段伪造
 
 ## 验收门槛
 
