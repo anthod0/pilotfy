@@ -128,25 +128,29 @@ cargo test --test tmux_runtime_m1 -- --test-threads=1
 
 The M1 tests verify session creation, terminate, restart, crash observation, active-turn failure on runtime crash, and pi session tmux binding. If `tmux -V` does not work in the environment, these tests fail because tmux is a required runtime dependency.
 
-## pi adapter M0 validation
+## pi adapter M0/M1.5 validation
 
-Milestone 0 adds `client_type = "pi"` as the first real-client adapter boundary. The current pi path intentionally does **not** execute turns directly. A submitted pi turn is recorded as `turn.created` / `turn.queued` and remains queued until a real adapter bridge reports facts through the Internal Event API.
+Milestone 0 adds `client_type = "pi"` as the first real-client adapter boundary. Milestone 1.5 keeps pi as a long-running TUI inside the tmux runtime and dispatches turns into that existing tmux pane; it does **not** use `pi --mode rpc` and does **not** run one subprocess per turn.
 
-The M0 pi path validates that the Control Plane can:
+The M0/M1.5 pi path validates that the Control Plane can:
 
 1. create a pi session and runtime binding through External API
 2. expose explicit pi capabilities in `SessionView`
-3. preserve Control Plane-assigned `session_id` / `turn_id` on queued pi turns
-4. preserve generic adapter behavior without using the generic test adapter for pi turns
-5. avoid leaking client-specific fields into External API events
+3. preserve Control Plane-assigned `session_id` / `turn_id` on pi turns
+4. dispatch submitted turn input into the corresponding long-running tmux pi TUI
+5. project `turn.started` only after tmux dispatch succeeds
+6. project `turn.failed` when dispatch cannot reach the runtime
+7. preserve generic adapter behavior without using the generic test adapter for pi turns
+8. avoid leaking client-specific fields into External API events
 
-Run the automated M0 coverage with:
+Run the automated pi coverage with:
 
 ```bash
-cargo test --test pi_adapter_m0
+cargo test --test pi_adapter_m0 -- --test-threads=1
+cargo test --test pi_adapter_m15 -- --test-threads=1
 ```
 
-Real pi turn dispatch is intentionally deferred to the pi adapter bridge milestone. Until that bridge exists, local validation should cover session/runtime lifecycle and queued turn semantics only.
+For deterministic tests, set `LLMPARTY_PI_TUI_COMMAND` to a long-running TUI substitute. In normal local use the default pi runtime command is `pi`, launched inside the tmux session. The current M1.5 bridge confirms dispatch/start only; it does not infer `turn.completed` / `turn.failed` from pi internals unless the dispatch itself fails.
 
 ## Generic adapter contract
 

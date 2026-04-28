@@ -759,12 +759,13 @@ impl TurnCommandService {
         }
 
         let turn_id = new_turn_id().to_string();
+        let agent_input = AgentInput {
+            session_id: session_id.to_string(),
+            turn_id: turn_id.clone(),
+            input: request.input.clone(),
+        };
         if session.client_type == "generic" {
-            self.runtime.submit_input(AgentInput {
-                session_id: session_id.to_string(),
-                turn_id: turn_id.clone(),
-                input: request.input.clone(),
-            })?;
+            self.runtime.submit_input(agent_input.clone())?;
         }
 
         let ingest = EventIngestService::new(self.pool.clone());
@@ -793,6 +794,54 @@ impl TurnCommandService {
                 json!({}),
             ))
             .await?;
+
+        if session.client_type == "pi" {
+            match self.runtime_ref(session_id).await? {
+                Some(runtime_ref) => {
+                    match self.runtime.dispatch_pi_turn(&runtime_ref, &agent_input) {
+                        Ok(()) => {
+                            ingest
+                                .ingest_event(DomainEvent::new(
+                                    new_event_id().to_string(),
+                                    session_id.to_string(),
+                                    Some(turn_id.clone()),
+                                    EventSource::AgentAdapter,
+                                    session.client_type.clone(),
+                                    EventType::TurnStarted,
+                                    json!({}),
+                                ))
+                                .await?;
+                        }
+                        Err(error) => {
+                            ingest
+                                .ingest_event(DomainEvent::new(
+                                    new_event_id().to_string(),
+                                    session_id.to_string(),
+                                    Some(turn_id.clone()),
+                                    EventSource::RuntimeManager,
+                                    session.client_type.clone(),
+                                    EventType::TurnFailed,
+                                    json!({ "failure": { "message": error.to_string() } }),
+                                ))
+                                .await?;
+                        }
+                    }
+                }
+                None => {
+                    ingest
+                        .ingest_event(DomainEvent::new(
+                            new_event_id().to_string(),
+                            session_id.to_string(),
+                            Some(turn_id.clone()),
+                            EventSource::RuntimeManager,
+                            session.client_type.clone(),
+                            EventType::TurnFailed,
+                            json!({ "failure": { "message": "pi runtime binding not found" } }),
+                        ))
+                        .await?;
+                }
+            }
+        }
 
         let mut turn = query
             .get_turn(session_id, &turn_id)
@@ -844,6 +893,14 @@ impl TurnCommandService {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    async fn runtime_ref(&self, session_id: &str) -> Result<Option<String>> {
+        sqlx::query_scalar("SELECT runtime_ref FROM runtime_bindings WHERE session_id = ?")
+            .bind(session_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(Into::into)
     }
 }
 

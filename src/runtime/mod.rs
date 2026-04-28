@@ -4,8 +4,9 @@
 //! module stays independent from HTTP transport details.
 
 use std::{
+    io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 use serde::{Deserialize, Serialize};
@@ -120,9 +121,64 @@ impl GenericRuntimeManager {
         GenericTestAdapter.accept_input(input)
     }
 
+    pub fn dispatch_pi_turn(&self, runtime_ref: &str, input: &AgentInput) -> Result<()> {
+        if !self.is_alive(runtime_ref) {
+            return Err(Error::Domain(format!(
+                "pi runtime {runtime_ref} is not alive"
+            )));
+        }
+
+        let buffer_name = format!("llmparty_{}", sanitize_tmux_identifier(&input.turn_id));
+        let mut child = Command::new("tmux")
+            .args(["load-buffer", "-b", &buffer_name, "-"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|err| Error::Domain(format!("tmux dispatch buffer failed: {err}")))?;
+        {
+            let stdin = child.stdin.as_mut().ok_or_else(|| {
+                Error::Domain("tmux dispatch buffer stdin unavailable".to_string())
+            })?;
+            stdin.write_all(input.input.as_bytes())?;
+        }
+        let status = child
+            .wait()
+            .map_err(|err| Error::Domain(format!("tmux dispatch buffer failed: {err}")))?;
+        if !status.success() {
+            return Err(Error::Domain(format!(
+                "tmux dispatch buffer failed with status {status}"
+            )));
+        }
+
+        let status = Command::new("tmux")
+            .args(["paste-buffer", "-t", runtime_ref, "-b", &buffer_name])
+            .status()
+            .map_err(|err| Error::Domain(format!("tmux dispatch paste failed: {err}")))?;
+        if !status.success() {
+            return Err(Error::Domain(format!(
+                "tmux dispatch paste failed with status {status}"
+            )));
+        }
+
+        let status = Command::new("tmux")
+            .args(["send-keys", "-t", runtime_ref, "Enter"])
+            .status()
+            .map_err(|err| Error::Domain(format!("tmux dispatch submit failed: {err}")))?;
+        if !status.success() {
+            return Err(Error::Domain(format!(
+                "tmux dispatch submit failed with status {status}"
+            )));
+        }
+
+        let _ = Command::new("tmux")
+            .args(["delete-buffer", "-b", &buffer_name])
+            .status();
+        Ok(())
+    }
+
     pub fn terminate_session(&self, runtime_ref: &str) -> Result<()> {
         let status = Command::new("tmux")
             .args(["kill-session", "-t", runtime_ref])
+            .stderr(Stdio::null())
             .status()
             .map_err(|err| Error::Domain(format!("tmux runtime terminate failed: {err}")))?;
         if status.success() || !self.is_alive(runtime_ref) {
@@ -141,6 +197,7 @@ impl GenericRuntimeManager {
     pub fn is_alive(&self, runtime_ref: &str) -> bool {
         Command::new("tmux")
             .args(["has-session", "-t", runtime_ref])
+            .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
     }
@@ -191,24 +248,44 @@ fn write_runtime_script(path: &Path, log_path: &Path, request: &RuntimeStartRequ
         .parent()
         .and_then(|path| path.parent())
         .ok_or_else(|| Error::Domain("runtime script path missing workspace".to_string()))?;
+    let (log_setup, runtime_body) = if request.client_type == "pi" {
+        let pi_command =
+            std::env::var("LLMPARTY_PI_TUI_COMMAND").unwrap_or_else(|_| "pi".to_string());
+        (
+            "echo \"llmparty runtime started\" >> \"$LLMPARTY_RUNTIME_LOG\"".to_string(),
+            format!("exec sh -lc {}\n", shell_quote(&pi_command)),
+        )
+    } else {
+        (
+            "exec >> \"$LLMPARTY_RUNTIME_LOG\" 2>&1\necho \"llmparty runtime started\"".to_string(),
+            "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
+        )
+    };
     let content = format!(
         r#"#!/usr/bin/env sh
 export LLMPARTY_SESSION_ID={}
 export LLMPARTY_CLIENT_TYPE={}
 export LLMPARTY_WORKSPACE={}
 export LLMPARTY_RUNTIME_LOG={}
-exec >> "$LLMPARTY_RUNTIME_LOG" 2>&1
-echo "llmparty runtime started"
-trap 'exit 0' TERM INT
-while :; do sleep 60; done
+{}
+{}
 "#,
         shell_quote(&request.session_id),
         shell_quote(&request.client_type),
         shell_quote(&workspace.display().to_string()),
         shell_quote(&log_path.display().to_string()),
+        log_setup,
+        runtime_body,
     );
     std::fs::write(path, content)?;
     Ok(())
+}
+
+fn sanitize_tmux_identifier(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
 }
 
 fn shell_quote(value: &str) -> String {

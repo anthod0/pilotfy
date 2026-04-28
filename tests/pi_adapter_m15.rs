@@ -1,0 +1,235 @@
+use std::{
+    path::Path,
+    process::{Command, Stdio},
+    time::Duration,
+};
+
+use axum::{
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use http_body_util::BodyExt;
+use llmparty::{
+    adapters::GenericTestAdapter,
+    application::AppState,
+    storage::sqlite::{connect_sqlite, run_migrations},
+    transport::http,
+};
+use serde_json::{Value, json};
+use sqlx::Row;
+use tower::ServiceExt;
+
+const TOKEN: &str = "test-token";
+
+async fn test_state(name: &str) -> AppState {
+    assert_tmux_available();
+    GenericTestAdapter::clear_recorded_inputs();
+    unsafe {
+        std::env::set_var(
+            "LLMPARTY_PI_TUI_COMMAND",
+            "cat >> \"$LLMPARTY_WORKSPACE/pi-tui-input.log\"",
+        );
+    }
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_path = dir.path().join(format!("{name}.db"));
+    let _kept_dir = dir.keep();
+    let database_url = format!("sqlite://{}", db_path.display());
+    let db = connect_sqlite(&database_url).await.expect("connect");
+    run_migrations(&db).await.expect("migrate");
+    AppState {
+        db,
+        external_api_token: Some(TOKEN.to_string()),
+    }
+}
+
+fn assert_tmux_available() {
+    let output = Command::new("tmux")
+        .arg("-V")
+        .output()
+        .expect("run tmux -V");
+    assert!(
+        output.status.success(),
+        "M1.5 pi dispatch tests require a working real tmux binary"
+    );
+}
+
+async fn request_json(
+    state: AppState,
+    method: &str,
+    uri: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"));
+    let body = if let Some(body) = body {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+        Body::from(body.to_string())
+    } else {
+        Body::empty()
+    };
+
+    let response = http::router(state)
+        .oneshot(builder.body(body).expect("request"))
+        .await
+        .expect("response");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body = serde_json::from_slice(&bytes).expect("json body");
+    (status, body)
+}
+
+async fn create_pi_session(state: AppState, workspace: &Path) -> String {
+    let (status, body) = request_json(
+        state,
+        "POST",
+        "/external/v1/sessions",
+        Some(json!({"client_type":"pi","workspace":workspace.display().to_string()})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    body["data"]["session"]["session_id"]
+        .as_str()
+        .expect("session id")
+        .to_string()
+}
+
+async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
+    let row = sqlx::query("SELECT metadata FROM runtime_bindings WHERE session_id = ?")
+        .bind(session_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("runtime binding");
+    let metadata: String = row.try_get("metadata").expect("metadata");
+    serde_json::from_str(&metadata).expect("metadata json")
+}
+
+fn cleanup_tmux(tmux_session: &str) {
+    let _ = Command::new("tmux")
+        .args(["kill-session", "-t", tmux_session])
+        .stderr(Stdio::null())
+        .status();
+}
+
+async fn wait_for_file_contains(path: &Path, expected: &str) {
+    for _ in 0..50 {
+        if let Ok(content) = std::fs::read_to_string(path)
+            && content.contains(expected)
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("{} did not contain {expected:?}", path.display());
+}
+
+#[tokio::test]
+async fn pi_turn_dispatch_failure_projects_failed_without_started() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m15_pi_dispatch_failure").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+    cleanup_tmux(&tmux_session);
+
+    let (status, body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/turns"),
+        Some(json!({"input":"this dispatch cannot reach the pi tui"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    let turn = &body["data"]["turn"];
+    let turn_id = turn["turn_id"].as_str().expect("turn id");
+    assert_eq!(turn["state"], "failed");
+    assert!(
+        turn["failure"].as_str().is_some_and(|message| {
+            message.contains("not alive") || message.contains("dispatch")
+        })
+    );
+
+    let (events_status, events_body) = request_json(
+        state,
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}/events"),
+        None,
+    )
+    .await;
+    assert_eq!(events_status, StatusCode::OK);
+    let event_types: Vec<&str> = events_body["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        event_types,
+        vec!["turn.created", "turn.queued", "turn.failed"]
+    );
+}
+
+#[tokio::test]
+async fn pi_turn_dispatches_to_long_running_tmux_tui_and_marks_started_only() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m15_pi_tui_dispatch").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let (status, body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/turns"),
+        Some(json!({"input":"dispatch this to the long-running pi tui"})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    let turn = &body["data"]["turn"];
+    let turn_id = turn["turn_id"].as_str().expect("turn id");
+    assert_eq!(turn["state"], "running");
+    assert!(turn["started_at"].as_str().is_some());
+    assert!(turn["completed_at"].is_null());
+    assert!(GenericTestAdapter::recorded_inputs().is_empty());
+
+    wait_for_file_contains(
+        &workspace.path().join("pi-tui-input.log"),
+        "dispatch this to the long-running pi tui",
+    )
+    .await;
+
+    let (events_status, events_body) = request_json(
+        state,
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}/events"),
+        None,
+    )
+    .await;
+    assert_eq!(events_status, StatusCode::OK);
+    let event_types: Vec<&str> = events_body["data"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        event_types,
+        vec!["turn.created", "turn.queued", "turn.started"]
+    );
+
+    cleanup_tmux(&tmux_session);
+}

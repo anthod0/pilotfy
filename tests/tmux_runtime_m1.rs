@@ -1,4 +1,8 @@
-use std::{path::Path, process::Command, time::Duration};
+use std::{
+    path::Path,
+    process::{Command, Stdio},
+    time::Duration,
+};
 
 use axum::{
     body::Body,
@@ -18,6 +22,12 @@ const TOKEN: &str = "test-token";
 
 async fn test_state(name: &str) -> AppState {
     assert_tmux_available();
+    unsafe {
+        std::env::set_var(
+            "LLMPARTY_PI_TUI_COMMAND",
+            "cat >> \"$LLMPARTY_WORKSPACE/pi-tui-input.log\"",
+        );
+    }
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join(format!("{name}.db"));
     let _kept_dir = dir.keep();
@@ -122,6 +132,7 @@ async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
 fn tmux_has_session(tmux_session: &str) -> bool {
     Command::new("tmux")
         .args(["has-session", "-t", tmux_session])
+        .stderr(Stdio::null())
         .status()
         .expect("tmux has-session")
         .success()
@@ -130,6 +141,7 @@ fn tmux_has_session(tmux_session: &str) -> bool {
 fn cleanup_tmux(tmux_session: &str) {
     let _ = Command::new("tmux")
         .args(["kill-session", "-t", tmux_session])
+        .stderr(Stdio::null())
         .status();
 }
 

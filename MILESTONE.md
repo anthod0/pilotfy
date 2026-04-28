@@ -118,9 +118,9 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ---
 
-# - [ ] Milestone 1.5：pi Adapter Bridge 与 Turn Dispatch
+# - [x] Milestone 1.5：pi Adapter Bridge 与 Turn Dispatch
 
-**状态：未开始**
+**状态：已完成（第一阶段：tmux + pi TUI dispatch；不使用 pi RPC；不伪造 completed / failed）**
 
 ## 目标
 
@@ -128,13 +128,15 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ## 主要范围
 
-- pi runtime 内的 adapter bridge 启动策略
-- Control Plane 到 pi runtime 的 turn dispatch 通道
-- adapter bridge 到 Internal Event API 的事实回传
-- `turn.started` / `turn.output` / `turn.completed` / `turn.failed` 事件映射
-- turn 与 session runtime binding 的一致性校验
-- dispatch 失败、runtime 不可用、adapter 回传异常的错误语义
-- 真实 pi 执行能力的本地验收脚本或集成测试策略
+- [x] pi runtime 内的 adapter bridge 启动策略（tmux 中长期运行 pi TUI）
+- [x] Control Plane 到 pi runtime 的 turn dispatch 通道（tmux pane 注入）
+- [x] adapter bridge 到 Internal Event API 的事实回传（dispatch 成功回传 `turn.started`）
+- [x] `turn.started` / dispatch `turn.failed` 事件映射
+- [x] turn 与 session runtime binding 的一致性校验
+- [x] dispatch 失败、runtime 不可用的错误语义
+- [x] 真实 pi TUI dispatch 的本地验收脚本或集成测试策略
+- [ ] `turn.output` / `turn.completed` 事件映射（等待明确非 RPC hook / 事件出口，不能从 TUI 内部状态伪造）
+- [ ] adapter 回传异常的完整错误语义（等待后续 hook/事件出口）
 
 ## 依赖
 
@@ -143,19 +145,21 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ## 交付物
 
-- 一个明确的 pi adapter bridge 进程 / 协议 / 投递机制设计
-- External API 提交 pi turn 后，任务能进入对应 pi runtime
-- pi adapter bridge 通过 Internal Event API 回传确认过的领域事实
-- queued pi turn 能基于真实 adapter 事件进入 started / completed / failed
-- README 或独立文档说明真实 pi turn dispatch 的本地验收流程
+- [x] 一个明确的 pi adapter bridge 进程 / 协议 / 投递机制设计：tmux 中长期运行 pi TUI，Control Plane 通过 tmux paste/send-keys 投递
+- [x] External API 提交 pi turn 后，任务能进入对应 pi runtime
+- [x] pi adapter bridge 通过 Internal Event API 回传确认过的领域事实：dispatch 成功后 `turn.started`
+- [x] queued pi turn 能基于真实 adapter 事件进入 started；dispatch failure 进入 failed
+- [x] README 说明真实 pi turn dispatch 的本地验收流程
+- [ ] completed / output 回传等待明确 hook，不在本阶段伪造
 
 ## 验收门槛
 
-- 不使用临时 subprocess 路径绕过 runtime / adapter bridge
-- External API 不直接读取 pi 内部状态作为权威状态
-- adapter 不能伪造未确认的 turn 事实
-- runtime crash / dispatch failure 能产生明确 session / turn 事件
-- generic client 行为不回退
+- [x] 不使用临时 subprocess 路径绕过 runtime / adapter bridge
+- [x] 不使用 pi RPC；pi 由 tmux + TUI 长期运行保持
+- [x] External API 不直接读取 pi 内部状态作为权威状态
+- [x] adapter 不能伪造未确认的 completed / output 事实
+- [x] runtime crash / dispatch failure 能产生明确 session / turn 事件
+- [x] generic client 行为不回退
 
 ---
 
@@ -334,6 +338,8 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 Milestone 0  pi Client Adapter 最小闭环
       ↓
 Milestone 1  Runtime Manager Hardening
+      ↓
+Milestone 1.5  pi Adapter Bridge 与 Turn Dispatch
       ↓
 Milestone 2  Artifact Discovery 与 Filesystem Adapter 增强
       ↓

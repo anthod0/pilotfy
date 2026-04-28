@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use axum::{
     body::Body,
@@ -18,6 +21,12 @@ const TOKEN: &str = "test-token";
 
 async fn test_state(name: &str) -> AppState {
     GenericTestAdapter::clear_recorded_inputs();
+    unsafe {
+        std::env::set_var(
+            "LLMPARTY_PI_TUI_COMMAND",
+            "cat >> \"$LLMPARTY_WORKSPACE/pi-tui-input.log\"",
+        );
+    }
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join(format!("{name}.db"));
     let _kept_dir = dir.keep();
@@ -82,12 +91,29 @@ async fn create_pi_session(state: AppState, workspace: &Path) -> (String, Value)
     (session_id, body)
 }
 
+async fn cleanup_session_runtime(state: &AppState, session_id: &str) {
+    if let Ok(Some(metadata)) = sqlx::query_scalar::<_, String>(
+        "SELECT metadata FROM runtime_bindings WHERE session_id = ?",
+    )
+    .bind(session_id)
+    .fetch_optional(&state.db)
+    .await
+        && let Ok(metadata) = serde_json::from_str::<Value>(&metadata)
+        && let Some(tmux_session) = metadata["tmux_session"].as_str()
+    {
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", tmux_session])
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 #[tokio::test]
 async fn pi_session_creation_exposes_m0_capabilities() {
     let temp = tempfile::tempdir().expect("tempdir");
     let state = test_state("m0_pi_caps").await;
 
-    let (_session_id, body) = create_pi_session(state, temp.path()).await;
+    let (session_id, body) = create_pi_session(state.clone(), temp.path()).await;
 
     let session = &body["data"]["session"];
     assert_eq!(session["client_type"], "pi");
@@ -100,10 +126,12 @@ async fn pi_session_creation_exposes_m0_capabilities() {
     assert_eq!(capabilities["artifact_sources"], true);
     assert_eq!(capabilities["interrupt"], false);
     assert_eq!(capabilities["heartbeat"], false);
+
+    cleanup_session_runtime(&state, &session_id).await;
 }
 
 #[tokio::test]
-async fn pi_turn_submit_stays_queued_until_adapter_events_arrive() {
+async fn pi_turn_submit_dispatches_to_tui_and_starts_without_completion() {
     let temp = tempfile::tempdir().expect("tempdir");
     let state = test_state("m0_pi_turn_queued").await;
     let (session_id, _) = create_pi_session(state.clone(), temp.path()).await;
@@ -119,7 +147,7 @@ async fn pi_turn_submit_stays_queued_until_adapter_events_arrive() {
     assert_eq!(status, StatusCode::CREATED, "{body:?}");
     let turn = &body["data"]["turn"];
     let turn_id = turn["turn_id"].as_str().expect("turn id");
-    assert_eq!(turn["state"], "queued");
+    assert_eq!(turn["state"], "running");
     assert!(turn["output"]["summary"].is_null());
     assert!(
         turn["output"]["artifact_ids"]
@@ -129,7 +157,7 @@ async fn pi_turn_submit_stays_queued_until_adapter_events_arrive() {
     assert!(GenericTestAdapter::recorded_inputs().is_empty());
 
     let (events_status, events_body) = request_json(
-        state,
+        state.clone(),
         "GET",
         &format!("/external/v1/sessions/{session_id}/turns/{turn_id}/events"),
         None,
@@ -144,7 +172,9 @@ async fn pi_turn_submit_stays_queued_until_adapter_events_arrive() {
         .collect();
     assert!(event_types.contains(&"turn.created"));
     assert!(event_types.contains(&"turn.queued"));
-    assert!(!event_types.contains(&"turn.started"));
+    assert!(event_types.contains(&"turn.started"));
     assert!(!event_types.contains(&"turn.output"));
     assert!(!event_types.contains(&"turn.completed"));
+
+    cleanup_session_runtime(&state, &session_id).await;
 }
