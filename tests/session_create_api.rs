@@ -1,3 +1,5 @@
+use std::process::{Command, Stdio};
+
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
@@ -84,6 +86,31 @@ async fn get(state: AppState, uri: &str) -> (StatusCode, Value) {
     (status, json)
 }
 
+struct TmuxSessionGuard {
+    tmux_session: String,
+}
+
+impl TmuxSessionGuard {
+    fn for_session(session_id: &str) -> Self {
+        let sanitized: String = session_id
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        Self {
+            tmux_session: format!("llmparty_{sanitized}"),
+        }
+    }
+}
+
+impl Drop for TmuxSessionGuard {
+    fn drop(&mut self) {
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &self.tmux_session])
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 #[tokio::test]
 async fn create_session_rejects_unauthenticated_requests() {
     let state = test_state().await;
@@ -123,6 +150,7 @@ async fn create_session_emits_lifecycle_events_and_returns_idle_session_with_cap
     assert_eq!(body["error"], Value::Null);
     let session = &body["data"]["session"];
     let session_id = session["session_id"].as_str().expect("session id");
+    let _runtime_guard = TmuxSessionGuard::for_session(session_id);
     assert!(session_id.starts_with("sess_"));
     assert_eq!(session["client_type"], "generic");
     assert_eq!(session["state"], "idle");
@@ -181,6 +209,7 @@ async fn create_session_with_initial_task_creates_queued_initial_turn() {
 
     assert_eq!(status, StatusCode::CREATED);
     let session_id = body["data"]["session"]["session_id"].as_str().unwrap();
+    let _runtime_guard = TmuxSessionGuard::for_session(session_id);
     let initial_turn = &body["data"]["initial_turn"];
     let turn_id = initial_turn["turn_id"].as_str().expect("turn id");
     assert!(turn_id.starts_with("turn_"));
@@ -233,6 +262,7 @@ async fn create_session_is_idempotent_when_idempotency_key_is_retried() {
     assert_eq!(second.1["data"], first.1["data"]);
 
     let session_id = first.1["data"]["session"]["session_id"].as_str().unwrap();
+    let _runtime_guard = TmuxSessionGuard::for_session(session_id);
     let (events_status, events_body) =
         get(state, &format!("/external/v1/sessions/{session_id}/events")).await;
     assert_eq!(events_status, StatusCode::OK);

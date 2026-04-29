@@ -1,4 +1,8 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use axum::{
     body::Body,
@@ -158,6 +162,31 @@ fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
+struct TmuxSessionGuard {
+    tmux_session: String,
+}
+
+impl TmuxSessionGuard {
+    fn for_session(session_id: &str) -> Self {
+        let sanitized: String = session_id
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        Self {
+            tmux_session: format!("llmparty_{sanitized}"),
+        }
+    }
+}
+
+impl Drop for TmuxSessionGuard {
+    fn drop(&mut self) {
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &self.tmux_session])
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 #[tokio::test]
 async fn orchestrator_can_complete_backend_only_http_polling_flow() {
     let state = test_state("mvp_e2e").await;
@@ -168,6 +197,7 @@ async fn orchestrator_can_complete_backend_only_http_polling_flow() {
         .as_str()
         .expect("session id")
         .to_string();
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     assert_eq!(create_body["data"]["session"]["state"], "idle");
     assert_eq!(
         create_body["data"]["session"]["capabilities"]["accept_task"],
@@ -377,6 +407,7 @@ async fn external_api_has_stable_error_semantics_and_idempotency() {
         .as_str()
         .expect("session id")
         .to_string();
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     assert_eq!(
         second_create_body["data"]["session"]["session_id"],
         session_id

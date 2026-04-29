@@ -1,4 +1,8 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use axum::{
     body::Body,
@@ -136,10 +140,36 @@ fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
+struct TmuxSessionGuard {
+    tmux_session: String,
+}
+
+impl TmuxSessionGuard {
+    fn for_session(session_id: &str) -> Self {
+        let sanitized: String = session_id
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        Self {
+            tmux_session: format!("llmparty_{sanitized}"),
+        }
+    }
+}
+
+impl Drop for TmuxSessionGuard {
+    fn drop(&mut self) {
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &self.tmux_session])
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 #[tokio::test]
 async fn capability_model_declares_all_mvp_adapter_capabilities() {
     let state = test_state("m8_capabilities").await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
 
     let (status, body) = get_json(state, &format!("/external/v1/sessions/{session_id}")).await;
 
@@ -160,6 +190,7 @@ async fn capability_model_declares_all_mvp_adapter_capabilities() {
 async fn turn_input_handoff_uses_control_plane_assigned_identity() {
     let state = test_state("m8_turn_input").await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
 
     let (turn_id, body) = submit_turn(state, &session_id, "adapter contract task").await;
 
@@ -179,6 +210,7 @@ async fn turn_input_handoff_uses_control_plane_assigned_identity() {
 async fn event_source_returns_turn_facts_through_internal_event_api() {
     let state = test_state("m8_event_source").await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let (turn_id, _) = submit_turn(state.clone(), &session_id, "run to completion").await;
 
     for (idx, event_type, payload) in [
@@ -243,6 +275,7 @@ async fn event_source_returns_turn_facts_through_internal_event_api() {
 async fn artifact_source_provider_registers_readable_artifacts_without_exposing_source_ref() {
     let state = test_state("m8_artifact_source").await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let (turn_id, _) = submit_turn(state.clone(), &session_id, "produce artifact").await;
     let dir = tempfile::tempdir().expect("artifact dir");
     let artifact_path = dir.path().join("result.txt");
@@ -288,6 +321,7 @@ async fn artifact_source_provider_registers_readable_artifacts_without_exposing_
 async fn unsupported_capabilities_degrade_independently_without_forged_facts() {
     let state = test_state("m8_degradation").await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let (turn_id, _) = submit_turn(state.clone(), &session_id, "cannot interrupt").await;
 
     let (started_status, _) = post_json(

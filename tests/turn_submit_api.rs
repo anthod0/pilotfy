@@ -1,3 +1,5 @@
+use std::process::{Command, Stdio};
+
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
@@ -138,10 +140,36 @@ fn event_body(event_id: &str, event_type: &str, session_id: &str, turn_id: &str)
     })
 }
 
+struct TmuxSessionGuard {
+    tmux_session: String,
+}
+
+impl TmuxSessionGuard {
+    fn for_session(session_id: &str) -> Self {
+        let sanitized: String = session_id
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        Self {
+            tmux_session: format!("llmparty_{sanitized}"),
+        }
+    }
+}
+
+impl Drop for TmuxSessionGuard {
+    fn drop(&mut self) {
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &self.tmux_session])
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 #[tokio::test]
 async fn submit_turn_to_idle_session_creates_queued_turn_and_events() {
     let state = test_state().await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
 
     let (status, body) = post_json(
         state.clone(),
@@ -190,6 +218,7 @@ async fn submit_turn_to_idle_session_creates_queued_turn_and_events() {
 async fn submit_turn_is_idempotent_with_same_key() {
     let state = test_state().await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let uri = format!("/external/v1/sessions/{session_id}/turns");
     let request = json!({"input":"only once"});
 
@@ -228,6 +257,7 @@ async fn submit_turn_is_idempotent_with_same_key() {
 async fn submit_turn_rejects_busy_session_and_existing_active_turn() {
     let state = test_state().await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let uri = format!("/external/v1/sessions/{session_id}/turns");
 
     let first = post_json(
@@ -250,6 +280,7 @@ async fn submit_turn_rejects_busy_session_and_existing_active_turn() {
 async fn interrupted_session_can_accept_next_turn() {
     let state = test_state().await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let uri = format!("/external/v1/sessions/{session_id}/turns");
     let first = post_json(
         state.clone(),
@@ -325,6 +356,7 @@ async fn terminal_or_starting_sessions_cannot_accept_turns() {
 async fn internal_events_advance_submitted_turn_and_session_projection() {
     let state = test_state().await;
     let session_id = create_session(state.clone()).await;
+    let _runtime_guard = TmuxSessionGuard::for_session(&session_id);
     let submit = post_json(
         state.clone(),
         &format!("/external/v1/sessions/{session_id}/turns"),
