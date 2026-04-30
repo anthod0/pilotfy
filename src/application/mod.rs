@@ -1077,9 +1077,11 @@ impl TurnCommandService {
             .await?;
 
         if session.client_type == "pi" {
-            match self.runtime_ref(session_id).await? {
-                Some(runtime_ref) => {
-                    match self.runtime.dispatch_pi_turn(&runtime_ref, &agent_input) {
+            match self.runtime_binding_metadata(session_id).await? {
+                Some((runtime_ref, metadata)) => {
+                    match write_pi_current_turn_context(&metadata, &agent_input)
+                        .and_then(|()| self.runtime.dispatch_pi_turn(&runtime_ref, &agent_input))
+                    {
                         Ok(()) => {
                             ingest
                                 .ingest_event(DomainEvent::new(
@@ -1176,13 +1178,49 @@ impl TurnCommandService {
         Ok(())
     }
 
-    async fn runtime_ref(&self, session_id: &str) -> Result<Option<String>> {
-        sqlx::query_scalar("SELECT runtime_ref FROM runtime_bindings WHERE session_id = ?")
-            .bind(session_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(Into::into)
+    async fn runtime_binding_metadata(&self, session_id: &str) -> Result<Option<(String, Value)>> {
+        let row =
+            sqlx::query("SELECT runtime_ref, metadata FROM runtime_bindings WHERE session_id = ?")
+                .bind(session_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        row.map(|row| {
+            let runtime_ref: String = row.try_get("runtime_ref")?;
+            let metadata: String = row.try_get("metadata")?;
+            let metadata = serde_json::from_str(&metadata)?;
+            Ok((runtime_ref, metadata))
+        })
+        .transpose()
     }
+}
+
+fn write_pi_current_turn_context(metadata: &Value, input: &AgentInput) -> Result<()> {
+    let current_turn_file = metadata["current_turn_file"]
+        .as_str()
+        .map(PathBuf::from)
+        .or_else(|| {
+            metadata["workspace"]
+                .as_str()
+                .map(|workspace| Path::new(workspace).join(".llmparty/current-turn.json"))
+        })
+        .ok_or_else(|| {
+            Error::Domain("pi runtime metadata missing current_turn_file".to_string())
+        })?;
+    if let Some(parent) = current_turn_file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let internal_event_url = metadata["internal_event_url"]
+        .as_str()
+        .unwrap_or("http://127.0.0.1:8080/internal/v1/events");
+    let context = json!({
+        "session_id": input.session_id,
+        "turn_id": input.turn_id,
+        "input": input.input,
+        "client_type": "pi",
+        "internal_event_url": internal_event_url,
+    });
+    std::fs::write(current_turn_file, serde_json::to_vec_pretty(&context)?)?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]

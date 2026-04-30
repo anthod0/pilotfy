@@ -52,6 +52,8 @@ The extension does not parse TUI screen contents and does not infer completion f
 
 ## Manual validation
 
+When pi is launched by an M4.5 llmparty `client_type = "pi"` runtime, the Control Plane writes `.llmparty/current-turn.json` before each dispatch and exports `LLMPARTY_CURRENT_TURN_FILE`, `LLMPARTY_INTERNAL_EVENT_URL`, and `LLMPARTY_PI_HOOK_LOG` for the hook. The steps below are useful for standalone plugin validation.
+
 1. Start llmparty so `/internal/v1/events` is reachable.
 2. Create the current turn file in the workspace:
 

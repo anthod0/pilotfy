@@ -62,3 +62,33 @@ async fn dashboard_serves_minimal_web_control_panel() {
     assert!(html.contains("/external/v1/sessions"));
     assert!(html.contains("localStorage"));
 }
+
+#[tokio::test]
+async fn dashboard_contains_m45_realtime_and_busy_turn_ui() {
+    let response = http::router(test_state().await)
+        .oneshot(
+            Request::builder()
+                .uri("/dashboard")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let html = std::str::from_utf8(&body).expect("utf8 html");
+
+    assert!(html.contains("Active turn"));
+    assert!(html.contains("session is busy"));
+    assert!(html.contains("openEventStream"));
+    assert!(html.contains("/events/stream"));
+    assert!(html.contains("turn.output"));
+    assert!(html.contains("turn.completed"));
+    assert!(html.contains("turn.failed"));
+}

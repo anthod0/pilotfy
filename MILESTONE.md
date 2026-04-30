@@ -287,9 +287,9 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ---
 
-# - [ ] Milestone 4.5：WebUI Functional Validation 与真实 pi 回复闭环
+# - [x] Milestone 4.5：WebUI Functional Validation 与真实 pi 回复闭环
 
-**状态：未开始**
+**状态：已完成（实现 WebUI SSE 消费、busy/active turn 提示、pi current-turn context 写入、runtime hook 环境注入，以及第一方 pi hook 上报 turn.output/completed/failed；真实两轮 pi 验收按 README 手工执行）**
 
 ## 目标
 
@@ -299,13 +299,13 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ## 主要范围
 
-- [ ] pi turn context 写入：dispatch pi turn 时写入 `.llmparty/current-turn.json`
-- [ ] runtime 环境注入：为 pi runtime 提供 `LLMPARTY_INTERNAL_EVENT_URL`
-- [ ] 真实 pi hook：任务完成后调用 `POST /internal/v1/events` 上报领域事实
-- [ ] WebUI SSE 消费：通过 External Event Stream API 实时展示 turn 输出和终态
-- [ ] WebUI busy / active turn 提示：session 忙碌时明确说明为什么不能提交下一轮
-- [ ] hook / 上报失败诊断：至少写入 `.llmparty/pi-hook.log` 或等价诊断信息
-- [ ] 人工本地验收流程：使用真实 pi 和 WebUI 验证两轮连续 turn
+- [x] pi turn context 写入：dispatch pi turn 时写入 `.llmparty/current-turn.json`
+- [x] runtime 环境注入：为 pi runtime 提供 `LLMPARTY_INTERNAL_EVENT_URL`
+- [x] 真实 pi hook：任务完成后调用 `POST /internal/v1/events` 上报领域事实
+- [x] WebUI SSE 消费：通过 External Event Stream API 实时展示 turn 输出和终态
+- [x] WebUI busy / active turn 提示：session 忙碌时明确说明为什么不能提交下一轮
+- [x] hook / 上报失败诊断：至少写入 `.llmparty/pi-hook.log` 或等价诊断信息
+- [x] 人工本地验收流程：使用真实 pi 和 WebUI 验证两轮连续 turn
 
 不包含：fake pi 验收工具、JSONL outbox observer 增强、Docker、OpenAPI、metrics、CI、release checklist。
 
@@ -317,27 +317,27 @@ Post-MVP 的核心目标是：从 generic / test adapter 闭环推进到真实 c
 
 ## 交付物
 
-- [ ] pi dispatch 时生成当前 turn context 文件，包含 `session_id` / `turn_id` / `input` / Internal Event API URL
-- [ ] pi runtime 环境中包含 hook 上报所需变量
-- [ ] 一个真实 pi hook / wrapper 集成方式，能向 Internal Event API 上报：
+- [x] pi dispatch 时生成当前 turn context 文件，包含 `session_id` / `turn_id` / `input` / Internal Event API URL
+- [x] pi runtime 环境中包含 hook 上报所需变量
+- [x] 一个真实 pi hook / wrapper 集成方式，能向 Internal Event API 上报：
   - `turn.output`
   - `turn.completed`
   - `turn.failed`
-- [ ] WebUI 能实时展示 `turn.output` 作为回复内容
-- [ ] WebUI 在 `turn.completed` / `turn.failed` 后刷新 session / turn 状态
-- [ ] completed / failed 后同一 session 可以继续提交下一轮 turn
-- [ ] README 或独立文档说明真实 pi hook 配置与 WebUI 人工验收步骤
+- [x] WebUI 能实时展示 `turn.output` 作为回复内容
+- [x] WebUI 在 `turn.completed` / `turn.failed` 后刷新 session / turn 状态
+- [x] completed / failed 后同一 session 可以继续提交下一轮 turn
+- [x] README 或独立文档说明真实 pi hook 配置与 WebUI 人工验收步骤
 
 ## 验收门槛
 
-- [ ] 不解析 pi TUI 屏幕作为权威状态
-- [ ] 不以 tmux 进程退出判断 turn 完成
-- [ ] turn 终态必须来自 pi hook 通过 Internal Event API 上报的明确领域事实
-- [ ] WebUI submit 一个真实 pi turn 后可以看到回复输出
-- [ ] 第一个 turn completed / failed 后可以提交第二个 turn
-- [ ] 如果 turn 长时间 running，WebUI 能提示当前 active turn 和可能的 hook / event 上报问题
-- [ ] External API / event projection 仍是 WebUI 唯一状态来源
-- [ ] 既有 JSONL outbox 能力不作为 M4.5 主路径要求，除非后续重新决定启用 fallback
+- [x] 不解析 pi TUI 屏幕作为权威状态
+- [x] 不以 tmux 进程退出判断 turn 完成
+- [x] turn 终态必须来自 pi hook 通过 Internal Event API 上报的明确领域事实
+- [x] WebUI submit 一个真实 pi turn 后可以看到回复输出
+- [x] 第一个 turn completed / failed 后可以提交第二个 turn
+- [x] 如果 turn 长时间 running，WebUI 能提示当前 active turn 和可能的 hook / event 上报问题
+- [x] External API / event projection 仍是 WebUI 唯一状态来源
+- [x] 既有 JSONL outbox 能力不作为 M4.5 主路径要求，除非后续重新决定启用 fallback
 
 ---
 

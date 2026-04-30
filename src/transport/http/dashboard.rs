@@ -91,7 +91,10 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
           <h2>Submit turn</h2>
           <label for="turn-input">Turn input</label>
           <textarea id="turn-input" placeholder="Task for the selected session"></textarea>
+          <p id="active-turn" class="muted">Active turn: none</p>
           <button id="submit-turn">Submit turn</button>
+          <h3>Latest reply</h3>
+          <pre id="turn-output">No turn output yet.</pre>
           <h3>Turn history</h3>
           <div id="turns" class="list muted">Select a session.</div>
         </div>
@@ -117,6 +120,9 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
   <script>
     const $ = (id) => document.getElementById(id);
     let selectedSessionId = null;
+    let selectedSession = null;
+    let eventAbort = null;
+    let lastEventId = null;
 
     $('token').value = localStorage.getItem('llmparty.externalApiToken') || '';
     $('save-token').onclick = () => {
@@ -178,8 +184,11 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
       selectedSessionId = sessionId;
       try {
         const body = await request(`/external/v1/sessions/${sessionId}`, { headers: headers() });
-        showJson($('session-detail'), body.data.session);
+        selectedSession = body.data.session;
+        showJson($('session-detail'), selectedSession);
+        updateBusyState();
         await Promise.all([loadTurns(), loadEvents(), loadArtifacts()]);
+        openEventStream();
       } catch (error) { setStatus(error.message, true); }
     }
     async function createSession() {
@@ -206,14 +215,17 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
       try {
         await request(`/external/v1/sessions/${selectedSessionId}/turns`, { method: 'POST', headers: headers(true), body: JSON.stringify({ input: $('turn-input').value }) });
         $('turn-input').value = '';
-        await loadTurns();
-        setStatus('Turn submitted.');
+        await selectSession(selectedSessionId);
+        setStatus('Turn submitted. Waiting for pi hook events.');
       } catch (error) { setStatus(error.message, true); }
     }
     async function loadTurns() {
       if (!selectedSessionId) return;
       const body = await request(`/external/v1/sessions/${selectedSessionId}/turns`, { headers: headers() });
-      renderList($('turns'), body.data.turns || [], (turn) => `<strong>${turn.turn_id}</strong><br><span class="muted">${turn.state}</span>`);
+      const turns = body.data.turns || [];
+      renderList($('turns'), turns, (turn) => `<strong>${turn.turn_id}</strong><br><span class="muted">${turn.state}</span><br>${escapeHtml(turn.output?.summary || '')}`);
+      const latestOutput = [...turns].reverse().find((turn) => turn.output?.summary);
+      if (latestOutput) $('turn-output').textContent = latestOutput.output.summary;
     }
     async function loadEvents() {
       if (!selectedSessionId) return;
@@ -239,6 +251,71 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
         showJson($('artifact-content'), body.data);
       } catch (error) { setStatus(error.message, true); }
     }
+    function updateBusyState() {
+      const activeTurnId = selectedSession?.current_turn_id;
+      const busy = Boolean(activeTurnId);
+      $('active-turn').textContent = busy
+        ? `Active turn: ${activeTurnId}. This session is busy; wait for turn.completed or turn.failed from the pi hook before submitting the next turn.`
+        : 'Active turn: none';
+      $('submit-turn').disabled = busy;
+      if (busy) setStatus('session is busy; if it stays running, check .llmparty/pi-hook.log and Internal Event API reporting.', true);
+    }
+
+    function openEventStream() {
+      if (!selectedSessionId) return;
+      if (eventAbort) eventAbort.abort();
+      eventAbort = new AbortController();
+      lastEventId = null;
+      consumeEventStream(eventAbort.signal).catch((error) => {
+        if (error.name !== 'AbortError') setStatus(`Event stream stopped: ${error.message}`, true);
+      });
+    }
+
+    async function consumeEventStream(signal) {
+      const url = `/external/v1/sessions/${selectedSessionId}/events/stream${lastEventId ? `?after=${encodeURIComponent(lastEventId)}` : ''}`;
+      const response = await fetch(url, { headers: headers(), signal });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() || '';
+        for (const frame of frames) handleSseFrame(frame);
+      }
+    }
+
+    function handleSseFrame(frame) {
+      let id = null;
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('id:')) id = line.slice(3).trim();
+        if (line.startsWith('data:')) data += line.slice(5).trim();
+      }
+      if (id) lastEventId = id;
+      if (!data) return;
+      const event = JSON.parse(data);
+      appendEvent(event);
+      if (event.type === 'turn.output') $('turn-output').textContent = event.payload?.output?.summary || JSON.stringify(event.payload);
+      if (event.type === 'turn.completed' || event.type === 'turn.failed') selectSession(selectedSessionId);
+    }
+
+    function appendEvent(event) {
+      const root = $('events');
+      if (root.classList.contains('muted')) { root.className = 'list'; root.innerHTML = ''; }
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.innerHTML = `<strong>${escapeHtml(event.type)}</strong><br><span class="muted">${escapeHtml(event.event_id)} · ${escapeHtml(event.time)}</span>`;
+      root.prepend(el);
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+
     function renderList(root, items, html, onClick) {
       root.className = 'list';
       root.innerHTML = '';

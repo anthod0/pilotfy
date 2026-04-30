@@ -116,21 +116,34 @@ The MVP end-to-end acceptance coverage lives in `tests/mvp_e2e_acceptance.rs`. T
 
 The same acceptance test also verifies stable External API error envelopes for authentication failure, invalid requests, missing resources, state conflicts, and unavailable capabilities. Idempotency is verified for retried session and turn creation requests using `Idempotency-Key`.
 
-## M4 minimal Web Dashboard
+## M4/M4.5 Web Dashboard and real pi reply loop
 
 Milestone 4 adds a zero-build Web Dashboard served by the backend at `/dashboard`. It is a browser consumer of the existing External API only; it does not read SQLite, runtime internals, client logs, or workspace files directly.
 
 ```bash
-LLMPARTY_EXTERNAL_API_TOKEN=dev-token cargo run
+LLMPARTY_EXTERNAL_API_TOKEN=dev-token \
+LLMPARTY_INTERNAL_EVENT_URL=http://127.0.0.1:8080/internal/v1/events \
+cargo run
 # open http://127.0.0.1:8080/dashboard and enter dev-token
 ```
 
-The dashboard supports session listing and creation, session detail, turn submission/history, event timeline, artifact discovery/browsing/content reads, and interrupt/restart/terminate controls.
+The dashboard supports session listing and creation, session detail, turn submission/history, SSE-backed event timeline updates, live `turn.output` reply display, artifact discovery/browsing/content reads, and interrupt/restart/terminate controls. When a session has an active turn, the submit button is disabled and the UI explains that the session is busy until `turn.completed` or `turn.failed` arrives.
 
-Run the automated M4 coverage with:
+For real pi validation, run pi with the first-party extension and create a `client_type = "pi"` session from the dashboard. On each pi turn dispatch, llmparty writes `$LLMPARTY_WORKSPACE/.llmparty/current-turn.json` with `session_id`, `turn_id`, `input`, `client_type`, and `internal_event_url`; the runtime also exports `LLMPARTY_CURRENT_TURN_FILE`, `LLMPARTY_INTERNAL_EVENT_URL`, and `LLMPARTY_PI_HOOK_LOG`. The pi extension posts confirmed `turn.output`, `turn.completed`, or `turn.failed` facts to `/internal/v1/events`. If reporting stalls, inspect `$LLMPARTY_WORKSPACE/.llmparty/pi-hook.log`.
+
+Manual two-turn validation:
+
+1. Start llmparty with `LLMPARTY_EXTERNAL_API_TOKEN` and `LLMPARTY_INTERNAL_EVENT_URL`.
+2. Ensure pi loads the local extension, for example `LLMPARTY_PI_TUI_COMMAND='pi -e /absolute/path/to/llmparty/clients/pi'` before starting llmparty, or install `./clients/pi` into pi.
+3. Open `/dashboard`, create a `pi` session with a workspace, and submit a turn.
+4. Verify the dashboard shows `turn.output` and then `turn.completed` or `turn.failed` from SSE events.
+5. After the terminal event clears the active turn, submit a second turn in the same session.
+
+Run the automated M4/M4.5 coverage with:
 
 ```bash
 cargo test --test web_dashboard
+cargo test --test pi_adapter_m15 -- --test-threads=1
 ```
 
 ## M3 SSE event stream validation

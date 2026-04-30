@@ -76,6 +76,9 @@ impl GenericRuntimeManager {
         std::fs::create_dir_all(&llmparty_dir)?;
         let log_path = llmparty_dir.join("runtime.log");
         let adapter_event_log = llmparty_dir.join("adapter-events.jsonl");
+        let current_turn_file = llmparty_dir.join("current-turn.json");
+        let pi_hook_log = llmparty_dir.join("pi-hook.log");
+        let internal_event_url = internal_event_url();
         std::fs::File::create(&log_path)?;
         let script_path = llmparty_dir.join("runtime.sh");
         write_runtime_script(&script_path, &log_path, &request)?;
@@ -104,6 +107,8 @@ impl GenericRuntimeManager {
         let workspace = workspace.display().to_string();
         let log_path = log_path.display().to_string();
         let adapter_event_log = adapter_event_log.display().to_string();
+        let current_turn_file = current_turn_file.display().to_string();
+        let pi_hook_log = pi_hook_log.display().to_string();
         Ok(RuntimeStartResult {
             runtime_kind: "tmux".to_string(),
             runtime_ref: tmux_session.clone(),
@@ -114,6 +119,9 @@ impl GenericRuntimeManager {
                 "workspace": workspace,
                 "log_path": log_path,
                 "adapter_event_log": adapter_event_log,
+                "current_turn_file": current_turn_file,
+                "internal_event_url": internal_event_url,
+                "pi_hook_log": pi_hook_log,
                 "started_at": started_at,
                 "restart_count": restart_count,
             }),
@@ -271,6 +279,9 @@ export LLMPARTY_CLIENT_TYPE={}
 export LLMPARTY_WORKSPACE={}
 export LLMPARTY_RUNTIME_LOG={}
 export LLMPARTY_ADAPTER_EVENT_LOG={}
+export LLMPARTY_CURRENT_TURN_FILE={}
+export LLMPARTY_INTERNAL_EVENT_URL={}
+export LLMPARTY_PI_HOOK_LOG={}
 {}
 {}
 "#,
@@ -284,11 +295,29 @@ export LLMPARTY_ADAPTER_EVENT_LOG={}
                 .display()
                 .to_string()
         ),
+        shell_quote(
+            &workspace
+                .join(".llmparty/current-turn.json")
+                .display()
+                .to_string()
+        ),
+        shell_quote(&internal_event_url()),
+        shell_quote(
+            &workspace
+                .join(".llmparty/pi-hook.log")
+                .display()
+                .to_string()
+        ),
         log_setup,
         runtime_body,
     );
     std::fs::write(path, content)?;
     Ok(())
+}
+
+fn internal_event_url() -> String {
+    std::env::var("LLMPARTY_INTERNAL_EVENT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080/internal/v1/events".to_string())
 }
 
 fn sanitize_tmux_identifier(value: &str) -> String {

@@ -361,6 +361,67 @@ async fn pi_adapter_event_outbox_reports_malformed_records_without_forging_turn_
 }
 
 #[tokio::test]
+async fn pi_dispatch_writes_current_turn_context_for_real_hook() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m45_pi_current_turn_context").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let (status, body) = request_json(
+        state,
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/turns"),
+        Some(json!({"input":"write context for hook"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    let turn_id = body["data"]["turn"]["turn_id"].as_str().expect("turn id");
+
+    let context_path = workspace.path().join(".llmparty/current-turn.json");
+    let context: Value = serde_json::from_str(
+        &std::fs::read_to_string(&context_path).expect("current-turn context file"),
+    )
+    .expect("context json");
+    assert_eq!(context["session_id"], session_id);
+    assert_eq!(context["turn_id"], turn_id);
+    assert_eq!(context["input"], "write context for hook");
+    assert_eq!(context["client_type"], "pi");
+    assert_eq!(
+        context["internal_event_url"],
+        "http://127.0.0.1:8080/internal/v1/events"
+    );
+
+    cleanup_tmux(&tmux_session);
+}
+
+#[tokio::test]
+async fn pi_runtime_exports_real_hook_environment() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let state = test_state("m45_pi_hook_environment").await;
+    let session_id = create_pi_session(state.clone(), workspace.path()).await;
+    let metadata = binding_metadata(&state, &session_id).await;
+    let tmux_session = metadata["tmux_session"]
+        .as_str()
+        .expect("tmux session")
+        .to_string();
+
+    let runtime_script = std::fs::read_to_string(workspace.path().join(".llmparty/runtime.sh"))
+        .expect("runtime script");
+    assert!(runtime_script.contains("export LLMPARTY_CURRENT_TURN_FILE="));
+    assert!(runtime_script.contains(".llmparty/current-turn.json"));
+    assert!(runtime_script.contains("export LLMPARTY_INTERNAL_EVENT_URL="));
+    assert!(runtime_script.contains("http://127.0.0.1:8080/internal/v1/events"));
+    assert!(runtime_script.contains("export LLMPARTY_PI_HOOK_LOG="));
+    assert!(runtime_script.contains(".llmparty/pi-hook.log"));
+
+    cleanup_tmux(&tmux_session);
+}
+
+#[tokio::test]
 async fn pi_turn_dispatches_to_long_running_tmux_tui_and_marks_started_only() {
     let workspace = tempfile::tempdir().expect("workspace");
     let state = test_state("m15_pi_tui_dispatch").await;
