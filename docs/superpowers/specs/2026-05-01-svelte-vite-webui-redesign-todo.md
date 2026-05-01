@@ -96,14 +96,14 @@ Goal: replace the embedded Rust-string dashboard with a real Svelte + Vite + Typ
 
 ## Phase 5: Implement turns and event timeline using polling only
 
-- [ ] Implement `TurnComposer.svelte`.
-- [ ] Implement `TurnHistory.svelte`.
-- [ ] Implement `LatestReply.svelte`.
-- [ ] Implement `EventTimeline.svelte` and `EventItem.svelte`.
-- [ ] Use `GET /events` for timeline initially.
-- [ ] Use projection state to compute busy/active turn.
-- [ ] Disable submit while selected session has `current_turn_id`.
-- [ ] After submit turn, refresh selected session, turns, and events.
+- [x] Implement `TurnComposer.svelte`.
+- [x] Implement `TurnHistory.svelte`.
+- [x] Implement `LatestReply.svelte`.
+- [x] Implement `EventTimeline.svelte` and `EventItem.svelte`.
+- [x] Use `GET /events` for timeline initially.
+- [x] Use projection state to compute busy/active turn.
+- [x] Disable submit while selected session has `current_turn_id`.
+- [x] After submit turn, refresh selected session, turns, and events.
 - [ ] Manual verification:
   - submit a turn
   - busy state appears
@@ -114,18 +114,18 @@ Goal: replace the embedded Rust-string dashboard with a real Svelte + Vite + Typ
 
 ## Phase 6: Implement SSE stream manager
 
-- [ ] Create `apps/web/src/services/eventStream.ts`.
-- [ ] Track current streamed session id.
-- [ ] Abort old stream on session switch.
-- [ ] Track `lastEventId` per session.
-- [ ] Track `seenEventIds` per session.
-- [ ] Open stream using `/external/v1/sessions/{session_id}/events/stream?after=...` when cursor exists.
-- [ ] Deduplicate incoming events by `event_id`.
-- [ ] Append new events to timeline without full rerender flicker.
-- [ ] On `turn.output`, update latest reply and optionally debounce turn refresh.
-- [ ] On terminal turn events, refresh session detail and turns only; do not recursively reselect session.
-- [ ] On session state events, refresh session detail and session list.
-- [ ] Expose connection status in UI.
+- [x] Create `apps/web/src/services/eventStream.ts`.
+- [x] Track current streamed session id.
+- [x] Abort old stream on session switch.
+- [x] Track `lastEventId` per session.
+- [x] Track `seenEventIds` per session.
+- [x] Open stream using `/external/v1/sessions/{session_id}/events/stream?after=...` when cursor exists.
+- [x] Deduplicate incoming events by `event_id`.
+- [x] Append new events to timeline without full rerender flicker.
+- [x] On `turn.output`, update latest reply and optionally debounce turn refresh.
+- [x] On terminal turn events, refresh session detail and turns only; do not recursively reselect session.
+- [x] On session state events, refresh session detail and session list.
+- [x] Expose connection status in UI.
 - [ ] Manual verification:
   - Network tab should show one active stream per selected session.
   - terminal events should not cause endless reconnect.

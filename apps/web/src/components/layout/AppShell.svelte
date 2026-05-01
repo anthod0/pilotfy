@@ -3,6 +3,10 @@
   import Sidebar from './Sidebar.svelte';
   import SessionDetail from '../sessions/SessionDetail.svelte';
   import SessionActions from '../sessions/SessionActions.svelte';
+  import TurnComposer from '../turns/TurnComposer.svelte';
+  import LatestReply from '../turns/LatestReply.svelte';
+  import TurnHistory from '../turns/TurnHistory.svelte';
+  import EventTimeline from '../events/EventTimeline.svelte';
 </script>
 
 <StatusBar />
@@ -11,9 +15,9 @@
   <section class="content">
     <SessionDetail />
     <SessionActions />
-    <section class="panel placeholder">
-      <h2>Turns, event timeline, and artifact browser</h2>
-      <p>Session A wires the Svelte shell, API client, stores, session management, and lifecycle actions. Polling turns/events and artifacts UI follow in later sessions.</p>
-    </section>
+    <TurnComposer />
+    <LatestReply />
+    <TurnHistory />
+    <EventTimeline />
   </section>
 </main>
