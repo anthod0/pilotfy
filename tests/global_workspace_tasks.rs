@@ -336,7 +336,7 @@ async fn graph_enabled_projects_planner_decision_into_task_provenance() {
     let (status, provenance) =
         get_json(state, &format!("/external/v1/tasks/{task_id}/provenance")).await;
 
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "provenance body: {provenance:?}");
     let nodes = provenance["data"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes

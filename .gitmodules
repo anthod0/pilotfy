@@ -1,0 +1,3 @@
+[submodule "vendor/vela-kuzu"]
+	path = vendor/vela-kuzu
+	url = https://github.com/Vela-Engineering/kuzu.git

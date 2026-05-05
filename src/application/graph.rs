@@ -597,7 +597,12 @@ fn query_task_provenance(db_dir: PathBuf, task_id: &str) -> Result<TaskProvenanc
 
 #[cfg(feature = "kuzu")]
 fn open_graph_connection(db_dir: PathBuf) -> Result<kuzu::Connection<'static>> {
-    std::fs::create_dir_all(&db_dir)?;
+    if let Some(parent) = db_dir
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
     let db = kuzu::Database::new(db_dir, kuzu::SystemConfig::default())
         .map_err(|error| Error::Domain(format!("kuzu database open failed: {error}")))?;
     let db = Box::leak(Box::new(db));
@@ -606,7 +611,7 @@ fn open_graph_connection(db_dir: PathBuf) -> Result<kuzu::Connection<'static>> {
 }
 
 #[cfg(feature = "kuzu")]
-fn initialize_schema(conn: &kuzu::Connection<'_>) -> Result<()> {
+fn initialize_schema<'db>(conn: &kuzu::Connection<'db>) -> Result<()> {
     for statement in [
         "CREATE NODE TABLE IF NOT EXISTS Task(task_id STRING, state STRING, PRIMARY KEY(task_id));",
         "CREATE NODE TABLE IF NOT EXISTS Workspace(workspace_id STRING, canonical_path STRING, PRIMARY KEY(workspace_id));",
@@ -626,7 +631,7 @@ fn initialize_schema(conn: &kuzu::Connection<'_>) -> Result<()> {
 }
 
 #[cfg(feature = "kuzu")]
-fn query<'a>(conn: &'a kuzu::Connection<'a>, statement: &str) -> Result<kuzu::QueryResult<'a>> {
+fn query<'db>(conn: &kuzu::Connection<'db>, statement: &str) -> Result<kuzu::QueryResult<'db>> {
     conn.query(statement)
         .map_err(|error| Error::Domain(format!("kuzu query failed: {error}; query: {statement}")))
 }
