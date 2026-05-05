@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, net::SocketAddr};
 
 use crate::{
-    application::PlannerRuntimeConfig,
+    application::{GraphRuntimeConfig, PlannerRuntimeConfig},
     error::{Error, Result},
 };
 
@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub external_api_token: Option<String>,
     pub run_migrations: bool,
     pub planner: PlannerRuntimeConfig,
+    pub graph: GraphRuntimeConfig,
 }
 
 impl AppConfig {
@@ -70,18 +71,42 @@ impl AppConfig {
             },
         };
 
+        let graph_enabled = match get(vars, "LLMPARTY_GRAPH_ENABLED") {
+            Some(value) => parse_bool("LLMPARTY_GRAPH_ENABLED", value)?,
+            None => false,
+        };
+        let graph = GraphRuntimeConfig {
+            enabled: graph_enabled,
+            db_dir: get(vars, "LLMPARTY_GRAPH_DB_DIR")
+                .filter(|value| !value.trim().is_empty())
+                .map(ToString::to_string)
+                .or_else(|| graph_enabled.then(|| default_graph_db_dir(&database_url))),
+        };
+
         Ok(Self {
             bind_addr,
             database_url,
             external_api_token,
             run_migrations,
             planner,
+            graph,
         })
     }
 }
 
 fn get<'a>(vars: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
     vars.get(key).map(String::as_str)
+}
+
+fn default_graph_db_dir(database_url: &str) -> String {
+    let path = database_url
+        .strip_prefix("sqlite://")
+        .unwrap_or(database_url);
+    let parent = std::path::Path::new(path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    parent.join("graph").join("kuzu").display().to_string()
 }
 
 fn parse_bool(key: &'static str, value: &str) -> Result<bool> {

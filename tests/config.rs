@@ -31,6 +31,11 @@ fn loads_config_from_key_value_source() {
             "LLMPARTY_PLANNER_COMPAT_DIRECT_DISPATCH".to_string(),
             "true".to_string(),
         ),
+        ("LLMPARTY_GRAPH_ENABLED".to_string(), "true".to_string()),
+        (
+            "LLMPARTY_GRAPH_DB_DIR".to_string(),
+            "/tmp/llmparty-graph".to_string(),
+        ),
     ]);
 
     let config = AppConfig::from_vars(&vars).expect("config should load");
@@ -43,6 +48,27 @@ fn loads_config_from_key_value_source() {
     assert_eq!(config.planner.client_type, "generic");
     assert_eq!(config.planner.timeout_ms, 12_000);
     assert!(config.planner.compatibility_direct_dispatch);
+    assert!(config.graph.enabled);
+    assert_eq!(config.graph.db_dir.as_deref(), Some("/tmp/llmparty-graph"));
+}
+
+#[test]
+fn graph_enabled_defaults_db_dir_next_to_sqlite_data_file() {
+    let vars = HashMap::from([
+        (
+            "LLMPARTY_DATABASE_URL".to_string(),
+            "sqlite:///tmp/llmparty/control.db".to_string(),
+        ),
+        ("LLMPARTY_GRAPH_ENABLED".to_string(), "true".to_string()),
+    ]);
+
+    let config = AppConfig::from_vars(&vars).expect("config should load");
+
+    assert!(config.graph.enabled);
+    assert_eq!(
+        config.graph.db_dir.as_deref(),
+        Some("/tmp/llmparty/graph/kuzu")
+    );
 }
 
 #[test]
@@ -60,4 +86,6 @@ fn provides_development_defaults_for_optional_values() {
     assert_eq!(config.planner.client_type, "pi");
     assert_eq!(config.planner.timeout_ms, 30_000);
     assert!(!config.planner.compatibility_direct_dispatch);
+    assert!(!config.graph.enabled);
+    assert_eq!(config.graph.db_dir, None);
 }

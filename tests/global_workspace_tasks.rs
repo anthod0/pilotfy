@@ -23,6 +23,15 @@ async fn planner_test_state() -> AppState {
     test_state_with_planner(true).await
 }
 
+async fn graph_planner_test_state(graph_dir: String) -> AppState {
+    let mut state = test_state_with_planner(true).await;
+    state.graph = llmparty::application::GraphRuntimeConfig {
+        enabled: true,
+        db_dir: Some(graph_dir),
+    };
+    state
+}
+
 async fn test_state_with_planner(planner_enabled: bool) -> AppState {
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join("global_workspace_tasks.db");
@@ -39,6 +48,7 @@ async fn test_state_with_planner(planner_enabled: bool) -> AppState {
             timeout_ms: 30_000,
             compatibility_direct_dispatch: false,
         },
+        graph: Default::default(),
     }
 }
 
@@ -283,6 +293,71 @@ async fn planner_resolved_task_creates_dispatch_handoff_without_direct_dispatch(
         handoff["payload"]["canonical_path"],
         canonical.display().to_string()
     );
+}
+
+#[tokio::test]
+async fn graph_enabled_projects_planner_decision_into_task_provenance() {
+    let graph_dir = tempfile::tempdir().expect("graph dir");
+    let graph_path = graph_dir.path().join("kuzu");
+    let state = graph_planner_test_state(graph_path.display().to_string()).await;
+    let workspace = tempfile::tempdir().expect("workspace");
+    let canonical = std::fs::canonicalize(workspace.path()).expect("canonical");
+
+    let (status, body) = post_json(
+        state.clone(),
+        "/external/v1/tasks",
+        json!({
+            "input":"resolve this workspace with evidence",
+            "client_type":"generic",
+            "metadata": {
+                "planner_decision": {
+                    "decision_id":"dec_test_graph",
+                    "status":"resolved",
+                    "workspace": {
+                        "canonical_path": canonical.display().to_string(),
+                        "confidence": 0.72,
+                        "reason": "fake planner matched graph workspace"
+                    },
+                    "reason":"fake planner resolved for graph",
+                    "evidence":[{
+                        "evidence_id":"ev_test_graph",
+                        "kind":"heuristic",
+                        "ref":"metadata",
+                        "summary":"test evidence"
+                    }]
+                }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let task_id = body["data"]["task"]["task_id"].as_str().unwrap();
+
+    let (status, provenance) =
+        get_json(state, &format!("/external/v1/tasks/{task_id}/provenance")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let nodes = provenance["data"]["nodes"].as_array().expect("nodes");
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["kind"] == "Task" && node["id"] == task_id)
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["kind"] == "Decision" && node["id"] == "dec_test_graph")
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["kind"] == "Evidence" && node["id"] == "ev_test_graph")
+    );
+    assert!(nodes.iter().any(|node| node["kind"] == "Workspace"));
+    let edges = provenance["data"]["edges"].as_array().expect("edges");
+    assert!(edges.iter().any(|edge| edge["kind"] == "HAS_DECISION"));
+    assert!(edges.iter().any(|edge| edge["kind"] == "DEPENDS_ON"));
+    assert!(edges.iter().any(|edge| edge["kind"] == "ROUTED_TO"));
 }
 
 #[tokio::test]

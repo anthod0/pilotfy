@@ -40,6 +40,10 @@ pub fn router(state: AppState) -> Router {
             get(external::list_task_events),
         )
         .route(
+            "/external/v1/tasks/{task_id}/provenance",
+            get(external::get_task_provenance),
+        )
+        .route(
             "/external/v1/tasks/{task_id}/interrupt",
             post(external::interrupt_task),
         )

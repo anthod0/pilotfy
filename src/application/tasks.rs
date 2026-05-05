@@ -27,6 +27,7 @@ pub struct CreateTaskOutcome {
 pub struct TaskCommandService {
     pool: SqlitePool,
     planner: PlannerRuntimeConfig,
+    graph: GraphRuntimeConfig,
 }
 
 impl TaskCommandService {
@@ -34,11 +35,28 @@ impl TaskCommandService {
         Self {
             pool,
             planner: PlannerRuntimeConfig::default(),
+            graph: GraphRuntimeConfig::default(),
         }
     }
 
     pub fn with_planner(pool: SqlitePool, planner: PlannerRuntimeConfig) -> Self {
-        Self { pool, planner }
+        Self {
+            pool,
+            planner,
+            graph: GraphRuntimeConfig::default(),
+        }
+    }
+
+    pub fn with_runtime(
+        pool: SqlitePool,
+        planner: PlannerRuntimeConfig,
+        graph: GraphRuntimeConfig,
+    ) -> Self {
+        Self {
+            pool,
+            planner,
+            graph,
+        }
     }
 
     pub async fn create_task(
@@ -907,6 +925,13 @@ impl TaskCommandService {
         .bind(serde_json::to_string(&payload)?)
         .execute(&self.pool)
         .await?;
+        if self.graph.enabled
+            && let Err(error) = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
+                .project_task(task_id)
+                .await
+        {
+            tracing::warn!(task_id, event_type, error = %error, "graph projection failed");
+        }
         Ok(())
     }
 }

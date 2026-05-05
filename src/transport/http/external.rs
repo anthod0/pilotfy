@@ -18,8 +18,8 @@ use crate::{
     application::{
         AppState, ArtifactContentService, ArtifactDiscoveryService, ConfirmTaskWorkspaceRequest,
         CreateSessionRequest, CreateTaskRequest, EventStreamScope, ExternalQueryService,
-        RuntimeControlService, SessionCommandService, SubmitPlannerInputRequest, SubmitTurnRequest,
-        TaskCommandService, TurnCommandService,
+        GraphProjectionService, RuntimeControlService, SessionCommandService,
+        SubmitPlannerInputRequest, SubmitTurnRequest, TaskCommandService, TurnCommandService,
     },
     error::Error,
 };
@@ -104,7 +104,7 @@ pub async fn create_task(
     let idempotency_key = headers
         .get("Idempotency-Key")
         .and_then(|value| value.to_str().ok());
-    let service = TaskCommandService::with_planner(state.db, state.planner);
+    let service = TaskCommandService::with_runtime(state.db, state.planner, state.graph);
     let outcome = service.create_task(request, idempotency_key).await?;
     let status = if outcome.duplicate {
         StatusCode::OK
@@ -124,7 +124,7 @@ pub async fn confirm_task_workspace(
     let idempotency_key = headers
         .get("Idempotency-Key")
         .and_then(|value| value.to_str().ok());
-    let service = TaskCommandService::with_planner(state.db, state.planner);
+    let service = TaskCommandService::with_runtime(state.db, state.planner, state.graph);
     let outcome = service
         .confirm_workspace(&task_id, request, idempotency_key)
         .await?;
@@ -141,7 +141,7 @@ pub async fn submit_planner_input(
     let idempotency_key = headers
         .get("Idempotency-Key")
         .and_then(|value| value.to_str().ok());
-    let service = TaskCommandService::with_planner(state.db, state.planner);
+    let service = TaskCommandService::with_runtime(state.db, state.planner, state.graph);
     let outcome = service
         .submit_planner_input(&task_id, request, idempotency_key)
         .await?;
@@ -213,6 +213,22 @@ pub async fn list_task_events(
         .ok_or_else(|| ExternalApiError::not_found(format!("task {task_id} not found")))?;
     let events = service.list_task_events(&task_id).await?;
     Ok(ok(json!({ "events": events })))
+}
+
+pub async fn get_task_provenance(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    ExternalQueryService::new(state.db.clone())
+        .get_task(&task_id)
+        .await?
+        .ok_or_else(|| ExternalApiError::not_found(format!("task {task_id} not found")))?;
+    let provenance = GraphProjectionService::new(state.db, state.graph)
+        .task_provenance(&task_id)
+        .await?;
+    Ok(ok(json!(provenance)))
 }
 
 pub async fn submit_turn(

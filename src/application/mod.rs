@@ -25,6 +25,7 @@ use crate::{
 
 mod artifacts;
 mod events;
+mod graph;
 mod mapping;
 mod planner;
 mod queries;
@@ -42,6 +43,7 @@ pub use artifacts::{
 };
 pub use events::{EventIngestResult, EventIngestService};
 pub(crate) use events::{nested_array_strings, nested_string, remove_internal_metadata_fields};
+pub use graph::{GraphProjectionService, GraphRuntimeConfig, TaskProvenance};
 pub use planner::{
     FakeTaskPlanner, PiTaskPlanner, PlannerDecision, PlannerDecisionStatus, PlannerInput,
     PlannerRuntimeConfig, SubmitPlannerInputRequest, TaskPlannerService,
