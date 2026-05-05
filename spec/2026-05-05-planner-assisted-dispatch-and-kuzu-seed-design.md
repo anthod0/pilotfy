@@ -6,13 +6,16 @@
 
 ## Goal
 
-Move task creation from manual workspace confirmation toward planner-assisted dispatch:
+Move task creation from manual workspace confirmation toward planner-assisted dispatch readiness:
 
 ```text
 user task
   -> planner resolves workspace or asks for more input
-  -> backend dispatches once workspace is resolved
+  -> backend records a dispatch handoff once workspace is resolved
+  -> current or future dispatcher can consume that handoff
 ```
+
+This design does **not** implement the future task dispatcher/workflow dispatcher. It only defines the planner lifecycle and the handoff seam where a later dispatcher can attach. The existing `dispatch_task(...)` helper remains available for current direct task execution, but the planner design should not assume that the final dispatcher semantics are settled.
 
 At the same time, establish the architectural boundary that graph relationships belong in embedded Kùzu projections, not ad-hoc SQLite graph tables. Kùzu is introduced shallowly so later provenance/workflow graph work can grow without first building a temporary SQLite graph subsystem.
 
@@ -47,27 +50,30 @@ This design does not implement:
 
 ### 1. Planner is a workspace-resolution loop, not the whole workflow engine
 
-The planner's first responsibility is to get a task to a dispatchable state.
+The planner's first responsibility is to get a task to a dispatch-ready state.
 
 It may conclude:
 
 ```text
-resolved     -> workspace is known; backend can dispatch
+resolved     -> workspace is known; backend can create a dispatcher handoff
 needs_input  -> planner needs user or helper-agent input before it can resolve
 failed       -> planner cannot resolve; backend falls back to manual confirmation
 ```
 
 `needs_input` is not a final task outcome. It is an intermediate planner state.
 
-### 2. Planner proposes; backend owns state and dispatch
+### 2. Planner proposes; backend owns state and handoff
 
 The planner must not directly mutate the database, create sessions, submit turns, or write files. It returns a structured decision. `TaskCommandService` or a focused orchestration helper applies that decision.
 
 ```text
 Planner:      infer / ask / explain
-Backend:      persist / transition / dispatch / recover
-Runtime:      execute a specific turn once dispatched
+Backend:      persist / transition / create dispatcher handoff / recover
+Dispatcher:   future extension point that decides how to continue after workspace resolution
+Runtime:      execute a specific turn once a dispatcher chooses execution
 ```
+
+The future dispatcher is intentionally out of scope for this design. The only requirement is that planner resolution leaves a clear, structured entry point for it.
 
 ### 3. Planner sessions are one-shot
 
@@ -102,7 +108,7 @@ No new top-level task state is strictly required for the first implementation. E
 | --- | --- | --- | --- |
 | planner running | `routing` | `pending` | backend is trying to resolve workspace |
 | planner needs user/helper input | `needs_confirmation` or new `needs_input` | `ambiguous` | task is not dispatchable yet |
-| planner resolved workspace | `queued`/`running` after dispatch | `matched` | dispatch succeeded or is underway |
+| planner resolved workspace | `routing` or `queued`/`running` if current direct dispatch is used | `matched` | workspace is resolved and a dispatcher handoff exists |
 | planner failed | `needs_confirmation` | `failed` | manual confirmation fallback |
 
 Recommendation for first implementation: reuse `needs_confirmation` for planner `needs_input`, but set `routing_reason` and task event payload to clarify that the planner requested more information. A later migration can add a more precise `needs_input` state if WebUI needs it.
@@ -120,7 +126,9 @@ POST /external/v1/tasks without workspace
 
 if status=resolved:
   -> task.planning_resolved
-  -> dispatch_task(..., DispatchRoutingUpdate::Matched)
+  -> task.dispatch_handoff_created
+  -> either leave task dispatch-ready for a future dispatcher
+     or, behind current behavior/config, call existing dispatch_task(..., DispatchRoutingUpdate::Matched)
 
 if status=needs_input:
   -> state=needs_confirmation, routing_state=ambiguous
@@ -225,7 +233,7 @@ The Pi planner prompt should include:
 - Explicit instruction: do not execute the task; only resolve workspace or ask for necessary information.
 - Explicit instruction: return only valid JSON.
 
-The planner should be told that its final goal is to resolve a workspace so the backend can dispatch the task.
+The planner should be told that its final goal is to resolve a workspace so the backend can create a dispatcher handoff. It should not decide the final execution workflow.
 
 ## Application Services
 
@@ -265,15 +273,16 @@ Future implementations:
 
 ### `TaskCommandService` changes
 
-`create_task` should route missing-workspace requests through planner-assisted dispatch:
+`create_task` should route missing-workspace requests through planner-assisted dispatch readiness:
 
 ```text
 create task
 if workspace present:
-  dispatch_task(...)
+  existing direct path may still call dispatch_task(...)
 else:
   run planner attempt
   apply planner decision
+  if resolved, create dispatcher handoff rather than designing the future dispatcher here
 ```
 
 Add method:
@@ -283,6 +292,38 @@ submit_planner_input(task_id, request, idempotency_key)
 ```
 
 This method resumes the planner loop.
+
+## Dispatcher Handoff Seam
+
+This design only reserves the entry point for a later dispatcher. The handoff should be explicit in task events and easy to consume later.
+
+Recommended first event:
+
+```text
+task.dispatch_handoff_created
+```
+
+Payload:
+
+```json
+{
+  "handoff_id": "handoff_...",
+  "decision_id": "dec_...",
+  "task_id": "task_...",
+  "workspace_id": "wks_...",
+  "canonical_path": "/path/to/workspace",
+  "client_type": "pi",
+  "planner_status": "resolved",
+  "reason": "Planner resolved workspace with sufficient confidence"
+}
+```
+
+First implementation options:
+
+1. **Handoff-only mode**: record the event and leave the task waiting for a future dispatcher. This is best if the next dispatcher semantics are not ready.
+2. **Compatibility direct-dispatch mode**: immediately call existing `dispatch_task(...)` after recording the handoff. This preserves current task execution behavior but must not be treated as the final dispatcher design.
+
+The implementation plan should prefer handoff-only mode unless product requirements demand automatic execution in the same session.
 
 ## HTTP API Changes
 
@@ -337,6 +378,7 @@ task.planning_resolved
 task.planning_needs_input
 task.planning_input_received
 task.planning_failed
+task.dispatch_handoff_created
 ```
 
 Payloads should include enough information to project a graph later:
@@ -478,21 +520,21 @@ Use a fake/rule-based planner for most tests. Real pi planner tests should be is
 
 Required backend tests:
 
-1. Creating a task without workspace invokes planner and dispatches when planner resolves workspace.
+1. Creating a task without workspace invokes planner and creates a dispatch handoff when planner resolves workspace.
 2. Planner `needs_input` returns task waiting for user input and records `task.planning_needs_input`.
-3. `POST /tasks/{task_id}/planner-input` resumes planner and dispatches when resolved.
+3. `POST /tasks/{task_id}/planner-input` resumes planner and creates a dispatch handoff when resolved.
 4. Planner failure/invalid JSON falls back to manual confirmation, not terminal failure.
 5. Idempotency works for task creation and planner input.
 6. Kùzu projection can project a planner decision into Task/Decision/Evidence/Workspace nodes when graph is enabled.
-7. Kùzu projection failure does not fail task creation or dispatch.
+7. Kùzu projection failure does not fail task creation, dispatch handoff creation, or compatibility direct dispatch.
 
 ## Agent Session Implementation Plan
 
 Recommended: **three agent sessions**. This is enough separation to reduce risk while avoiding over-fragmentation.
 
-### Agent Session 1: Planner boundary and fake planner
+### Agent Session 1: Planner boundary, fake planner, and dispatch handoff seam
 
-Goal: implement planner-assisted dispatch behavior without real pi or Kùzu dependency.
+Goal: implement planner-assisted workspace resolution and a dispatcher handoff entry point without real pi, Kùzu, or the future dispatcher.
 
 Scope:
 
@@ -500,8 +542,10 @@ Scope:
 - Add `TaskPlannerService` and test/fake planner seam.
 - Modify missing-workspace `create_task` path to use planner when enabled.
 - Add planner task events.
+- Add `task.dispatch_handoff_created` when planner resolves workspace.
 - Add `POST /external/v1/tasks/{task_id}/planner-input`.
 - Keep existing manual confirmation fallback.
+- Do not design or implement the future dispatcher. If automatic execution is needed for compatibility, route it through an explicit compatibility direct-dispatch mode.
 
 Exit criteria:
 
