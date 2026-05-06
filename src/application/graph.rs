@@ -73,67 +73,13 @@ impl GraphProjectionService {
 
     async fn load_task_snapshot(&self, task_id: &str) -> Result<TaskGraphSnapshot> {
         let task_row = sqlx::query(
-            r#"SELECT task_id, state, workspace_id, session_id, turn_id
+            r#"SELECT task_id, input, created_at, updated_at
                FROM tasks WHERE task_id = ?"#,
         )
         .bind(task_id)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| Error::NotFound(format!("task {task_id} not found")))?;
-
-        let workspace_id: Option<String> = task_row.try_get("workspace_id")?;
-        let session_id: Option<String> = task_row.try_get("session_id")?;
-        let turn_id: Option<String> = task_row.try_get("turn_id")?;
-
-        let workspace = if let Some(workspace_id) = workspace_id.as_deref() {
-            sqlx::query(
-                "SELECT workspace_id, canonical_path FROM workspaces WHERE workspace_id = ?",
-            )
-            .bind(workspace_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(|row| {
-                Ok::<GraphWorkspace, Error>(GraphWorkspace {
-                    workspace_id: row.try_get("workspace_id")?,
-                    canonical_path: row.try_get("canonical_path")?,
-                })
-            })
-            .transpose()?
-        } else {
-            None
-        };
-
-        let session = if let Some(session_id) = session_id.as_deref() {
-            sqlx::query("SELECT session_id, client_type FROM sessions WHERE session_id = ?")
-                .bind(session_id)
-                .fetch_optional(&self.pool)
-                .await?
-                .map(|row| {
-                    Ok::<GraphSession, Error>(GraphSession {
-                        session_id: row.try_get("session_id")?,
-                        client_type: row.try_get("client_type")?,
-                    })
-                })
-                .transpose()?
-        } else {
-            None
-        };
-
-        let turn = if let Some(turn_id) = turn_id.as_deref() {
-            sqlx::query("SELECT turn_id, state FROM turns WHERE turn_id = ?")
-                .bind(turn_id)
-                .fetch_optional(&self.pool)
-                .await?
-                .map(|row| {
-                    Ok::<GraphTurn, Error>(GraphTurn {
-                        turn_id: row.try_get("turn_id")?,
-                        state: row.try_get("state")?,
-                    })
-                })
-                .transpose()?
-        } else {
-            None
-        };
 
         let event_rows = sqlx::query(
             r#"SELECT event_type, payload, created_at
@@ -225,10 +171,9 @@ impl GraphProjectionService {
 
         Ok(TaskGraphSnapshot {
             task_id: task_row.try_get("task_id")?,
-            task_state: task_row.try_get("state")?,
-            workspace,
-            session,
-            turn,
+            task_input: task_row.try_get("input")?,
+            task_created_at: task_row.try_get("created_at")?,
+            task_updated_at: task_row.try_get("updated_at")?,
             decisions,
         })
     }
@@ -237,29 +182,10 @@ impl GraphProjectionService {
 #[derive(Debug)]
 struct TaskGraphSnapshot {
     task_id: String,
-    task_state: String,
-    workspace: Option<GraphWorkspace>,
-    session: Option<GraphSession>,
-    turn: Option<GraphTurn>,
+    task_input: String,
+    task_created_at: String,
+    task_updated_at: String,
     decisions: Vec<GraphDecision>,
-}
-
-#[derive(Debug)]
-struct GraphWorkspace {
-    workspace_id: String,
-    canonical_path: String,
-}
-
-#[derive(Debug)]
-struct GraphSession {
-    session_id: String,
-    client_type: String,
-}
-
-#[derive(Debug)]
-struct GraphTurn {
-    turn_id: String,
-    state: String,
 }
 
 #[derive(Debug)]
@@ -293,105 +219,110 @@ fn project_snapshot_to_lbug(db_dir: PathBuf, snapshot: TaskGraphSnapshot) -> Res
     query(
         &conn,
         &format!(
-            "MERGE (t:Task {{task_id: {}}}) SET t.state = {};",
+            "MERGE (t:Task {{task_id: {}}}) SET t.title = {}, t.description = {}, t.ref = {}, t.created_at = {}, t.updated_at = {};",
             cypher_string(&snapshot.task_id),
-            cypher_string(&snapshot.task_state)
+            cypher_string(&task_title(&snapshot.task_input)),
+            cypher_string(&snapshot.task_input),
+            cypher_string(&format!("sqlite:task:{}", snapshot.task_id)),
+            cypher_string(&snapshot.task_created_at),
+            cypher_string(&snapshot.task_updated_at)
         ),
     )?;
 
-    if let Some(workspace) = snapshot.workspace {
+    if !snapshot.decisions.is_empty() {
         query(
             &conn,
-            &format!(
-                "MERGE (w:Workspace {{workspace_id: {}}}) SET w.canonical_path = {};",
-                cypher_string(&workspace.workspace_id),
-                cypher_string(&workspace.canonical_path)
-            ),
+            "MERGE (a:Agent {agent_id: 'agent_planner'}) SET a.name = 'Task Planner', a.role = 'planner', a.capabilities = '[\"workspace_routing\",\"task_planning\"]', a.availability = 'available', a.ref = 'internal:planner', a.created_at = '', a.updated_at = '';",
         )?;
-        query(
-            &conn,
-            &format!(
-                "MATCH (t:Task {{task_id: {}}}), (w:Workspace {{workspace_id: {}}}) MERGE (t)-[:ROUTED_TO]->(w);",
-                cypher_string(&snapshot.task_id),
-                cypher_string(&workspace.workspace_id)
-            ),
-        )?;
-    }
-
-    if let Some(session) = snapshot.session {
-        query(
-            &conn,
-            &format!(
-                "MERGE (s:Session {{session_id: {}}}) SET s.client_type = {};",
-                cypher_string(&session.session_id),
-                cypher_string(&session.client_type)
-            ),
-        )?;
-        query(
-            &conn,
-            &format!(
-                "MATCH (t:Task {{task_id: {}}}), (s:Session {{session_id: {}}}) MERGE (t)-[:DISPATCHED_TO]->(s);",
-                cypher_string(&snapshot.task_id),
-                cypher_string(&session.session_id)
-            ),
-        )?;
-        if let Some(turn) = snapshot.turn {
-            query(
-                &conn,
-                &format!(
-                    "MERGE (u:Turn {{turn_id: {}}}) SET u.state = {};",
-                    cypher_string(&turn.turn_id),
-                    cypher_string(&turn.state)
-                ),
-            )?;
-            query(
-                &conn,
-                &format!(
-                    "MATCH (s:Session {{session_id: {}}}), (u:Turn {{turn_id: {}}}) MERGE (s)-[:HAS_TURN]->(u);",
-                    cypher_string(&session.session_id),
-                    cypher_string(&turn.turn_id)
-                ),
-            )?;
-        }
     }
 
     for decision in snapshot.decisions {
+        let work_item_id = format!("wi_{}", decision.decision_id);
+        let signal_id = format!("sig_{}", decision.decision_id);
         query(
             &conn,
             &format!(
-                "MERGE (d:Decision {{decision_id: {}}}) SET d.status = {}, d.reason = {}, d.confidence = {}, d.created_at = {};",
-                cypher_string(&decision.decision_id),
-                cypher_string(&decision.status),
+                "MERGE (w:WorkItem {{work_item_id: {}}}) SET w.title = 'Plan task', w.description = {}, w.kind = 'planning', w.planning_state = 'active', w.execution_state = {}, w.execution_ref = '', w.created_at = {}, w.updated_at = {};",
+                cypher_string(&work_item_id),
                 cypher_string(&decision.reason),
-                decision.confidence,
+                cypher_string(decision_execution_state(&decision.status)),
+                cypher_string(&decision.created_at),
                 cypher_string(&decision.created_at)
             ),
         )?;
         query(
             &conn,
             &format!(
-                "MATCH (t:Task {{task_id: {}}}), (d:Decision {{decision_id: {}}}) MERGE (t)-[:HAS_DECISION]->(d);",
+                "MATCH (t:Task {{task_id: {}}}), (w:WorkItem {{work_item_id: {}}}) MERGE (t)-[:HAS_WORK]->(w);",
                 cypher_string(&snapshot.task_id),
-                cypher_string(&decision.decision_id)
+                cypher_string(&work_item_id)
             ),
         )?;
+        query(
+            &conn,
+            &format!(
+                "MATCH (w:WorkItem {{work_item_id: {}}}), (a:Agent {{agent_id: 'agent_planner'}}) MERGE (w)-[:ASSIGNED_TO]->(a);",
+                cypher_string(&work_item_id)
+            ),
+        )?;
+        query(
+            &conn,
+            &format!(
+                "MERGE (s:Signal {{signal_id: {}}}) SET s.source_type = 'agent', s.kind = {}, s.summary = {}, s.detail = {}, s.origin_ref = {}, s.created_at = {};",
+                cypher_string(&signal_id),
+                cypher_string(decision_signal_kind(&decision.status)),
+                cypher_string(&decision.reason),
+                cypher_string(&format!(
+                    "planner status: {}; confidence: {}",
+                    decision.status, decision.confidence
+                )),
+                cypher_string(&format!("sqlite:task:{}", snapshot.task_id)),
+                cypher_string(&decision.created_at)
+            ),
+        )?;
+        query(
+            &conn,
+            &format!(
+                "MATCH (t:Task {{task_id: {}}}), (s:Signal {{signal_id: {}}}) MERGE (t)-[:HAS_SIGNAL]->(s);",
+                cypher_string(&snapshot.task_id),
+                cypher_string(&signal_id)
+            ),
+        )?;
+        query(
+            &conn,
+            &format!(
+                "MATCH (a:Agent {{agent_id: 'agent_planner'}}), (s:Signal {{signal_id: {}}}) MERGE (a)-[:EMITS]->(s);",
+                cypher_string(&signal_id)
+            ),
+        )?;
+
         for evidence in decision.evidence {
+            let artifact_id = format!("art_{}", evidence.evidence_id);
             query(
                 &conn,
                 &format!(
-                    "MERGE (e:Evidence {{evidence_id: {}}}) SET e.kind = {}, e.ref = {}, e.summary = {};",
-                    cypher_string(&evidence.evidence_id),
+                    "MERGE (a:Artifact {{artifact_id: {}}}) SET a.kind = {}, a.name = {}, a.summary = {}, a.availability = 'available', a.ref = {}, a.created_at = '', a.updated_at = '';",
+                    cypher_string(&artifact_id),
                     cypher_string(&evidence.kind),
-                    cypher_string(&evidence.reference),
-                    cypher_string(&evidence.summary)
+                    cypher_string(&evidence.evidence_id),
+                    cypher_string(&evidence.summary),
+                    cypher_string(&evidence.reference)
                 ),
             )?;
             query(
                 &conn,
                 &format!(
-                    "MATCH (d:Decision {{decision_id: {}}}), (e:Evidence {{evidence_id: {}}}) MERGE (d)-[:DEPENDS_ON]->(e);",
-                    cypher_string(&decision.decision_id),
-                    cypher_string(&evidence.evidence_id)
+                    "MATCH (w:WorkItem {{work_item_id: {}}}), (a:Artifact {{artifact_id: {}}}) MERGE (w)-[:REQUIRES]->(a);",
+                    cypher_string(&work_item_id),
+                    cypher_string(&artifact_id)
+                ),
+            )?;
+            query(
+                &conn,
+                &format!(
+                    "MATCH (s:Signal {{signal_id: {}}}), (a:Artifact {{artifact_id: {}}}) MERGE (s)-[:SUPPORTED_BY]->(a);",
+                    cypher_string(&signal_id),
+                    cypher_string(&artifact_id)
                 ),
             )?;
         }
@@ -404,88 +335,143 @@ fn snapshot_to_provenance(snapshot: TaskGraphSnapshot) -> TaskProvenance {
     let mut nodes = vec![ProvenanceNode {
         id: snapshot.task_id.clone(),
         kind: "Task".to_string(),
-        properties: json!({"state": snapshot.task_state}),
+        properties: json!({
+            "title": task_title(&snapshot.task_input),
+            "description": snapshot.task_input,
+            "ref": format!("sqlite:task:{}", snapshot.task_id),
+            "created_at": snapshot.task_created_at,
+            "updated_at": snapshot.task_updated_at
+        }),
     }];
     let mut edges = Vec::new();
 
-    if let Some(workspace) = snapshot.workspace {
+    if !snapshot.decisions.is_empty() {
         nodes.push(ProvenanceNode {
-            id: workspace.workspace_id.clone(),
-            kind: "Workspace".to_string(),
-            properties: json!({"canonical_path": workspace.canonical_path}),
+            id: "agent_planner".to_string(),
+            kind: "Agent".to_string(),
+            properties: json!({
+                "name": "Task Planner",
+                "role": "planner",
+                "capabilities": "[\"workspace_routing\",\"task_planning\"]",
+                "availability": "available",
+                "ref": "internal:planner",
+                "created_at": "",
+                "updated_at": ""
+            }),
         });
-        edges.push(ProvenanceEdge {
-            from: snapshot.task_id.clone(),
-            to: workspace.workspace_id,
-            kind: "ROUTED_TO".to_string(),
-            properties: json!({}),
-        });
-    }
-
-    if let Some(session) = snapshot.session {
-        nodes.push(ProvenanceNode {
-            id: session.session_id.clone(),
-            kind: "Session".to_string(),
-            properties: json!({"client_type": session.client_type}),
-        });
-        edges.push(ProvenanceEdge {
-            from: snapshot.task_id.clone(),
-            to: session.session_id.clone(),
-            kind: "DISPATCHED_TO".to_string(),
-            properties: json!({}),
-        });
-        if let Some(turn) = snapshot.turn {
-            nodes.push(ProvenanceNode {
-                id: turn.turn_id.clone(),
-                kind: "Turn".to_string(),
-                properties: json!({"state": turn.state}),
-            });
-            edges.push(ProvenanceEdge {
-                from: session.session_id,
-                to: turn.turn_id,
-                kind: "HAS_TURN".to_string(),
-                properties: json!({}),
-            });
-        }
     }
 
     for decision in snapshot.decisions {
+        let work_item_id = format!("wi_{}", decision.decision_id);
+        let signal_id = format!("sig_{}", decision.decision_id);
         nodes.push(ProvenanceNode {
-            id: decision.decision_id.clone(),
-            kind: "Decision".to_string(),
+            id: work_item_id.clone(),
+            kind: "WorkItem".to_string(),
             properties: json!({
-                "status": decision.status,
-                "reason": decision.reason,
-                "confidence": decision.confidence,
+                "title": "Plan task",
+                "description": decision.reason,
+                "kind": "planning",
+                "planning_state": "active",
+                "execution_state": decision_execution_state(&decision.status),
+                "execution_ref": "",
+                "created_at": decision.created_at,
+                "updated_at": decision.created_at
+            }),
+        });
+        edges.push(ProvenanceEdge {
+            from: snapshot.task_id.clone(),
+            to: work_item_id.clone(),
+            kind: "HAS_WORK".to_string(),
+            properties: json!({}),
+        });
+        edges.push(ProvenanceEdge {
+            from: work_item_id.clone(),
+            to: "agent_planner".to_string(),
+            kind: "ASSIGNED_TO".to_string(),
+            properties: json!({}),
+        });
+
+        nodes.push(ProvenanceNode {
+            id: signal_id.clone(),
+            kind: "Signal".to_string(),
+            properties: json!({
+                "source_type": "agent",
+                "kind": decision_signal_kind(&decision.status),
+                "summary": decision.reason,
+                "detail": format!("planner status: {}; confidence: {}", decision.status, decision.confidence),
+                "origin_ref": format!("sqlite:task:{}", snapshot.task_id),
                 "created_at": decision.created_at
             }),
         });
         edges.push(ProvenanceEdge {
             from: snapshot.task_id.clone(),
-            to: decision.decision_id.clone(),
-            kind: "HAS_DECISION".to_string(),
+            to: signal_id.clone(),
+            kind: "HAS_SIGNAL".to_string(),
             properties: json!({}),
         });
+        edges.push(ProvenanceEdge {
+            from: "agent_planner".to_string(),
+            to: signal_id.clone(),
+            kind: "EMITS".to_string(),
+            properties: json!({}),
+        });
+
         for evidence in decision.evidence {
+            let artifact_id = format!("art_{}", evidence.evidence_id);
             nodes.push(ProvenanceNode {
-                id: evidence.evidence_id.clone(),
-                kind: "Evidence".to_string(),
+                id: artifact_id.clone(),
+                kind: "Artifact".to_string(),
                 properties: json!({
                     "kind": evidence.kind,
+                    "name": evidence.evidence_id,
+                    "summary": evidence.summary,
+                    "availability": "available",
                     "ref": evidence.reference,
-                    "summary": evidence.summary
+                    "created_at": "",
+                    "updated_at": ""
                 }),
             });
             edges.push(ProvenanceEdge {
-                from: decision.decision_id.clone(),
-                to: evidence.evidence_id,
-                kind: "DEPENDS_ON".to_string(),
+                from: work_item_id.clone(),
+                to: artifact_id.clone(),
+                kind: "REQUIRES".to_string(),
+                properties: json!({}),
+            });
+            edges.push(ProvenanceEdge {
+                from: signal_id.clone(),
+                to: artifact_id,
+                kind: "SUPPORTED_BY".to_string(),
                 properties: json!({}),
             });
         }
     }
 
     TaskProvenance { nodes, edges }
+}
+
+fn task_title(input: &str) -> String {
+    input
+        .lines()
+        .next()
+        .unwrap_or(input)
+        .chars()
+        .take(80)
+        .collect()
+}
+
+fn decision_execution_state(status: &str) -> &'static str {
+    match status {
+        "failed" => "failed",
+        _ => "completed",
+    }
+}
+
+fn decision_signal_kind(status: &str) -> &'static str {
+    match status {
+        "needs_input" => "constraint",
+        "failed" => "failure",
+        _ => "finding",
+    }
 }
 
 #[cfg(feature = "lbug")]
@@ -498,98 +484,187 @@ fn query_task_provenance(db_dir: PathBuf, task_id: &str) -> Result<TaskProvenanc
     let mut task_rows = query(
         &conn,
         &format!(
-            "MATCH (t:Task {{task_id: {}}}) RETURN t.task_id, t.state;",
+            "MATCH (t:Task {{task_id: {}}}) RETURN t.task_id, t.title, t.description, t.ref, t.created_at, t.updated_at;",
             cypher_string(task_id)
         ),
     )?;
     for row in task_rows.by_ref() {
-        let id = string_value(&row[0]);
-        nodes.push(ProvenanceNode {
-            id,
-            kind: "Task".to_string(),
-            properties: json!({"state": string_value(&row[1])}),
-        });
-    }
-
-    let mut decision_rows = query(
-        &conn,
-        &format!(
-            "MATCH (t:Task {{task_id: {}}})-[r:HAS_DECISION]->(d:Decision) RETURN t.task_id, d.decision_id, d.status, d.reason, d.confidence, d.created_at;",
-            cypher_string(task_id)
-        ),
-    )?;
-    for row in decision_rows.by_ref() {
-        edges.push(ProvenanceEdge {
-            from: string_value(&row[0]),
-            to: string_value(&row[1]),
-            kind: "HAS_DECISION".to_string(),
-            properties: json!({}),
-        });
         push_unique_node(
             &mut nodes,
             ProvenanceNode {
-                id: string_value(&row[1]),
-                kind: "Decision".to_string(),
+                id: string_value(&row[0]),
+                kind: "Task".to_string(),
                 properties: json!({
-                    "status": string_value(&row[2]),
-                    "reason": string_value(&row[3]),
-                    "confidence": number_value(&row[4]),
-                    "created_at": string_value(&row[5])
-                }),
-            },
-        );
-    }
-
-    let mut evidence_rows = query(
-        &conn,
-        &format!(
-            "MATCH (t:Task {{task_id: {}}})-[:HAS_DECISION]->(d:Decision)-[r:DEPENDS_ON]->(e:Evidence) RETURN d.decision_id, e.evidence_id, e.kind, e.ref, e.summary;",
-            cypher_string(task_id)
-        ),
-    )?;
-    for row in evidence_rows.by_ref() {
-        edges.push(ProvenanceEdge {
-            from: string_value(&row[0]),
-            to: string_value(&row[1]),
-            kind: "DEPENDS_ON".to_string(),
-            properties: json!({}),
-        });
-        push_unique_node(
-            &mut nodes,
-            ProvenanceNode {
-                id: string_value(&row[1]),
-                kind: "Evidence".to_string(),
-                properties: json!({
-                    "kind": string_value(&row[2]),
+                    "title": string_value(&row[1]),
+                    "description": string_value(&row[2]),
                     "ref": string_value(&row[3]),
-                    "summary": string_value(&row[4])
+                    "created_at": string_value(&row[4]),
+                    "updated_at": string_value(&row[5])
                 }),
             },
         );
     }
 
-    let mut workspace_rows = query(
+    let mut work_rows = query(
         &conn,
         &format!(
-            "MATCH (t:Task {{task_id: {}}})-[r:ROUTED_TO]->(w:Workspace) RETURN t.task_id, w.workspace_id, w.canonical_path;",
+            "MATCH (t:Task {{task_id: {}}})-[r:HAS_WORK]->(w:WorkItem) RETURN t.task_id, w.work_item_id, w.title, w.description, w.kind, w.planning_state, w.execution_state, w.execution_ref, w.created_at, w.updated_at;",
             cypher_string(task_id)
         ),
     )?;
-    for row in workspace_rows.by_ref() {
+    for row in work_rows.by_ref() {
         edges.push(ProvenanceEdge {
             from: string_value(&row[0]),
             to: string_value(&row[1]),
-            kind: "ROUTED_TO".to_string(),
+            kind: "HAS_WORK".to_string(),
             properties: json!({}),
         });
         push_unique_node(
             &mut nodes,
             ProvenanceNode {
                 id: string_value(&row[1]),
-                kind: "Workspace".to_string(),
-                properties: json!({"canonical_path": string_value(&row[2])}),
+                kind: "WorkItem".to_string(),
+                properties: json!({
+                    "title": string_value(&row[2]),
+                    "description": string_value(&row[3]),
+                    "kind": string_value(&row[4]),
+                    "planning_state": string_value(&row[5]),
+                    "execution_state": string_value(&row[6]),
+                    "execution_ref": string_value(&row[7]),
+                    "created_at": string_value(&row[8]),
+                    "updated_at": string_value(&row[9])
+                }),
             },
         );
+    }
+
+    let mut signal_rows = query(
+        &conn,
+        &format!(
+            "MATCH (t:Task {{task_id: {}}})-[r:HAS_SIGNAL]->(s:Signal) RETURN t.task_id, s.signal_id, s.source_type, s.kind, s.summary, s.detail, s.origin_ref, s.created_at;",
+            cypher_string(task_id)
+        ),
+    )?;
+    for row in signal_rows.by_ref() {
+        edges.push(ProvenanceEdge {
+            from: string_value(&row[0]),
+            to: string_value(&row[1]),
+            kind: "HAS_SIGNAL".to_string(),
+            properties: json!({}),
+        });
+        push_unique_node(
+            &mut nodes,
+            ProvenanceNode {
+                id: string_value(&row[1]),
+                kind: "Signal".to_string(),
+                properties: json!({
+                    "source_type": string_value(&row[2]),
+                    "kind": string_value(&row[3]),
+                    "summary": string_value(&row[4]),
+                    "detail": string_value(&row[5]),
+                    "origin_ref": string_value(&row[6]),
+                    "created_at": string_value(&row[7])
+                }),
+            },
+        );
+    }
+
+    let mut assignment_rows = query(
+        &conn,
+        &format!(
+            "MATCH (t:Task {{task_id: {}}})-[:HAS_WORK]->(w:WorkItem)-[r:ASSIGNED_TO]->(a:Agent) RETURN w.work_item_id, a.agent_id, a.name, a.role, a.capabilities, a.availability, a.ref, a.created_at, a.updated_at;",
+            cypher_string(task_id)
+        ),
+    )?;
+    for row in assignment_rows.by_ref() {
+        edges.push(ProvenanceEdge {
+            from: string_value(&row[0]),
+            to: string_value(&row[1]),
+            kind: "ASSIGNED_TO".to_string(),
+            properties: json!({}),
+        });
+        push_unique_node(
+            &mut nodes,
+            ProvenanceNode {
+                id: string_value(&row[1]),
+                kind: "Agent".to_string(),
+                properties: json!({
+                    "name": string_value(&row[2]),
+                    "role": string_value(&row[3]),
+                    "capabilities": string_value(&row[4]),
+                    "availability": string_value(&row[5]),
+                    "ref": string_value(&row[6]),
+                    "created_at": string_value(&row[7]),
+                    "updated_at": string_value(&row[8])
+                }),
+            },
+        );
+    }
+
+    let mut require_rows = query(
+        &conn,
+        &format!(
+            "MATCH (t:Task {{task_id: {}}})-[:HAS_WORK]->(w:WorkItem)-[r:REQUIRES]->(a:Artifact) RETURN w.work_item_id, a.artifact_id, a.kind, a.name, a.summary, a.availability, a.ref, a.created_at, a.updated_at;",
+            cypher_string(task_id)
+        ),
+    )?;
+    for row in require_rows.by_ref() {
+        edges.push(ProvenanceEdge {
+            from: string_value(&row[0]),
+            to: string_value(&row[1]),
+            kind: "REQUIRES".to_string(),
+            properties: json!({}),
+        });
+        push_unique_node(&mut nodes, artifact_node_from_row(&row, 1));
+    }
+
+    let mut emit_rows = query(
+        &conn,
+        &format!(
+            "MATCH (t:Task {{task_id: {}}})-[:HAS_SIGNAL]->(s:Signal)<-[r:EMITS]-(a:Agent) RETURN a.agent_id, s.signal_id, a.name, a.role, a.capabilities, a.availability, a.ref, a.created_at, a.updated_at;",
+            cypher_string(task_id)
+        ),
+    )?;
+    for row in emit_rows.by_ref() {
+        edges.push(ProvenanceEdge {
+            from: string_value(&row[0]),
+            to: string_value(&row[1]),
+            kind: "EMITS".to_string(),
+            properties: json!({}),
+        });
+        push_unique_node(
+            &mut nodes,
+            ProvenanceNode {
+                id: string_value(&row[0]),
+                kind: "Agent".to_string(),
+                properties: json!({
+                    "name": string_value(&row[2]),
+                    "role": string_value(&row[3]),
+                    "capabilities": string_value(&row[4]),
+                    "availability": string_value(&row[5]),
+                    "ref": string_value(&row[6]),
+                    "created_at": string_value(&row[7]),
+                    "updated_at": string_value(&row[8])
+                }),
+            },
+        );
+    }
+
+    let mut support_rows = query(
+        &conn,
+        &format!(
+            "MATCH (t:Task {{task_id: {}}})-[:HAS_SIGNAL]->(s:Signal)-[r:SUPPORTED_BY]->(a:Artifact) RETURN s.signal_id, a.artifact_id, a.kind, a.name, a.summary, a.availability, a.ref, a.created_at, a.updated_at;",
+            cypher_string(task_id)
+        ),
+    )?;
+    for row in support_rows.by_ref() {
+        edges.push(ProvenanceEdge {
+            from: string_value(&row[0]),
+            to: string_value(&row[1]),
+            kind: "SUPPORTED_BY".to_string(),
+            properties: json!({}),
+        });
+        push_unique_node(&mut nodes, artifact_node_from_row(&row, 1));
     }
 
     Ok(TaskProvenance { nodes, edges })
@@ -614,17 +689,22 @@ fn open_graph_connection(db_dir: PathBuf) -> Result<lbug::Connection<'static>> {
 #[cfg(feature = "lbug")]
 fn initialize_schema<'db>(conn: &lbug::Connection<'db>) -> Result<()> {
     for statement in [
-        "CREATE NODE TABLE IF NOT EXISTS Task(task_id STRING, state STRING, PRIMARY KEY(task_id));",
-        "CREATE NODE TABLE IF NOT EXISTS Workspace(workspace_id STRING, canonical_path STRING, PRIMARY KEY(workspace_id));",
-        "CREATE NODE TABLE IF NOT EXISTS Session(session_id STRING, client_type STRING, PRIMARY KEY(session_id));",
-        "CREATE NODE TABLE IF NOT EXISTS Turn(turn_id STRING, state STRING, PRIMARY KEY(turn_id));",
-        "CREATE NODE TABLE IF NOT EXISTS Decision(decision_id STRING, status STRING, reason STRING, confidence DOUBLE, created_at STRING, PRIMARY KEY(decision_id));",
-        "CREATE NODE TABLE IF NOT EXISTS Evidence(evidence_id STRING, kind STRING, ref STRING, summary STRING, PRIMARY KEY(evidence_id));",
-        "CREATE REL TABLE IF NOT EXISTS HAS_DECISION(FROM Task TO Decision);",
-        "CREATE REL TABLE IF NOT EXISTS DEPENDS_ON(FROM Decision TO Evidence);",
-        "CREATE REL TABLE IF NOT EXISTS ROUTED_TO(FROM Task TO Workspace);",
-        "CREATE REL TABLE IF NOT EXISTS DISPATCHED_TO(FROM Task TO Session);",
-        "CREATE REL TABLE IF NOT EXISTS HAS_TURN(FROM Session TO Turn);",
+        "CREATE NODE TABLE IF NOT EXISTS Task(task_id STRING, title STRING, description STRING, ref STRING, created_at STRING, updated_at STRING, PRIMARY KEY(task_id));",
+        "CREATE NODE TABLE IF NOT EXISTS WorkItem(work_item_id STRING, title STRING, description STRING, kind STRING, planning_state STRING, execution_state STRING, execution_ref STRING, created_at STRING, updated_at STRING, PRIMARY KEY(work_item_id));",
+        "CREATE NODE TABLE IF NOT EXISTS Agent(agent_id STRING, name STRING, role STRING, capabilities STRING, availability STRING, ref STRING, created_at STRING, updated_at STRING, PRIMARY KEY(agent_id));",
+        "CREATE NODE TABLE IF NOT EXISTS Artifact(artifact_id STRING, kind STRING, name STRING, summary STRING, availability STRING, ref STRING, created_at STRING, updated_at STRING, PRIMARY KEY(artifact_id));",
+        "CREATE NODE TABLE IF NOT EXISTS Signal(signal_id STRING, source_type STRING, kind STRING, summary STRING, detail STRING, origin_ref STRING, created_at STRING, PRIMARY KEY(signal_id));",
+        "CREATE REL TABLE IF NOT EXISTS HAS_WORK(FROM Task TO WorkItem);",
+        "CREATE REL TABLE IF NOT EXISTS HAS_SIGNAL(FROM Task TO Signal);",
+        "CREATE REL TABLE IF NOT EXISTS DEPENDS_ON(FROM WorkItem TO WorkItem);",
+        "CREATE REL TABLE IF NOT EXISTS SUPERSEDES(FROM WorkItem TO WorkItem);",
+        "CREATE REL TABLE IF NOT EXISTS CAUSED_BY(FROM WorkItem TO Signal);",
+        "CREATE REL TABLE IF NOT EXISTS ASSIGNED_TO(FROM WorkItem TO Agent);",
+        "CREATE REL TABLE IF NOT EXISTS REQUIRES(FROM WorkItem TO Artifact);",
+        "CREATE REL TABLE IF NOT EXISTS PRODUCES(FROM WorkItem TO Artifact);",
+        "CREATE REL TABLE IF NOT EXISTS EMITS(FROM Agent TO Signal);",
+        "CREATE REL TABLE IF NOT EXISTS SUPPORTED_BY(FROM Signal TO Artifact);",
+        "CREATE REL TABLE IF NOT EXISTS DERIVED_FROM(FROM Artifact TO Artifact);",
     ] {
         query(conn, statement)?;
     }
@@ -652,13 +732,19 @@ fn string_value(value: &lbug::Value) -> String {
 }
 
 #[cfg(feature = "lbug")]
-fn number_value(value: &lbug::Value) -> f64 {
-    match value {
-        lbug::Value::Double(value) => *value,
-        lbug::Value::Float(value) => f64::from(*value),
-        lbug::Value::Int64(value) => *value as f64,
-        lbug::Value::Int32(value) => f64::from(*value),
-        _ => 0.0,
+fn artifact_node_from_row(row: &[lbug::Value], offset: usize) -> ProvenanceNode {
+    ProvenanceNode {
+        id: string_value(&row[offset]),
+        kind: "Artifact".to_string(),
+        properties: json!({
+            "kind": string_value(&row[offset + 1]),
+            "name": string_value(&row[offset + 2]),
+            "summary": string_value(&row[offset + 3]),
+            "availability": string_value(&row[offset + 4]),
+            "ref": string_value(&row[offset + 5]),
+            "created_at": string_value(&row[offset + 6]),
+            "updated_at": string_value(&row[offset + 7])
+        }),
     }
 }
 
