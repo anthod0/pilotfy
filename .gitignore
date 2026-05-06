@@ -4,6 +4,7 @@ node_modules/
 apps/web/dist/
 /.worktrees/
 /data/
+/ref/
 .env
 *.db
 *.db-shm
