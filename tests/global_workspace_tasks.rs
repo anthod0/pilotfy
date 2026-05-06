@@ -298,7 +298,7 @@ async fn planner_resolved_task_creates_dispatch_handoff_without_direct_dispatch(
 #[tokio::test]
 async fn graph_enabled_projects_planner_decision_into_task_provenance() {
     let graph_dir = tempfile::tempdir().expect("graph dir");
-    let graph_path = graph_dir.path().join("kuzu");
+    let graph_path = graph_dir.path().join("lbug");
     let state = graph_planner_test_state(graph_path.display().to_string()).await;
     let workspace = tempfile::tempdir().expect("workspace");
     let canonical = std::fs::canonicalize(workspace.path()).expect("canonical");

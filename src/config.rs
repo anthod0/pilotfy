@@ -106,7 +106,7 @@ fn default_graph_db_dir(database_url: &str) -> String {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
-    parent.join("graph").join("kuzu").display().to_string()
+    parent.join("graph").join("lbug").display().to_string()
 }
 
 fn parse_bool(key: &'static str, value: &str) -> Result<bool> {

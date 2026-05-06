@@ -51,7 +51,7 @@ impl GraphProjectionService {
         };
 
         let snapshot = self.load_task_snapshot(task_id).await?;
-        project_snapshot_to_kuzu(PathBuf::from(db_dir), snapshot)
+        project_snapshot_to_lbug(PathBuf::from(db_dir), snapshot)
     }
 
     pub async fn task_provenance(&self, task_id: &str) -> Result<TaskProvenance> {
@@ -62,7 +62,7 @@ impl GraphProjectionService {
             });
         }
 
-        #[cfg(feature = "kuzu")]
+        #[cfg(feature = "lbug")]
         if let Some(db_dir) = self.config.db_dir.clone() {
             return query_task_provenance(PathBuf::from(db_dir), task_id);
         }
@@ -280,13 +280,13 @@ struct GraphEvidence {
     summary: String,
 }
 
-#[cfg(not(feature = "kuzu"))]
-fn project_snapshot_to_kuzu(_db_dir: PathBuf, _snapshot: TaskGraphSnapshot) -> Result<()> {
+#[cfg(not(feature = "lbug"))]
+fn project_snapshot_to_lbug(_db_dir: PathBuf, _snapshot: TaskGraphSnapshot) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "kuzu")]
-fn project_snapshot_to_kuzu(db_dir: PathBuf, snapshot: TaskGraphSnapshot) -> Result<()> {
+#[cfg(feature = "lbug")]
+fn project_snapshot_to_lbug(db_dir: PathBuf, snapshot: TaskGraphSnapshot) -> Result<()> {
     let conn = open_graph_connection(db_dir)?;
     initialize_schema(&conn)?;
 
@@ -488,7 +488,7 @@ fn snapshot_to_provenance(snapshot: TaskGraphSnapshot) -> TaskProvenance {
     TaskProvenance { nodes, edges }
 }
 
-#[cfg(feature = "kuzu")]
+#[cfg(feature = "lbug")]
 fn query_task_provenance(db_dir: PathBuf, task_id: &str) -> Result<TaskProvenance> {
     let conn = open_graph_connection(db_dir)?;
     initialize_schema(&conn)?;
@@ -595,24 +595,24 @@ fn query_task_provenance(db_dir: PathBuf, task_id: &str) -> Result<TaskProvenanc
     Ok(TaskProvenance { nodes, edges })
 }
 
-#[cfg(feature = "kuzu")]
-fn open_graph_connection(db_dir: PathBuf) -> Result<kuzu::Connection<'static>> {
+#[cfg(feature = "lbug")]
+fn open_graph_connection(db_dir: PathBuf) -> Result<lbug::Connection<'static>> {
     if let Some(parent) = db_dir
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
         std::fs::create_dir_all(parent)?;
     }
-    let config = kuzu::SystemConfig::default().enable_multi_writes(true);
-    let db = kuzu::Database::new(db_dir, config)
-        .map_err(|error| Error::Domain(format!("kuzu database open failed: {error}")))?;
+    let config = lbug::SystemConfig::default().enable_multi_writes(true);
+    let db = lbug::Database::new(db_dir, config)
+        .map_err(|error| Error::Domain(format!("lbug database open failed: {error}")))?;
     let db = Box::leak(Box::new(db));
-    kuzu::Connection::new(db)
-        .map_err(|error| Error::Domain(format!("kuzu connection failed: {error}")))
+    lbug::Connection::new(db)
+        .map_err(|error| Error::Domain(format!("lbug connection failed: {error}")))
 }
 
-#[cfg(feature = "kuzu")]
-fn initialize_schema<'db>(conn: &kuzu::Connection<'db>) -> Result<()> {
+#[cfg(feature = "lbug")]
+fn initialize_schema<'db>(conn: &lbug::Connection<'db>) -> Result<()> {
     for statement in [
         "CREATE NODE TABLE IF NOT EXISTS Task(task_id STRING, state STRING, PRIMARY KEY(task_id));",
         "CREATE NODE TABLE IF NOT EXISTS Workspace(workspace_id STRING, canonical_path STRING, PRIMARY KEY(workspace_id));",
@@ -631,38 +631,38 @@ fn initialize_schema<'db>(conn: &kuzu::Connection<'db>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "kuzu")]
-fn query<'db>(conn: &kuzu::Connection<'db>, statement: &str) -> Result<kuzu::QueryResult<'db>> {
+#[cfg(feature = "lbug")]
+fn query<'db>(conn: &lbug::Connection<'db>, statement: &str) -> Result<lbug::QueryResult<'db>> {
     conn.query(statement)
-        .map_err(|error| Error::Domain(format!("kuzu query failed: {error}; query: {statement}")))
+        .map_err(|error| Error::Domain(format!("lbug query failed: {error}; query: {statement}")))
 }
 
-#[cfg(feature = "kuzu")]
+#[cfg(feature = "lbug")]
 fn cypher_string(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-#[cfg(feature = "kuzu")]
-fn string_value(value: &kuzu::Value) -> String {
+#[cfg(feature = "lbug")]
+fn string_value(value: &lbug::Value) -> String {
     match value {
-        kuzu::Value::String(value) => value.clone(),
-        kuzu::Value::Null(_) => String::new(),
+        lbug::Value::String(value) => value.clone(),
+        lbug::Value::Null(_) => String::new(),
         other => other.to_string(),
     }
 }
 
-#[cfg(feature = "kuzu")]
-fn number_value(value: &kuzu::Value) -> f64 {
+#[cfg(feature = "lbug")]
+fn number_value(value: &lbug::Value) -> f64 {
     match value {
-        kuzu::Value::Double(value) => *value,
-        kuzu::Value::Float(value) => f64::from(*value),
-        kuzu::Value::Int64(value) => *value as f64,
-        kuzu::Value::Int32(value) => f64::from(*value),
+        lbug::Value::Double(value) => *value,
+        lbug::Value::Float(value) => f64::from(*value),
+        lbug::Value::Int64(value) => *value as f64,
+        lbug::Value::Int32(value) => f64::from(*value),
         _ => 0.0,
     }
 }
 
-#[cfg(feature = "kuzu")]
+#[cfg(feature = "lbug")]
 fn push_unique_node(nodes: &mut Vec<ProvenanceNode>, node: ProvenanceNode) {
     if !nodes
         .iter()

@@ -67,7 +67,7 @@ fn graph_enabled_defaults_db_dir_next_to_sqlite_data_file() {
     assert!(config.graph.enabled);
     assert_eq!(
         config.graph.db_dir.as_deref(),
-        Some("/tmp/llmparty/graph/kuzu")
+        Some("/tmp/llmparty/graph/lbug")
     );
 }
 
