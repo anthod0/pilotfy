@@ -19,6 +19,7 @@ use crate::{
     adapters::{AdapterCapabilities, AgentEventSource, AgentInputSink, GenericTestAdapter},
     application::SessionCapabilities,
     error::{Error, Result},
+    ids::new_runtime_instance_id,
     time::utc_now,
 };
 
@@ -82,6 +83,7 @@ impl GenericRuntimeManager {
         let pi_hook_log = runtime_dir.join("pi-hook.log");
         let claude_hook_log = runtime_dir.join("claude-hook.log");
         let internal_event_url = internal_event_url();
+        let runtime_instance_id = new_runtime_instance_id().to_string();
         std::fs::File::create(&log_path)?;
         let script_path = runtime_dir.join("runtime.sh");
         let runtime_paths = RuntimePaths {
@@ -92,7 +94,13 @@ impl GenericRuntimeManager {
             pi_hook_log: &pi_hook_log,
             claude_hook_log: &claude_hook_log,
         };
-        write_runtime_script(&script_path, &workspace, &runtime_paths, &request)?;
+        write_runtime_script(
+            &script_path,
+            &workspace,
+            &runtime_paths,
+            &request,
+            &runtime_instance_id,
+        )?;
 
         let status = spawn_tmux_session(&tmux_session, &workspace, &script_path)
             .map_err(|err| Error::Domain(format!("tmux runtime spawn failed: {err}")))?;
@@ -130,6 +138,7 @@ impl GenericRuntimeManager {
                 "claude_hook_log": claude_hook_log,
                 "started_at": started_at,
                 "restart_count": restart_count,
+                "runtime_instance_id": runtime_instance_id,
             }),
         })
     }
@@ -328,6 +337,7 @@ fn write_runtime_script(
     workspace: &Path,
     runtime_paths: &RuntimePaths<'_>,
     request: &RuntimeStartRequest,
+    runtime_instance_id: &str,
 ) -> Result<()> {
     let (log_setup, runtime_body) = match request.client_type.as_str() {
         "pi" => {
@@ -361,6 +371,7 @@ export LLMPARTY_RUNTIME_LOG={}
 export LLMPARTY_ADAPTER_EVENT_LOG={}
 export LLMPARTY_CURRENT_TURN_FILE={}
 export LLMPARTY_INTERNAL_EVENT_URL={}
+export LLMPARTY_RUNTIME_INSTANCE_ID={}
 export LLMPARTY_PI_HOOK_LOG={}
 export LLMPARTY_CLAUDE_HOOK_LOG={}
 {}
@@ -374,6 +385,7 @@ export LLMPARTY_CLAUDE_HOOK_LOG={}
         shell_quote(&runtime_paths.adapter_event_log.display().to_string()),
         shell_quote(&runtime_paths.current_turn_file.display().to_string()),
         shell_quote(&internal_event_url()),
+        shell_quote(runtime_instance_id),
         shell_quote(&runtime_paths.pi_hook_log.display().to_string()),
         shell_quote(&runtime_paths.claude_hook_log.display().to_string()),
         log_setup,

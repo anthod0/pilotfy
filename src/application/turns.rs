@@ -233,7 +233,7 @@ impl TurnCommandService {
     }
 }
 
-fn write_client_current_turn_context(
+pub(crate) fn write_client_current_turn_context(
     metadata: &Value,
     input: &AgentInput,
     client_type: &str,

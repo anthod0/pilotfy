@@ -88,6 +88,28 @@ async fn create_claude_session(state: AppState, workspace: &Path) -> (String, Va
     (session_id, body)
 }
 
+async fn post_internal_event(state: AppState, body: Value) -> (StatusCode, Value) {
+    let response = http::router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/v1/events")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    (status, serde_json::from_slice(&bytes).expect("json body"))
+}
+
 async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
     let metadata: String =
         sqlx::query_scalar("SELECT metadata FROM runtime_bindings WHERE session_id = ?")
@@ -117,6 +139,7 @@ async fn claude_code_session_creation_exposes_final_output_capabilities() {
 
     let session = &body["data"]["session"];
     assert_eq!(session["client_type"], "claude_code");
+    assert_eq!(session["state"], "starting");
     let capabilities = &session["capabilities"];
     assert_eq!(capabilities["accept_task"], true);
     assert_eq!(capabilities["report_turn_started"], false);
@@ -135,6 +158,19 @@ async fn claude_code_turn_submit_writes_context_and_dispatches_to_tui() {
     let state = test_state("claude_dispatch").await;
     let (session_id, _) = create_claude_session(state.clone(), workspace.path()).await;
     let metadata = binding_metadata(&state, &session_id).await;
+    let ready = json!({
+        "event_id":"evt_claude_ready",
+        "session_id":session_id,
+        "turn_id":null,
+        "source":"agent_client",
+        "client_type":"claude_code",
+        "type":"session.ready",
+        "time":"2026-05-08T12:00:00Z",
+        "seq":1,
+        "payload":{"runtime_instance_id":metadata["runtime_instance_id"]}
+    });
+    let (ready_status, ready_body) = post_internal_event(state.clone(), ready).await;
+    assert_eq!(ready_status, StatusCode::OK, "{ready_body:?}");
 
     let (status, body) = request_json(
         state.clone(),

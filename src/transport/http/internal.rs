@@ -90,6 +90,19 @@ impl InternalEventRequest {
             return Err(ApiError::invalid_request("payload must be a JSON object"));
         }
 
+        if event_type == EventType::SessionReady && source == EventSource::AgentClient {
+            let runtime_instance_id = self
+                .payload
+                .get("runtime_instance_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if runtime_instance_id.trim().is_empty() {
+                return Err(ApiError::invalid_request(
+                    "session.ready from agent_client requires payload.runtime_instance_id",
+                ));
+            }
+        }
+
         let payload_size = serde_json::to_vec(&self.payload)
             .map_err(Error::from)?
             .len();

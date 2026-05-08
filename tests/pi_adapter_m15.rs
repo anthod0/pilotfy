@@ -98,17 +98,41 @@ async fn create_pi_session(state: AppState, workspace: &Path) -> String {
         );
     }
     let (status, body) = request_json(
-        state,
+        state.clone(),
         "POST",
         "/external/v1/sessions",
         Some(json!({"client_type":"pi","workspace":workspace.display().to_string()})),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body:?}");
-    body["data"]["session"]["session_id"]
+    let session_id = body["data"]["session"]["session_id"]
         .as_str()
         .expect("session id")
-        .to_string()
+        .to_string();
+    report_ready(state, &session_id).await;
+    session_id
+}
+
+async fn report_ready(state: AppState, session_id: &str) {
+    let metadata = binding_metadata(&state, session_id).await;
+    let (status, body) = request_json(
+        state,
+        "POST",
+        "/internal/v1/events",
+        Some(json!({
+            "event_id": format!("evt_ready_{session_id}"),
+            "session_id": session_id,
+            "turn_id": null,
+            "source": "agent_client",
+            "client_type": "pi",
+            "type": "session.ready",
+            "time": "2026-05-08T12:00:00Z",
+            "seq": 1,
+            "payload": {"runtime_instance_id": metadata["runtime_instance_id"]}
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body:?}");
 }
 
 async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
@@ -518,6 +542,12 @@ async fn pi_runtime_exports_real_hook_environment() {
     assert!(runtime_script.contains("export LLMPARTY_RUNTIME_DIR="));
     assert!(runtime_script.contains("export LLMPARTY_INTERNAL_EVENT_URL="));
     assert!(runtime_script.contains("http://127.0.0.1:8080/internal/v1/events"));
+    let runtime_instance_id = metadata["runtime_instance_id"]
+        .as_str()
+        .expect("runtime_instance_id");
+    assert!(runtime_instance_id.starts_with("rtinst_"));
+    assert!(runtime_script.contains("export LLMPARTY_RUNTIME_INSTANCE_ID="));
+    assert!(runtime_script.contains(runtime_instance_id));
     assert!(runtime_script.contains("export LLMPARTY_PI_HOOK_LOG="));
     assert!(runtime_script.contains("pi-hook.log"));
 

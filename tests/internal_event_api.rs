@@ -100,11 +100,10 @@ async fn internal_event_api_accepts_session_event_and_updates_projection() {
 async fn internal_event_api_accepts_turn_events_and_updates_projection() {
     let state = test_state().await;
 
-    post_event(
-        state.clone(),
-        event_body("evt_m2_2", "session.ready", "sess_m2_2", None, 1),
-    )
-    .await;
+    let mut ready = event_body("evt_m2_2", "session.ready", "sess_m2_2", None, 1);
+    ready["source"] = json!("agent_client");
+    ready["payload"] = json!({"runtime_instance_id":"rtinst_m2_2"});
+    post_event(state.clone(), ready).await;
     let (status, body) = post_event(
         state.clone(),
         event_body(
@@ -170,6 +169,39 @@ async fn internal_event_api_rejects_turn_event_without_turn_id() {
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"]["code"], "invalid_request");
+}
+
+#[tokio::test]
+async fn internal_event_api_accepts_agent_client_ready_with_runtime_instance_id() {
+    let state = test_state().await;
+    let mut event = event_body("evt_m2_ready", "session.ready", "sess_m2_ready", None, 1);
+    event["source"] = json!("agent_client");
+    event["client_type"] = json!("pi");
+    event["payload"] = json!({"runtime_instance_id":"rtinst_test"});
+
+    let (status, body) = post_event(state, event).await;
+
+    assert_eq!(status, StatusCode::OK, "{body:?}");
+    assert_eq!(body["accepted"], true);
+}
+
+#[tokio::test]
+async fn internal_event_api_rejects_agent_client_ready_without_runtime_instance_id() {
+    let state = test_state().await;
+    let mut event = event_body("evt_m2_bad_ready", "session.ready", "sess_m2_bad", None, 1);
+    event["source"] = json!("agent_client");
+    event["client_type"] = json!("pi");
+
+    let (status, body) = post_event(state, event).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_request");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("runtime_instance_id")
+    );
 }
 
 #[tokio::test]

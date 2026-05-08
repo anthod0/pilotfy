@@ -87,6 +87,33 @@ async fn ingest_persists_events_and_updates_projections() {
 }
 
 #[tokio::test]
+async fn session_started_keeps_projection_starting_until_ready() {
+    let service = service().await;
+
+    service
+        .ingest_event(event(
+            "evt_started_created",
+            EventType::SessionCreated,
+            "sess_started",
+            None,
+        ))
+        .await
+        .unwrap();
+    service
+        .ingest_event(event(
+            "evt_started",
+            EventType::SessionStarted,
+            "sess_started",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    let session = service.get_session("sess_started").await.unwrap().unwrap();
+    assert_eq!(session.state, SessionState::Starting);
+}
+
+#[tokio::test]
 async fn duplicate_event_id_is_idempotent() {
     let service = service().await;
     let first = event("evt_same", EventType::SessionCreated, "sess_1", None);

@@ -265,17 +265,19 @@ impl RuntimeControlService {
                 json!({}),
             ))
             .await?;
-        ingest
-            .ingest_event(DomainEvent::new(
-                new_event_id().to_string(),
-                session_id.to_string(),
-                None,
-                EventSource::RuntimeManager,
-                session.client_type,
-                EventType::SessionReady,
-                json!({}),
-            ))
-            .await?;
+        if session.client_type == "generic" {
+            ingest
+                .ingest_event(DomainEvent::new(
+                    new_event_id().to_string(),
+                    session_id.to_string(),
+                    None,
+                    EventSource::RuntimeManager,
+                    session.client_type,
+                    EventType::SessionReady,
+                    json!({}),
+                ))
+                .await?;
+        }
 
         let session = query
             .get_session(session_id)

@@ -31,6 +31,7 @@ mod planner;
 mod queries;
 mod runtime_control;
 mod runtime_observation;
+mod runtime_readiness;
 mod sessions;
 mod state;
 mod tasks;
@@ -51,6 +52,7 @@ pub use planner::{
 pub use queries::ExternalQueryService;
 pub use runtime_control::{ControlCommandOutcome, RuntimeControlService};
 pub use runtime_observation::{PiAdapterEventOutboxService, RuntimeObservationService};
+pub use runtime_readiness::RuntimeReadinessService;
 pub use sessions::{
     CreateSessionOutcome, CreateSessionRequest, InitialTaskRequest, SessionCommandService,
 };

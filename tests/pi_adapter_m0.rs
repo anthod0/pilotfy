@@ -1,6 +1,7 @@
 use std::{
     path::Path,
     process::{Command, Stdio},
+    time::Duration,
 };
 
 use axum::{
@@ -77,6 +78,48 @@ async fn response_json(response: axum::response::Response) -> (StatusCode, Value
     (status, json)
 }
 
+async fn post_internal_event(state: AppState, body: Value) -> (StatusCode, Value) {
+    let response = http::router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/v1/events")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    response_json(response).await
+}
+
+async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
+    let metadata: String =
+        sqlx::query_scalar("SELECT metadata FROM runtime_bindings WHERE session_id = ?")
+            .bind(session_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("binding");
+    serde_json::from_str(&metadata).expect("metadata json")
+}
+
+async fn report_ready(state: AppState, session_id: &str) {
+    let metadata = binding_metadata(&state, session_id).await;
+    let ready = json!({
+        "event_id": format!("evt_ready_{session_id}"),
+        "session_id":session_id,
+        "turn_id":null,
+        "source":"agent_client",
+        "client_type":"pi",
+        "type":"session.ready",
+        "time":"2026-05-08T12:00:00Z",
+        "seq":1,
+        "payload":{"runtime_instance_id":metadata["runtime_instance_id"]}
+    });
+    let (status, body) = post_internal_event(state, ready).await;
+    assert_eq!(status, StatusCode::OK, "{body:?}");
+}
+
 async fn create_pi_session(state: AppState, workspace: &Path) -> (String, Value) {
     let (status, body) = request_json(
         state,
@@ -119,7 +162,7 @@ async fn pi_session_creation_exposes_m0_capabilities() {
 
     let session = &body["data"]["session"];
     assert_eq!(session["client_type"], "pi");
-    assert_eq!(session["state"], "idle");
+    assert_eq!(session["state"], "starting");
     let capabilities = &session["capabilities"];
     assert_eq!(capabilities["accept_task"], true);
     assert_eq!(capabilities["report_turn_started"], true);
@@ -133,10 +176,74 @@ async fn pi_session_creation_exposes_m0_capabilities() {
 }
 
 #[tokio::test]
+async fn pi_initial_task_waits_for_agent_client_ready_before_dispatch() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let state = test_state("m0_pi_initial_ready").await;
+    let create = tokio::spawn(request_json(
+        state.clone(),
+        "POST",
+        "/external/v1/sessions",
+        Some(json!({
+            "client_type":"pi",
+            "workspace":temp.path().display().to_string(),
+            "initial_task":{"input":"boot prompt"}
+        })),
+    ));
+
+    let (session_id, metadata) = loop {
+        if let Some(row) = sqlx::query_as::<_, (String, String)>(
+            "SELECT session_id, metadata FROM runtime_bindings LIMIT 1",
+        )
+        .fetch_optional(&state.db)
+        .await
+        .expect("binding poll")
+        {
+            break (
+                row.0,
+                serde_json::from_str::<Value>(&row.1).expect("metadata json"),
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    assert!(!temp.path().join("pi-tui-input.log").exists());
+
+    report_ready(state.clone(), &session_id).await;
+
+    let (status, body) = tokio::time::timeout(Duration::from_secs(3), create)
+        .await
+        .expect("create session should finish after ready")
+        .expect("join create");
+    assert_eq!(status, StatusCode::CREATED, "{body:?}");
+    assert_eq!(body["data"]["session"]["state"], "busy");
+    assert_eq!(body["data"]["initial_turn"]["state"], "running");
+    wait_for_file_contains(&temp.path().join("pi-tui-input.log"), "boot prompt").await;
+
+    let context_path = Path::new(metadata["current_turn_file"].as_str().unwrap());
+    let context: Value = serde_json::from_str(&std::fs::read_to_string(context_path).unwrap())
+        .expect("context json");
+    assert_eq!(context["input"], "boot prompt");
+
+    cleanup_session_runtime(&state, &session_id).await;
+}
+
+async fn wait_for_file_contains(path: &Path, expected: &str) {
+    for _ in 0..50 {
+        if let Ok(content) = std::fs::read_to_string(path)
+            && content.contains(expected)
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("{} did not contain {expected:?}", path.display());
+}
+
+#[tokio::test]
 async fn pi_turn_submit_dispatches_to_tui_and_starts_without_completion() {
     let temp = tempfile::tempdir().expect("tempdir");
     let state = test_state("m0_pi_turn_queued").await;
     let (session_id, _) = create_pi_session(state.clone(), temp.path()).await;
+    report_ready(state.clone(), &session_id).await;
 
     let (status, body) = request_json(
         state.clone(),

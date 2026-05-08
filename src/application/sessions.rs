@@ -1,3 +1,4 @@
+use super::turns::write_client_current_turn_context;
 use super::*;
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -116,17 +117,19 @@ impl SessionCommandService {
                 json!({}),
             ))
             .await?;
-        ingest
-            .ingest_event(DomainEvent::new(
-                new_event_id().to_string(),
-                session_id.clone(),
-                None,
-                EventSource::RuntimeManager,
-                request.client_type.clone(),
-                EventType::SessionReady,
-                json!({}),
-            ))
-            .await?;
+        if request.client_type == "generic" {
+            ingest
+                .ingest_event(DomainEvent::new(
+                    new_event_id().to_string(),
+                    session_id.clone(),
+                    None,
+                    EventSource::RuntimeManager,
+                    request.client_type.clone(),
+                    EventType::SessionReady,
+                    json!({}),
+                ))
+                .await?;
+        }
 
         let initial_turn_id = if let Some(initial_task) = request.initial_task {
             let turn_id = new_turn_id().to_string();
@@ -155,6 +158,16 @@ impl SessionCommandService {
                     json!({}),
                 ))
                 .await?;
+            if matches!(request.client_type.as_str(), "pi" | "claude_code") {
+                self.wait_and_dispatch_initial_tui_turn(
+                    &session_id,
+                    &turn_id,
+                    &request.client_type,
+                    &initial_task.input,
+                    &runtime,
+                )
+                .await?;
+            }
             Some(turn_id)
         } else {
             None
@@ -181,6 +194,69 @@ impl SessionCommandService {
             data,
             duplicate: false,
         })
+    }
+
+    async fn wait_and_dispatch_initial_tui_turn(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        client_type: &str,
+        input: &str,
+        runtime: &RuntimeStartResult,
+    ) -> Result<()> {
+        let runtime_instance_id = runtime.metadata["runtime_instance_id"]
+            .as_str()
+            .ok_or_else(|| {
+                Error::Domain(format!(
+                    "{client_type} runtime metadata missing runtime_instance_id"
+                ))
+            })?;
+        let agent_input = AgentInput {
+            session_id: session_id.to_string(),
+            turn_id: turn_id.to_string(),
+            input: input.to_string(),
+        };
+        let ingest = EventIngestService::new(self.pool.clone());
+        let dispatch_result = RuntimeReadinessService::new(self.pool.clone())
+            .wait_until_ready(session_id, client_type, runtime_instance_id)
+            .await
+            .and_then(|()| {
+                write_client_current_turn_context(&runtime.metadata, &agent_input, client_type)
+            })
+            .and_then(|()| {
+                self.runtime
+                    .dispatch_tui_turn(&runtime.runtime_ref, client_type, &agent_input)
+            });
+
+        match dispatch_result {
+            Ok(()) => {
+                ingest
+                    .ingest_event(DomainEvent::new(
+                        new_event_id().to_string(),
+                        session_id.to_string(),
+                        Some(turn_id.to_string()),
+                        EventSource::AgentAdapter,
+                        client_type.to_string(),
+                        EventType::TurnStarted,
+                        json!({}),
+                    ))
+                    .await?;
+            }
+            Err(error) => {
+                ingest
+                    .ingest_event(DomainEvent::new(
+                        new_event_id().to_string(),
+                        session_id.to_string(),
+                        Some(turn_id.to_string()),
+                        EventSource::RuntimeManager,
+                        client_type.to_string(),
+                        EventType::TurnFailed,
+                        json!({ "failure": { "message": error.to_string() } }),
+                    ))
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn idempotency_response(&self, operation: &str, key: &str) -> Result<Option<Value>> {

@@ -381,9 +381,8 @@ impl ProjectionState {
         match event.event_type {
             EventType::SessionCreated => self.apply_session(event, SessionState::Created),
             EventType::SessionStarting => self.apply_session(event, SessionState::Starting),
-            EventType::SessionStarted | EventType::SessionReady => {
-                self.apply_session(event, SessionState::Idle)
-            }
+            EventType::SessionStarted => self.apply_session(event, SessionState::Starting),
+            EventType::SessionReady => self.apply_session(event, SessionState::Idle),
             EventType::SessionExited => self.apply_session(event, SessionState::Exited),
             EventType::SessionError => self.apply_session(event, SessionState::Error),
             EventType::TurnCreated | EventType::TurnQueued => {
