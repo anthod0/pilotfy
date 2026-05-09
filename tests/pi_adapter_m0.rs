@@ -25,7 +25,7 @@ async fn test_state(name: &str) -> AppState {
     unsafe {
         std::env::set_var(
             "LLMPARTY_PI_TUI_COMMAND",
-            "cat >> \"$LLMPARTY_WORKSPACE/pi-tui-input.log\"",
+            "exec python3 -c 'import os,signal,sys; signal.signal(signal.SIGINT, signal.SIG_IGN); path=os.path.join(os.environ[\"LLMPARTY_WORKSPACE\"], \"pi-tui-input.log\"); f=open(path, \"a\"); [(f.write(line), f.flush()) for line in sys.stdin]'",
         );
     }
     let dir = tempfile::tempdir().expect("tempdir");
@@ -169,7 +169,7 @@ async fn pi_session_creation_exposes_m0_capabilities() {
     assert_eq!(capabilities["report_turn_finished"], true);
     assert_eq!(capabilities["stream_output"], true);
     assert_eq!(capabilities["artifact_sources"], true);
-    assert_eq!(capabilities["interrupt"], false);
+    assert_eq!(capabilities["interrupt"], true);
     assert_eq!(capabilities["heartbeat"], false);
 
     cleanup_session_runtime(&state, &session_id).await;
@@ -294,6 +294,65 @@ async fn pi_turn_submit_dispatches_to_tui_and_starts_without_completion() {
     assert!(event_types.contains(&"turn.started"));
     assert!(!event_types.contains(&"turn.output"));
     assert!(!event_types.contains(&"turn.completed"));
+
+    cleanup_session_runtime(&state, &session_id).await;
+}
+
+#[tokio::test]
+async fn pi_interrupt_now_interrupts_active_turn_and_dispatches_next_message() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let state = test_state("m0_pi_interrupt_now").await;
+    let (session_id, _) = create_pi_session(state.clone(), temp.path()).await;
+    report_ready(state.clone(), &session_id).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let (first_status, first_body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/inbox/messages"),
+        Some(json!({"input":"first pi turn"})),
+    )
+    .await;
+    assert_eq!(first_status, StatusCode::CREATED, "{first_body:?}");
+    let first_turn_id = first_body["data"]["inbox_message"]["turn_id"]
+        .as_str()
+        .expect("first turn id")
+        .to_string();
+
+    let (interrupt_status, interrupt_body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/inbox/messages"),
+        Some(json!({"input":"replacement pi turn", "delivery_policy":"interrupt_now"})),
+    )
+    .await;
+    assert_eq!(interrupt_status, StatusCode::CREATED, "{interrupt_body:?}");
+    let interrupt_message = &interrupt_body["data"]["inbox_message"];
+    assert_eq!(interrupt_message["state"], "dispatched");
+    let second_turn_id = interrupt_message["turn_id"]
+        .as_str()
+        .expect("second turn id");
+    assert_ne!(second_turn_id, first_turn_id);
+
+    let (first_turn_status, first_turn_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{first_turn_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(first_turn_status, StatusCode::OK);
+    assert_eq!(first_turn_body["data"]["turn"]["state"], "interrupted");
+
+    let (second_turn_status, second_turn_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{second_turn_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(second_turn_status, StatusCode::OK);
+    assert_eq!(second_turn_body["data"]["turn"]["state"], "running");
 
     cleanup_session_runtime(&state, &session_id).await;
 }

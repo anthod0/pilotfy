@@ -210,6 +210,25 @@ impl GenericRuntimeManager {
         Ok(())
     }
 
+    pub fn interrupt_session(&self, runtime_ref: &str) -> Result<()> {
+        if !self.is_alive(runtime_ref) {
+            return Err(Error::Domain(format!(
+                "tmux runtime {runtime_ref} is not alive"
+            )));
+        }
+        let status = Command::new("tmux")
+            .args(["send-keys", "-t", runtime_ref, "C-c"])
+            .status()
+            .map_err(|err| Error::Domain(format!("tmux runtime interrupt failed: {err}")))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Domain(format!(
+                "tmux runtime interrupt failed with status {status}"
+            )))
+        }
+    }
+
     pub fn terminate_session(&self, runtime_ref: &str) -> Result<()> {
         let status = Command::new("tmux")
             .args(["kill-session", "-t", runtime_ref])

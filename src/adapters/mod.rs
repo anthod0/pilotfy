@@ -40,7 +40,7 @@ impl AdapterCapabilities {
             accept_task: true,
             report_turn_started: true,
             report_turn_finished: true,
-            interrupt: false,
+            interrupt: true,
             stream_output: true,
             heartbeat: false,
             artifact_sources: true,

@@ -103,6 +103,10 @@ impl RuntimeControlService {
                 "session {session_id} runtime does not support interrupt"
             )));
         }
+        let runtime_ref = self.runtime_ref(session_id).await?.ok_or_else(|| {
+            Error::StateConflict(format!("session {session_id} has no runtime binding"))
+        })?;
+        self.runtime.interrupt_session(&runtime_ref)?;
 
         let ingest = EventIngestService::new(self.pool.clone());
         ingest

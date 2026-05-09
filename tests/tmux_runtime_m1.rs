@@ -356,7 +356,7 @@ async fn create_pi_session_creates_real_tmux_runtime() {
     assert_eq!(capabilities["report_turn_finished"], true);
     assert_eq!(capabilities["stream_output"], true);
     assert_eq!(capabilities["artifact_sources"], true);
-    assert_eq!(capabilities["interrupt"], false);
+    assert_eq!(capabilities["interrupt"], true);
     assert_eq!(capabilities["heartbeat"], false);
 
     cleanup_tmux(&tmux_session);
