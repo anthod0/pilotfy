@@ -221,22 +221,14 @@ impl GenericRuntimeManager {
                 "tmux runtime {runtime_ref} is not alive"
             )));
         }
-        for attempt in 1..=2 {
-            if attempt > 1 && !self.is_alive(runtime_ref) {
-                return Ok(());
-            }
-            let status = Command::new("tmux")
-                .args(["send-keys", "-t", runtime_ref, "C-c"])
-                .status()
-                .map_err(|err| Error::Domain(format!("tmux runtime interrupt failed: {err}")))?;
-            if !status.success() {
-                return Err(Error::Domain(format!(
-                    "tmux runtime interrupt failed with status {status}"
-                )));
-            }
-            if attempt == 1 {
-                thread::sleep(Duration::from_millis(50));
-            }
+        let status = Command::new("tmux")
+            .args(["send-keys", "-t", runtime_ref, "Escape"])
+            .status()
+            .map_err(|err| Error::Domain(format!("tmux runtime interrupt failed: {err}")))?;
+        if !status.success() {
+            return Err(Error::Domain(format!(
+                "tmux runtime interrupt failed with status {status}"
+            )));
         }
         Ok(())
     }

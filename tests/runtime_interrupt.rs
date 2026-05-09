@@ -12,7 +12,7 @@ fn path_env_lock() -> &'static Mutex<()> {
 }
 
 #[test]
-fn interrupt_session_sends_two_ctrl_c_keys() {
+fn interrupt_session_sends_escape_key() {
     let _guard = path_env_lock().lock().expect("path env lock");
     let tempdir = tempfile::tempdir().expect("tempdir");
     let tmux_log = tempdir.path().join("tmux.log");
@@ -28,15 +28,15 @@ fn interrupt_session_sends_two_ctrl_c_keys() {
     restore_fake_tmux(original_path);
 
     let log = std::fs::read_to_string(tmux_log).expect("tmux log");
-    let ctrl_c_sends = log
+    let escape_sends = log
         .lines()
-        .filter(|line| *line == "send-keys -t runtime-ref C-c")
+        .filter(|line| *line == "send-keys -t runtime-ref Escape")
         .count();
-    assert_eq!(ctrl_c_sends, 2, "{log}");
+    assert_eq!(escape_sends, 1, "{log}");
 }
 
 #[test]
-fn interrupt_session_succeeds_when_runtime_exits_after_first_ctrl_c() {
+fn interrupt_session_succeeds_when_runtime_exits_after_escape() {
     let _guard = path_env_lock().lock().expect("path env lock");
     let tempdir = tempfile::tempdir().expect("tempdir");
     let tmux_log = tempdir.path().join("tmux.log");
@@ -48,16 +48,16 @@ fn interrupt_session_succeeds_when_runtime_exits_after_first_ctrl_c() {
 
     GenericRuntimeManager
         .interrupt_session("runtime-ref")
-        .expect("interrupt session should tolerate runtime exiting after interrupt");
+        .expect("interrupt session should send escape successfully");
 
     restore_fake_tmux(original_path);
 
     let log = std::fs::read_to_string(tmux_log).expect("tmux log");
-    let ctrl_c_sends = log
+    let escape_sends = log
         .lines()
-        .filter(|line| *line == "send-keys -t runtime-ref C-c")
+        .filter(|line| *line == "send-keys -t runtime-ref Escape")
         .count();
-    assert_eq!(ctrl_c_sends, 1, "{log}");
+    assert_eq!(escape_sends, 1, "{log}");
 }
 
 fn install_fake_tmux(tempdir: &Path, tmux_log: &Path, tmux_state: Option<&Path>) -> String {
