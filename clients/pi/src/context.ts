@@ -13,7 +13,7 @@ export interface TurnContext {
 
 export type LoadTurnContextResult =
   | { ok: true; context: TurnContext; contextFile: string; logFile: string }
-  | { ok: false; reason: string; contextFile: string; logFile: string };
+  | { ok: false; reason: string; contextFile: string; logFile: string; silent?: boolean };
 
 export type EnvLike = Record<string, string | undefined>;
 
@@ -39,6 +39,16 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function hasLlmpartyRuntimeIntent(env: EnvLike): boolean {
+  return Boolean(
+    optionalString(env.LLMPARTY_RUNTIME_DIR) ||
+      optionalString(env.LLMPARTY_CURRENT_TURN_FILE) ||
+      optionalString(env.LLMPARTY_SESSION_ID) ||
+      optionalString(env.LLMPARTY_RUNTIME_INSTANCE_ID) ||
+      optionalString(env.LLMPARTY_INTERNAL_EVENT_URL),
+  );
+}
+
 export async function loadTurnContext(env: EnvLike = process.env): Promise<LoadTurnContextResult> {
   const contextFile = env.LLMPARTY_CURRENT_TURN_FILE ?? defaultCurrentTurnFile(env);
   const logFile = env.LLMPARTY_PI_HOOK_LOG ?? defaultHookLogFile(env);
@@ -48,6 +58,7 @@ export async function loadTurnContext(env: EnvLike = process.env): Promise<LoadT
     raw = await readFile(contextFile, "utf8");
   } catch (error) {
     const reason = `current-turn file is missing or unreadable: ${contextFile}`;
+    if (!hasLlmpartyRuntimeIntent(env)) return { ok: false, reason, contextFile, logFile, silent: true };
     await appendDiagnostic(logFile, {
       level: "warn",
       code: "missing_current_turn_file",

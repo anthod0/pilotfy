@@ -25,6 +25,18 @@ describe("loadTurnContext", () => {
     expect(defaultHookLogFile({ LLMPARTY_RUNTIME_DIR: runtimeDir })).toBe(join(runtimeDir, "claude-hook.log"));
   });
 
+  test("silently skips missing fallback current-turn file when llmparty env is absent", async () => {
+    const workspace = await tempWorkspace();
+    const logFile = join(workspace, "hook.log");
+
+    const result = await loadTurnContext({ LLMPARTY_CLAUDE_HOOK_LOG: logFile });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected missing context");
+    expect(result.silent).toBe(true);
+    await expect(readFile(logFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test("loads claude_code context and lets environment event URL override file URL", async () => {
     const workspace = await tempWorkspace();
     const contextFile = join(workspace, "turn.json");

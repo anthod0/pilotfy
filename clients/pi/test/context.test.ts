@@ -86,6 +86,18 @@ describe("loadTurnContext", () => {
     expect(result.context.internalEventUrl).toBe("http://from-file/internal/v1/events");
   });
 
+  test("silently skips missing fallback current-turn file when llmparty env is absent", async () => {
+    const workspace = await tempWorkspace();
+    const logFile = join(workspace, "hook.log");
+
+    const result = await loadTurnContext({ LLMPARTY_PI_HOOK_LOG: logFile });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected missing context");
+    expect(result.silent).toBe(true);
+    await expect(readFile(logFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test("logs missing current-turn file and does not return fake context", async () => {
     const workspace = await tempWorkspace();
     const missingFile = join(workspace, "missing.json");

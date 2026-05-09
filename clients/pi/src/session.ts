@@ -27,6 +27,16 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function hasLlmpartyRuntimeIntent(env: EnvLike): boolean {
+  return Boolean(
+    optionalString(env.LLMPARTY_RUNTIME_DIR) ||
+      optionalString(env.LLMPARTY_CURRENT_TURN_FILE) ||
+      optionalString(env.LLMPARTY_SESSION_ID) ||
+      optionalString(env.LLMPARTY_RUNTIME_INSTANCE_ID) ||
+      optionalString(env.LLMPARTY_INTERNAL_EVENT_URL),
+  );
+}
+
 export async function loadSessionContext(env: EnvLike = process.env): Promise<LoadSessionContextResult> {
   const logFile = env.LLMPARTY_PI_HOOK_LOG ?? defaultHookLogFile(env);
   const sessionId = optionalString(env.LLMPARTY_SESSION_ID);
@@ -40,6 +50,7 @@ export async function loadSessionContext(env: EnvLike = process.env): Promise<Lo
 
   if (errors.length > 0) {
     const reason = errors.join("; ");
+    if (!hasLlmpartyRuntimeIntent(env)) return { ok: false, reason, logFile };
     await appendDiagnostic(logFile, {
       level: "error",
       code: "invalid_session_context",

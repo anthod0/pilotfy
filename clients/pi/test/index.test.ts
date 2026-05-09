@@ -129,6 +129,24 @@ describe("llmparty pi extension lifecycle", () => {
     expect(reported).toEqual([]);
   });
 
+  test("does not show a UI warning when missing context is a silent manual session skip", async () => {
+    const notify = vi.fn();
+    const { handlers, reported } = install({
+      loadContext: vi.fn(async () => ({
+        ok: false as const,
+        reason: "current-turn file is missing or unreadable: fallback/current-turn.json",
+        contextFile: "fallback/current-turn.json",
+        logFile: "fallback/pi-hook.log",
+        silent: true,
+      })),
+    });
+
+    await handlers.agent_start({}, { hasUI: true, ui: { notify } });
+
+    expect(notify).not.toHaveBeenCalled();
+    expect(reported).toEqual([]);
+  });
+
   test("ignores duplicate agent_end for the same active turn", async () => {
     const { handlers, reported } = install();
 

@@ -112,7 +112,7 @@ export function createLlmpartyPiExtension(pi: ExtensionAPI, dependencies: Llmpar
       const loaded = await contextLoader(env);
       if (!loaded.ok) {
         activeTurn = undefined;
-        if (ctx?.hasUI) ctx.ui.notify(`llmparty: ${loaded.reason}`, "warning");
+        if (!loaded.silent && ctx?.hasUI) ctx.ui.notify(`llmparty: ${loaded.reason}`, "warning");
         return;
       }
 

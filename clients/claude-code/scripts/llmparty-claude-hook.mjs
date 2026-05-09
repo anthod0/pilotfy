@@ -45,6 +45,16 @@ function stringValue(value) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function hasLlmpartyRuntimeIntent() {
+  return Boolean(
+    stringValue(env.LLMPARTY_RUNTIME_DIR) ||
+      stringValue(env.LLMPARTY_CURRENT_TURN_FILE) ||
+      stringValue(env.LLMPARTY_SESSION_ID) ||
+      stringValue(env.LLMPARTY_RUNTIME_INSTANCE_ID) ||
+      stringValue(env.LLMPARTY_INTERNAL_EVENT_URL),
+  );
+}
+
 async function loadSessionContext() {
   const sessionId = stringValue(env.LLMPARTY_SESSION_ID);
   const runtimeInstanceId = stringValue(env.LLMPARTY_RUNTIME_INSTANCE_ID);
@@ -54,6 +64,7 @@ async function loadSessionContext() {
   if (!runtimeInstanceId) errors.push("LLMPARTY_RUNTIME_INSTANCE_ID is required");
   if (!internalEventUrl) errors.push("LLMPARTY_INTERNAL_EVENT_URL is required");
   if (errors.length) {
+    if (!hasLlmpartyRuntimeIntent()) return undefined;
     await appendDiagnostic({ level: "error", code: "invalid_session_context", message: errors.join("; ") });
     return undefined;
   }
@@ -66,6 +77,7 @@ async function loadContext() {
   try {
     parsed = JSON.parse(await readFile(file, "utf8"));
   } catch (error) {
+    if (!hasLlmpartyRuntimeIntent()) return undefined;
     await appendDiagnostic({ level: "warn", code: "missing_current_turn_file", message: `current-turn file is missing, unreadable, or invalid: ${file}`, details: error instanceof Error ? error.message : String(error) });
     return undefined;
   }
