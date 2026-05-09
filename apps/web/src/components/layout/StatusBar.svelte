@@ -9,9 +9,9 @@
     <h1>llmparty Dashboard</h1>
     <p>Svelte + Vite agent control-plane validation panel</p>
   </div>
-  <label>
+  <label class="token-field">
     API token
-    <input type="password" bind:value={$token} placeholder="Bearer token" autocomplete="off" />
+    <input aria-label="External API token" type="password" bind:value={$token} placeholder="Bearer token" autocomplete="off" />
   </label>
   <div class="status-stack">
     <span class:error={$statusError}>{$statusMessage}</span>
