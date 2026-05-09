@@ -1,7 +1,3 @@
-# AGENTS.md
-
-Workspace instructions for coding agents working in `/home/cheny/projects/llmparty`.
-
 ## Project snapshot
 
 - `llmparty` is a Rust console/control plane for coding agents with a web dashboard and client integrations.
@@ -11,17 +7,27 @@ Workspace instructions for coding agents working in `/home/cheny/projects/llmpar
 
 ## Architecture rules
 
-- External state must come from the event store and projections. Do not treat tmux state, runtime logs, pi/Claude internals, or workspace files as authoritative External API state.
-- Dashboard and orchestrators should use `/external/v1/*` only. The Web UI must not read SQLite, runtime directories, workspace files, or `/internal/v1/*` directly.
+- External API state must come from the event store/projections. Do not treat tmux state, runtime logs, pi/Claude internals, or workspace files as authoritative.
+- Dashboard/orchestrators should use `/external/v1/*` only; Web UI must not read SQLite, runtime dirs, workspace files, or `/internal/v1/*` directly. SSE is only a realtime observation optimization, not a replacement for External API snapshots.
 - `/internal/v1/events` is for runtime / adapter / agent-client confirmed facts only.
 - Keep client-specific behavior inside adapter/runtime/client-plugin boundaries (`src/adapters/`, `src/runtime/`, `clients/*/`). Do not leak pi/Claude-specific fields into generic domain events or External API view models.
 - pi and Claude Code turn output/completion/failure must be reported by hooks through the Internal Event API. Do not parse TUI screen contents, runtime logs, or tmux process exit as turn completion facts.
 - Preserve idempotency behavior for mutating External API routes that accept `Idempotency-Key`.
+- Use the capability model to represent client differences. When a client cannot support an action or fact source, return an explicit unsupported/degraded result rather than fabricating success events.
 
-## Runtime rules
+## Domain model and data ownership
 
-- Runtimes are long-lived tmux sessions named like `llmparty_<sanitized_session_id>`.
-- Default runtime/data root is `~/.local/share/llmparty`; `LLMPARTY_DATA_DIR` can override it.
+- `Task`: user's global intent and primary Web UI object; may exist before workspace/session routing.
+- `Workspace`: execution context/cwd and artifact discovery scope, not llmparty's state storage location.
+- `Session`: long-running agent runtime bound to a workspace; one workspace may have multiple sessions.
+- `Turn`: one concrete execution submitted to a session; do not conflate with task.
+- Ownership: workspace `1 -> N` sessions, session `1 -> N` turns, task `1 -> 0/1` workspace/session/turn.
+- SQLite owns structured state/facts/projections. Filesystem owns large or process-local material such as artifacts, logs, specs, patches, reports, current-turn context, and diagnostics.
+- Graph storage, if enabled, stores planning/provenance refs only; do not mirror SQLite wholesale.
+- Artifact discovery must not implicitly change session/turn primary state.
+
+## Runtime diagnostics
+
 - Per-session diagnostics live under `runtimes/<session_id>/` and include runtime logs, adapter event logs, current-turn context, and hook logs.
 
 ## Common commands
@@ -46,5 +52,3 @@ Workspace instructions for coding agents working in `/home/cheny/projects/llmpar
 Notes:
 
 - Client plugin packages currently have `test` and `typecheck` scripts, not `build` scripts.
-- See `.env.example`, `README.md`, and package READMEs for detailed runtime configuration and local manual validation steps.
-- If enabling the optional Rust `lbug` feature in a fresh environment, run `scripts/download-ladybug-prebuilt.sh` first.
