@@ -12,6 +12,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::{
     adapters::ArtifactRegistration,
+    agent_clients,
     config::AppConfig,
     domain::{
         DomainEvent, EventSource, EventType, ProjectionState, SessionProjection, SessionState,
@@ -75,5 +76,5 @@ fn default_client_type() -> String {
 }
 
 fn is_supported_client_type(client_type: &str) -> bool {
-    matches!(client_type, "generic" | "pi" | "claude_code")
+    agent_clients::is_supported_client_type(client_type)
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent_clients::{DispatchMode, get_client_spec};
 
 #[derive(Clone)]
 pub struct TurnCommandService {
@@ -51,7 +52,12 @@ impl TurnCommandService {
             turn_id: turn_id.clone(),
             input: input.clone(),
         };
-        if session.client_type == "generic" {
+        let dispatch_mode = get_client_spec(&session.client_type)
+            .map(|spec| spec.dispatch_mode)
+            .ok_or_else(|| {
+                Error::Domain(format!("unsupported client_type: {}", session.client_type))
+            })?;
+        if dispatch_mode == DispatchMode::GenericTestAdapter {
             self.runtime.submit_input(agent_input.clone())?;
         }
 
@@ -82,7 +88,7 @@ impl TurnCommandService {
             ))
             .await?;
 
-        if matches!(session.client_type.as_str(), "pi" | "claude_code") {
+        if dispatch_mode == DispatchMode::TmuxPaste {
             match self.runtime_binding_metadata(session_id).await? {
                 Some((runtime_ref, binding_metadata)) => {
                     match write_client_current_turn_context(

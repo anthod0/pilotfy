@@ -1,4 +1,11 @@
 use super::*;
+use crate::agent_clients::{ReadinessMode, get_client_spec};
+
+fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
+    get_client_spec(client_type)
+        .map(|spec| spec.readiness_mode)
+        .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlCommandOutcome {
@@ -269,7 +276,7 @@ impl RuntimeControlService {
                 json!({}),
             ))
             .await?;
-        if session.client_type == "generic" {
+        if client_readiness_mode(&session.client_type)? == ReadinessMode::RuntimeManagerImmediate {
             ingest
                 .ingest_event(DomainEvent::new(
                     new_event_id().to_string(),

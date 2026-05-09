@@ -1,5 +1,6 @@
 use super::turns::write_client_current_turn_context;
 use super::*;
+use crate::agent_clients::{DispatchMode, ReadinessMode, get_client_spec};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct CreateSessionRequest {
@@ -22,6 +23,18 @@ pub struct InitialTaskRequest {
 pub struct CreateSessionOutcome {
     pub data: Value,
     pub duplicate: bool,
+}
+
+fn client_dispatch_mode(client_type: &str) -> Result<DispatchMode> {
+    get_client_spec(client_type)
+        .map(|spec| spec.dispatch_mode)
+        .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
+}
+
+fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
+    get_client_spec(client_type)
+        .map(|spec| spec.readiness_mode)
+        .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
 }
 
 #[derive(Clone)]
@@ -117,7 +130,7 @@ impl SessionCommandService {
                 json!({}),
             ))
             .await?;
-        if request.client_type == "generic" {
+        if client_readiness_mode(&request.client_type)? == ReadinessMode::RuntimeManagerImmediate {
             ingest
                 .ingest_event(DomainEvent::new(
                     new_event_id().to_string(),
@@ -158,7 +171,7 @@ impl SessionCommandService {
                     json!({}),
                 ))
                 .await?;
-            if matches!(request.client_type.as_str(), "pi" | "claude_code") {
+            if client_dispatch_mode(&request.client_type)? == DispatchMode::TmuxPaste {
                 self.wait_and_dispatch_initial_tui_turn(
                     &session_id,
                     &turn_id,

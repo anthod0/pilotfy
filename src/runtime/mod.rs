@@ -16,7 +16,8 @@ use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;
 
 use crate::{
-    adapters::{AdapterCapabilities, AgentEventSource, AgentInputSink, GenericTestAdapter},
+    adapters::{AdapterCapabilities, AgentInputSink, GenericTestAdapter},
+    agent_clients::{self, DispatchMode},
     application::SessionCapabilities,
     error::{Error, Result},
     ids::new_runtime_instance_id,
@@ -72,7 +73,11 @@ impl GenericRuntimeManager {
         request: RuntimeStartRequest,
         restart_count: i64,
     ) -> Result<RuntimeStartResult> {
-        let capabilities = capabilities_for_client(&request.client_type);
+        let client_spec =
+            agent_clients::get_client_spec(&request.client_type).ok_or_else(|| {
+                Error::Domain(format!("unsupported client_type: {}", request.client_type))
+            })?;
+        let capabilities = client_spec.capabilities.clone();
         let tmux_session = tmux_session_name(&request.session_id);
         let workspace = workspace_path(&request)?;
         let runtime_dir = runtime_dir(&request.session_id)?;
@@ -302,15 +307,6 @@ fn spawn_tmux_session(
     command()
 }
 
-fn capabilities_for_client(client_type: &str) -> AdapterCapabilities {
-    match client_type {
-        "generic" => GenericTestAdapter.capabilities(),
-        "pi" => AdapterCapabilities::pi_m0_default(),
-        "claude_code" => AdapterCapabilities::claude_code_default(),
-        _ => AdapterCapabilities::default(),
-    }
-}
-
 fn tmux_session_name(session_id: &str) -> String {
     let sanitized: String = session_id
         .chars()
@@ -365,24 +361,27 @@ fn write_runtime_script(
     request: &RuntimeStartRequest,
     runtime_instance_id: &str,
 ) -> Result<()> {
-    let (log_setup, runtime_body) = match request.client_type.as_str() {
-        "pi" => {
-            let pi_command =
-                std::env::var("LLMPARTY_PI_TUI_COMMAND").unwrap_or_else(|_| "pi".to_string());
+    let client_spec = agent_clients::get_client_spec(&request.client_type).ok_or_else(|| {
+        Error::Domain(format!("unsupported client_type: {}", request.client_type))
+    })?;
+    let (log_setup, runtime_body) = match client_spec.dispatch_mode {
+        DispatchMode::TmuxPaste => {
+            let default_command = client_spec.default_command.ok_or_else(|| {
+                Error::Domain(format!(
+                    "{} tmux runtime missing default command",
+                    request.client_type
+                ))
+            })?;
+            let command = client_spec
+                .command_env
+                .and_then(|env| std::env::var(env).ok())
+                .unwrap_or_else(|| default_command.to_string());
             (
                 "echo \"llmparty runtime started\" >> \"$LLMPARTY_RUNTIME_LOG\"".to_string(),
-                format!("exec sh -lc {}\n", shell_quote(&pi_command)),
+                format!("exec sh -lc {}\n", shell_quote(&command)),
             )
         }
-        "claude_code" => {
-            let claude_command = std::env::var("LLMPARTY_CLAUDE_TUI_COMMAND")
-                .unwrap_or_else(|_| "claude".to_string());
-            (
-                "echo \"llmparty runtime started\" >> \"$LLMPARTY_RUNTIME_LOG\"".to_string(),
-                format!("exec sh -lc {}\n", shell_quote(&claude_command)),
-            )
-        }
-        _ => (
+        DispatchMode::GenericTestAdapter | DispatchMode::None => (
             "exec >> \"$LLMPARTY_RUNTIME_LOG\" 2>&1\necho \"llmparty runtime started\"".to_string(),
             "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
         ),
