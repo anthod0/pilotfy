@@ -1,0 +1,135 @@
+{
+  "$schema": "./agent-tools.v1.schema.json",
+  "version": 1,
+  "namespace": "llmparty",
+  "description": "Stable llmparty agent tool definitions. This file is the cross-language source of truth for tool names, descriptions, input schemas, and output schemas.",
+  "tools": [
+    {
+      "name": "llmparty_create_session",
+      "title": "Create llmparty session",
+      "description": "Start a new llmparty agent session. Use this when work should continue in a separate long-running agent session.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "client_type": {
+            "type": "string",
+            "description": "Agent client type for the new session. Defaults to the current llmparty session client type when available."
+          },
+          "workspace": {
+            "type": "string",
+            "description": "Workspace path for the new session. Defaults to the current llmparty workspace when available."
+          },
+          "initial_message": {
+            "type": "string",
+            "description": "Optional first message to submit to the new session as its initial task."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional JSON metadata attached to the created session.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Identifier of the created llmparty session."
+          },
+          "session": {
+            "type": "object",
+            "description": "External API session view returned by llmparty."
+          },
+          "initial_turn": {
+            "type": ["object", "null"],
+            "description": "Initial turn view when initial_message was provided, otherwise null."
+          }
+        },
+        "required": ["session_id", "session"]
+      }
+    },
+    {
+      "name": "llmparty_send_message",
+      "title": "Send llmparty message",
+      "description": "Send a message to a llmparty session. Use this to delegate work to another session or continue work in an existing session.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Target llmparty session identifier."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message text to submit to the target session."
+          },
+          "delivery_policy": {
+            "type": "string",
+            "enum": ["after_idle", "interrupt_now"],
+            "default": "after_idle",
+            "description": "Delivery behavior. after_idle queues the message until the session is idle; interrupt_now requests interruption of the active turn before dispatching this message."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional JSON metadata attached to the inbox message and resulting turn.",
+            "additionalProperties": true
+          }
+        },
+        "required": ["session_id", "message"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "Identifier of the queued llmparty inbox message."
+          },
+          "inbox_message": {
+            "type": "object",
+            "description": "External API inbox message view returned by llmparty."
+          }
+        },
+        "required": ["message_id", "inbox_message"]
+      }
+    },
+    {
+      "name": "llmparty_exit_session",
+      "title": "Exit llmparty session",
+      "description": "Ask llmparty to terminate a session gracefully. Use this when the current agent session should stop running.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Session to terminate. Defaults to the current llmparty session. First-party clients should only allow the current session unless explicitly configured otherwise."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional human-readable reason for requesting session exit."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Identifier of the terminated llmparty session."
+          },
+          "session": {
+            "type": "object",
+            "description": "External API session view returned by llmparty after termination."
+          }
+        },
+        "required": ["session_id", "session"]
+      }
+    }
+  ]
+}
