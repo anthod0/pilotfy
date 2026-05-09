@@ -101,6 +101,28 @@ pub(crate) fn row_to_turn_view(row: sqlx::sqlite::SqliteRow) -> Result<TurnView>
     })
 }
 
+pub(crate) fn row_to_inbox_message_view(row: sqlx::sqlite::SqliteRow) -> Result<InboxMessageView> {
+    let metadata: String = row.try_get("metadata")?;
+
+    Ok(InboxMessageView {
+        message_id: row.try_get("message_id")?,
+        session_id: row.try_get("session_id")?,
+        state: row.try_get("state")?,
+        delivery_policy: row.try_get("delivery_policy")?,
+        input: InboxInputView {
+            summary: row.try_get("input_summary")?,
+        },
+        metadata: serde_json::from_str(&metadata)?,
+        turn_id: row.try_get("turn_id")?,
+        superseded_by_message_id: row.try_get("superseded_by_message_id")?,
+        failure_message: row.try_get("failure_message")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+        dispatched_at: row.try_get("dispatched_at")?,
+        cancelled_at: row.try_get("cancelled_at")?,
+    })
+}
+
 pub(crate) fn row_to_event_view(row: sqlx::sqlite::SqliteRow) -> Result<EventView> {
     let payload: String = row.try_get("payload")?;
 

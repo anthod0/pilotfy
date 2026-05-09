@@ -69,11 +69,58 @@ impl TurnCommandService {
             )));
         }
 
+        let turn = self
+            .create_and_dispatch_turn(session_id, request.input, request.metadata)
+            .await?;
+        let data = json!({ "turn": turn });
+
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response(&format!("submit_turn:{session_id}"), key, &data)
+                .await?;
+        }
+
+        Ok(SubmitTurnOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+
+    pub(crate) async fn create_and_dispatch_turn(
+        &self,
+        session_id: &str,
+        input: String,
+        metadata: Value,
+    ) -> Result<TurnView> {
+        let query = ExternalQueryService::new(self.pool.clone());
+        let session = query
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("session {session_id} not found")))?;
+
+        if !matches!(session.state.as_str(), "idle" | "interrupted") {
+            return Err(Error::StateConflict(format!(
+                "session {session_id} in state {} cannot accept a new turn",
+                session.state
+            )));
+        }
+
+        if let Some(active_turn_id) = &session.current_turn_id {
+            return Err(Error::StateConflict(format!(
+                "session {session_id} already has active turn {active_turn_id}"
+            )));
+        }
+
+        if !session.capabilities.accept_task {
+            return Err(Error::Domain(format!(
+                "session {session_id} runtime cannot accept tasks"
+            )));
+        }
+
         let turn_id = new_turn_id().to_string();
         let agent_input = AgentInput {
             session_id: session_id.to_string(),
             turn_id: turn_id.clone(),
-            input: request.input.clone(),
+            input: input.clone(),
         };
         if session.client_type == "generic" {
             self.runtime.submit_input(agent_input.clone())?;
@@ -89,8 +136,8 @@ impl TurnCommandService {
                 session.client_type.clone(),
                 EventType::TurnCreated,
                 json!({
-                    "input": { "summary": request.input },
-                    "metadata": request.metadata,
+                    "input": { "summary": input },
+                    "metadata": metadata,
                 }),
             ))
             .await?;
@@ -108,9 +155,9 @@ impl TurnCommandService {
 
         if matches!(session.client_type.as_str(), "pi" | "claude_code") {
             match self.runtime_binding_metadata(session_id).await? {
-                Some((runtime_ref, metadata)) => {
+                Some((runtime_ref, binding_metadata)) => {
                     match write_client_current_turn_context(
-                        &metadata,
+                        &binding_metadata,
                         &agent_input,
                         &session.client_type,
                     )
@@ -170,17 +217,7 @@ impl TurnCommandService {
             .await?
             .ok_or_else(|| Error::Domain("submitted turn missing".to_string()))?;
         query.enrich_turn_view(&mut turn).await?;
-        let data = json!({ "turn": turn });
-
-        if let Some(key) = idempotency_key {
-            self.store_idempotency_response(&format!("submit_turn:{session_id}"), key, &data)
-                .await?;
-        }
-
-        Ok(SubmitTurnOutcome {
-            data,
-            duplicate: false,
-        })
+        Ok(turn)
     }
 
     async fn idempotency_response(&self, operation: &str, key: &str) -> Result<Option<Value>> {

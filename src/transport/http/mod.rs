@@ -112,6 +112,18 @@ pub fn router(state: AppState) -> Router {
             get(external::list_turns).post(external::submit_turn),
         )
         .route(
+            "/external/v1/sessions/{session_id}/inbox/messages",
+            get(external::list_inbox_messages).post(external::submit_inbox_message),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/inbox/messages/{message_id}",
+            get(external::get_inbox_message),
+        )
+        .route(
+            "/external/v1/sessions/{session_id}/inbox/messages/{message_id}/cancel",
+            post(external::cancel_inbox_message),
+        )
+        .route(
             "/external/v1/sessions/{session_id}/turns/{turn_id}",
             get(external::get_turn),
         )

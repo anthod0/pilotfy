@@ -124,6 +124,17 @@ impl EventIngestService {
             .sync_task_from_turn_event(&event)
             .await?;
 
+        if matches!(
+            event.event_type,
+            EventType::TurnCompleted
+                | EventType::TurnFailed
+                | EventType::TurnInterrupted
+                | EventType::TurnCancelled
+        ) {
+            Box::pin(InboxCommandService::new(self.pool.clone()).drain_inbox(&event.session_id))
+                .await?;
+        }
+
         Ok(EventIngestResult {
             accepted: true,
             duplicate: false,

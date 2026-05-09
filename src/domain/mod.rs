@@ -183,6 +183,16 @@ pub enum EventType {
     TurnInterrupted,
     #[serde(rename = "turn.cancelled")]
     TurnCancelled,
+    #[serde(rename = "inbox.message_queued")]
+    InboxMessageQueued,
+    #[serde(rename = "inbox.message_dispatched")]
+    InboxMessageDispatched,
+    #[serde(rename = "inbox.message_cancelled")]
+    InboxMessageCancelled,
+    #[serde(rename = "inbox.message_superseded")]
+    InboxMessageSuperseded,
+    #[serde(rename = "inbox.message_failed")]
+    InboxMessageFailed,
 }
 
 impl EventType {
@@ -220,6 +230,11 @@ impl std::fmt::Display for EventType {
             Self::TurnInterruptRequested => "turn.interrupt_requested",
             Self::TurnInterrupted => "turn.interrupted",
             Self::TurnCancelled => "turn.cancelled",
+            Self::InboxMessageQueued => "inbox.message_queued",
+            Self::InboxMessageDispatched => "inbox.message_dispatched",
+            Self::InboxMessageCancelled => "inbox.message_cancelled",
+            Self::InboxMessageSuperseded => "inbox.message_superseded",
+            Self::InboxMessageFailed => "inbox.message_failed",
         })
     }
 }
@@ -244,6 +259,11 @@ impl std::str::FromStr for EventType {
             "turn.interrupt_requested" => Ok(Self::TurnInterruptRequested),
             "turn.interrupted" => Ok(Self::TurnInterrupted),
             "turn.cancelled" => Ok(Self::TurnCancelled),
+            "inbox.message_queued" => Ok(Self::InboxMessageQueued),
+            "inbox.message_dispatched" => Ok(Self::InboxMessageDispatched),
+            "inbox.message_cancelled" => Ok(Self::InboxMessageCancelled),
+            "inbox.message_superseded" => Ok(Self::InboxMessageSuperseded),
+            "inbox.message_failed" => Ok(Self::InboxMessageFailed),
             _ => Err(Error::Domain(format!("unknown event type: {value}"))),
         }
     }
@@ -395,6 +415,11 @@ impl ProjectionState {
             EventType::TurnFailed => self.apply_turn(event, TurnState::Failed),
             EventType::TurnInterrupted => self.apply_turn(event, TurnState::Interrupted),
             EventType::TurnCancelled => self.apply_turn(event, TurnState::Cancelled),
+            EventType::InboxMessageQueued
+            | EventType::InboxMessageDispatched
+            | EventType::InboxMessageCancelled
+            | EventType::InboxMessageSuperseded
+            | EventType::InboxMessageFailed => Ok(()),
         }
     }
 

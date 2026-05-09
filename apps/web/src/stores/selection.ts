@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import { startEventStream } from '../services/eventStream';
 import { loadArtifacts } from './artifacts';
 import { loadEvents, showCachedEvents } from './events';
+import { loadInboxMessages } from './inbox';
 import { refreshSession } from './sessionDetail';
 import { loadTurns } from './turns';
 
@@ -20,6 +21,7 @@ export async function selectSession(sessionId: string): Promise<void> {
       loadTurns(sessionId),
       loadEvents(sessionId),
       loadArtifacts(sessionId),
+      loadInboxMessages(sessionId),
     ]);
     startEventStream(sessionId);
   } catch (error) {

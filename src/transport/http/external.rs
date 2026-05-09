@@ -18,8 +18,9 @@ use crate::{
     application::{
         AppState, ArtifactContentService, ArtifactDiscoveryService, ConfirmTaskWorkspaceRequest,
         CreateSessionRequest, CreateTaskRequest, EventStreamScope, ExternalQueryService,
-        GraphProjectionService, RuntimeControlService, SessionCommandService,
-        SubmitPlannerInputRequest, SubmitTurnRequest, TaskCommandService, TurnCommandService,
+        GraphProjectionService, InboxCommandService, RuntimeControlService, SessionCommandService,
+        SubmitInboxMessageRequest, SubmitPlannerInputRequest, SubmitTurnRequest,
+        TaskCommandService, TurnCommandService,
     },
     error::Error,
 };
@@ -251,6 +252,66 @@ pub async fn submit_turn(
         StatusCode::CREATED
     };
     Ok((status, ok(outcome.data)).into_response())
+}
+
+pub async fn submit_inbox_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(request): Json<SubmitInboxMessageRequest>,
+) -> Result<Response, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let idempotency_key = headers
+        .get("Idempotency-Key")
+        .and_then(|value| value.to_str().ok());
+    let service = InboxCommandService::new(state.db);
+    let outcome = service
+        .submit_message(&session_id, request, idempotency_key)
+        .await?;
+    let status = if outcome.duplicate {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok((status, ok(outcome.data)).into_response())
+}
+
+pub async fn list_inbox_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let service = InboxCommandService::new(state.db);
+    let messages = service.list_messages(&session_id).await?;
+    Ok(ok(json!({ "inbox_messages": messages })))
+}
+
+pub async fn get_inbox_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((session_id, message_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let service = InboxCommandService::new(state.db);
+    let message = service
+        .get_message(&session_id, &message_id)
+        .await?
+        .ok_or_else(|| {
+            ExternalApiError::not_found(format!("inbox message {message_id} not found"))
+        })?;
+    Ok(ok(json!({ "inbox_message": message })))
+}
+
+pub async fn cancel_inbox_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((session_id, message_id)): Path<(String, String)>,
+) -> Result<Response, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let service = InboxCommandService::new(state.db);
+    let outcome = service.cancel_message(&session_id, &message_id).await?;
+    Ok((StatusCode::OK, ok(outcome.data)).into_response())
 }
 
 pub async fn interrupt_session(

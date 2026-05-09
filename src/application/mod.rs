@@ -18,7 +18,9 @@ use crate::{
         TurnProjection, TurnState,
     },
     error::{Error, Result},
-    ids::{new_event_id, new_session_id, new_task_id, new_turn_id, new_workspace_id},
+    ids::{
+        new_event_id, new_message_id, new_session_id, new_task_id, new_turn_id, new_workspace_id,
+    },
     runtime::{AgentInput, GenericRuntimeManager, RuntimeStartRequest, RuntimeStartResult},
     storage::sqlite::{connect_sqlite, run_migrations},
 };
@@ -26,6 +28,7 @@ use crate::{
 mod artifacts;
 mod events;
 mod graph;
+mod inbox;
 mod mapping;
 mod planner;
 mod queries;
@@ -45,6 +48,7 @@ pub use artifacts::{
 pub use events::{EventIngestResult, EventIngestService};
 pub(crate) use events::{nested_array_strings, nested_string, remove_internal_metadata_fields};
 pub use graph::{GraphProjectionService, GraphRuntimeConfig, TaskProvenance};
+pub use inbox::{InboxCommandOutcome, InboxCommandService, SubmitInboxMessageRequest};
 pub use planner::{
     FakeTaskPlanner, PiTaskPlanner, PlannerDecision, PlannerDecisionStatus, PlannerInput,
     PlannerRuntimeConfig, SubmitPlannerInputRequest, TaskPlannerService,

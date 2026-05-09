@@ -3,6 +3,7 @@ import { loadArtifacts } from '../stores/artifacts';
 import { selectedSessionId } from '../stores/selection';
 import { refreshSession } from '../stores/sessionDetail';
 import { loadSessions } from '../stores/sessions';
+import { loadInboxMessages } from '../stores/inbox';
 import { loadTurns } from '../stores/turns';
 
 type RefreshTask = () => Promise<void>;
@@ -44,6 +45,11 @@ export const refreshSelectedSession = coalesce(100, async () => {
 export const refreshTurns = coalesce(150, async () => {
   const id = get(selectedSessionId);
   if (id) await loadTurns(id);
+});
+
+export const refreshInboxMessages = coalesce(150, async () => {
+  const id = get(selectedSessionId);
+  if (id) await loadInboxMessages(id);
 });
 
 export const refreshSessionList = coalesce(250, loadSessions);

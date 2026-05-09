@@ -47,6 +47,10 @@ pub fn new_task_id() -> ExternalId {
     prefixed_id("task")
 }
 
+pub fn new_message_id() -> ExternalId {
+    prefixed_id("msg")
+}
+
 fn prefixed_id(prefix: &str) -> ExternalId {
     ExternalId(format!("{prefix}_{}", Uuid::now_v7()))
 }

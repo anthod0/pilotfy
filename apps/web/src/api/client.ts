@@ -10,7 +10,9 @@ import type {
   CreateSessionResult,
   CreateTaskInput,
   EventView,
+  InboxMessageView,
   SessionView,
+  SubmitInboxMessageInput,
   SubmitPlannerInput,
   SubmitTurnInput,
   TaskEventView,
@@ -113,6 +115,14 @@ export async function listTurns(sessionId: string): Promise<TurnView[]> {
 
 export async function submitTurn(sessionId: string, input: SubmitTurnInput): Promise<TurnView> {
   return (await request<{ turn: TurnView }>(`/sessions/${sessionId}/turns`, { method: 'POST', body: input, mutating: true })).turn;
+}
+
+export async function listInboxMessages(sessionId: string): Promise<InboxMessageView[]> {
+  return (await request<{ inbox_messages: InboxMessageView[] }>(`/sessions/${sessionId}/inbox/messages`)).inbox_messages;
+}
+
+export async function submitInboxMessage(sessionId: string, input: SubmitInboxMessageInput): Promise<InboxMessageView> {
+  return (await request<{ inbox_message: InboxMessageView }>(`/sessions/${sessionId}/inbox/messages`, { method: 'POST', body: input, mutating: true })).inbox_message;
 }
 
 export async function listEvents(sessionId: string): Promise<EventView[]> {

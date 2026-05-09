@@ -3,6 +3,8 @@ export type JsonObject = Record<string, unknown>;
 export type SessionState = 'created' | 'starting' | 'idle' | 'busy' | 'interrupted' | 'exited' | 'error';
 export type TaskState = 'created' | 'routing' | 'needs_confirmation' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type TurnState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
+export type InboxDeliveryPolicy = 'after_idle' | 'interrupt_now';
+export type InboxMessageState = 'pending' | 'dispatching' | 'dispatched' | 'cancelled' | 'superseded' | 'failed';
 
 export interface SessionCapabilities {
   accept_task?: boolean;
@@ -74,6 +76,22 @@ export interface TurnView {
   metadata: JsonObject;
 }
 
+export interface InboxMessageView {
+  message_id: string;
+  session_id: string;
+  state: InboxMessageState | string;
+  delivery_policy: InboxDeliveryPolicy | string;
+  input: { summary: string; [key: string]: unknown };
+  metadata: JsonObject;
+  turn_id: string | null;
+  superseded_by_message_id: string | null;
+  failure_message: string | null;
+  created_at: string;
+  updated_at: string;
+  dispatched_at: string | null;
+  cancelled_at: string | null;
+}
+
 export interface EventView {
   event_id: string;
   session_id: string;
@@ -127,6 +145,12 @@ export interface CreateSessionResult {
 
 export interface SubmitTurnInput {
   input: string;
+  metadata?: JsonObject;
+}
+
+export interface SubmitInboxMessageInput {
+  input: string;
+  delivery_policy?: InboxDeliveryPolicy;
   metadata?: JsonObject;
 }
 
