@@ -24,6 +24,14 @@
             "type": "string",
             "description": "Required session identity handle. Must match @[a-z][a-z0-9_-]{1,31}; unique within the workspace."
           },
+          "role": {
+            "type": "string",
+            "description": "Required role for this session, describing what responsibility the agent should take."
+          },
+          "description": {
+            "type": "string",
+            "description": "Required human-readable description of this session's purpose and expected work."
+          },
           "initial_message": {
             "type": "string",
             "description": "Optional first message to submit to the new session as its initial task."
@@ -34,7 +42,7 @@
             "additionalProperties": true
           }
         },
-        "required": ["handle"]
+        "required": ["handle", "role", "description"]
       },
       "outputSchema": {
         "type": "object",

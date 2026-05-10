@@ -63,7 +63,12 @@ describe("llmparty pi external API tools", () => {
       fetchImpl,
     );
 
-    const result = await tools[0].execute("call_1", { handle: "@worker", initial_message: "start work" });
+    const result = await tools[0].execute("call_1", {
+      handle: "@worker",
+      role: "implementation worker",
+      description: "Handles the implementation tasks for this feature.",
+      initial_message: "start work",
+    });
 
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://control/external/v1/sessions",
@@ -78,12 +83,38 @@ describe("llmparty pi external API tools", () => {
           client_type: "pi",
           workspace: "/workspace",
           handle: "@worker",
+          role: "implementation worker",
+          description: "Handles the implementation tasks for this feature.",
           initial_task: { input: "start work", metadata: {} },
           metadata: {},
         }),
       }),
     );
     expect(result.details).toMatchObject({ session_id: "sess_new" });
+  });
+
+  test("create session requires role and description before posting", async () => {
+    const fetchImpl = vi.fn() as any;
+    const { tools } = install(
+      {
+        LLMPARTY_EXTERNAL_API_URL: "http://control/external/v1",
+        LLMPARTY_EXTERNAL_API_TOKEN: "secret-token",
+      },
+      fetchImpl,
+    );
+
+    const missingRole = await tools[0].execute("call_missing_role", {
+      handle: "@worker",
+      description: "Handles the implementation tasks for this feature.",
+    });
+    const missingDescription = await tools[0].execute("call_missing_description", {
+      handle: "@worker",
+      role: "implementation worker",
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(missingRole.content[0].text).toContain("role is required");
+    expect(missingDescription.content[0].text).toContain("description is required");
   });
 
   test("send message posts inbox message and maps message to input", async () => {

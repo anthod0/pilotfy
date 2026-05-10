@@ -138,11 +138,17 @@ function createSessionTool(definition: SharedToolDefinition, env: EnvLike, fetch
 
         const initialMessage = optionalString(params.initial_message);
         const handle = optionalString(params.handle);
+        const role = optionalString(params.role);
+        const description = optionalString(params.description);
         if (!handle) return textResult(`${definition.name} failed: handle is required`, { ok: false });
+        if (!role) return textResult(`${definition.name} failed: role is required`, { ok: false });
+        if (!description) return textResult(`${definition.name} failed: description is required`, { ok: false });
         const body: Record<string, unknown> = {
           client_type: optionalString(params.client_type) ?? optionalString(env.LLMPARTY_CLIENT_TYPE) ?? "pi",
           workspace: optionalString(params.workspace) ?? optionalString(env.LLMPARTY_WORKSPACE),
           handle,
+          role,
+          description,
         };
         if (initialMessage) body.initial_task = { input: initialMessage, metadata: {} };
         body.metadata = dataRecord(params.metadata);
