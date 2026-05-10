@@ -18,6 +18,7 @@ export interface SessionCapabilities {
 export interface SessionView {
   session_id: string;
   client_type: string;
+  handle: string | null;
   state: SessionState | string;
   current_turn_id: string | null;
   workspace_id: string | null;
@@ -134,6 +135,7 @@ export interface SubmitPlannerInput {
 export interface CreateSessionInput {
   client_type: string;
   workspace?: string | null;
+  handle?: string | null;
   metadata?: JsonObject;
   initial_task?: { input: string; metadata?: JsonObject } | null;
 }

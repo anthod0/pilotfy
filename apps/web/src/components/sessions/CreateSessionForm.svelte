@@ -6,6 +6,7 @@
 
   let clientType = 'claude_code';
   let workspace = '.';
+  let handle = '';
   let initialTask = '';
   let creating = false;
 
@@ -15,10 +16,12 @@
       const result = await createSession({
         client_type: clientType,
         workspace,
+        handle: handle.trim() || null,
         initial_task: initialTask.trim() ? { input: initialTask.trim() } : null,
       });
       await loadSessions();
       await selectSession(result.session.session_id);
+      handle = '';
       initialTask = '';
       setStatus('Session created.');
     } catch (error) {
@@ -33,6 +36,7 @@
   <h2>Create session</h2>
   <label>Client type <select bind:value={clientType}><option value="claude_code">claude_code</option><option value="pi">pi</option></select></label>
   <label>Workspace <input bind:value={workspace} placeholder="/path/to/workspace" /></label>
+  <label>Handle <input bind:value={handle} placeholder="@reviewer" /></label>
   <label>Initial task <textarea bind:value={initialTask} placeholder="Optional initial task"></textarea></label>
   <button disabled={creating} on:click={submit}>{creating ? 'Creating...' : 'Create session'}</button>
 </section>

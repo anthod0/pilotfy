@@ -28,8 +28,8 @@
     <div class="list">
       {#each displaySessions as session (session.session_id)}
         <button class:active={session.session_id === $selectedSessionId} class="item" on:click={() => selectSession(session.session_id)}>
-          <strong>{session.session_id}</strong>
-          <span>{session.client_type} · {session.state}</span>
+          <strong>{session.handle ?? session.session_id}</strong>
+          <span>{session.client_type} · {session.state}{session.handle ? ` · ${session.session_id}` : ''}</span>
         </button>
       {/each}
     </div>

@@ -5,6 +5,7 @@ function session(session_id: string, state: string): SessionView {
   return {
     session_id,
     client_type: 'pi',
+    handle: null,
     state,
     current_turn_id: null,
     workspace_id: null,
