@@ -7,6 +7,7 @@ pub struct CreateSessionRequest {
     #[serde(default = "default_client_type")]
     pub client_type: String,
     pub workspace: Option<String>,
+    pub handle: Option<String>,
     #[serde(default)]
     pub metadata: Value,
     pub initial_task: Option<InitialTaskRequest>,
@@ -35,6 +36,36 @@ fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
     get_client_spec(client_type)
         .map(|spec| spec.readiness_mode)
         .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
+}
+
+fn validate_handle(handle: &str) -> Result<()> {
+    let mut chars = handle.chars();
+    if chars.next() != Some('@') {
+        return Err(invalid_handle(handle));
+    }
+    let Some(first) = chars.next() else {
+        return Err(invalid_handle(handle));
+    };
+    if !first.is_ascii_lowercase() {
+        return Err(invalid_handle(handle));
+    }
+    let remaining: Vec<char> = chars.collect();
+    if remaining.is_empty() || remaining.len() > 30 {
+        return Err(invalid_handle(handle));
+    }
+    if !remaining
+        .iter()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || *ch == '_' || *ch == '-')
+    {
+        return Err(invalid_handle(handle));
+    }
+    Ok(())
+}
+
+fn invalid_handle(handle: &str) -> Error {
+    Error::Domain(format!(
+        "Invalid session handle {handle}. Handle must match @[a-z][a-z0-9_-]{{1,31}}."
+    ))
 }
 
 #[derive(Clone)]
@@ -72,11 +103,27 @@ impl SessionCommandService {
             });
         }
 
+        let handle = request.handle.as_deref();
+        if let Some(handle) = handle {
+            validate_handle(handle)?;
+        }
+        if let Some(handle) = handle
+            && request.workspace.is_none()
+        {
+            return Err(Error::Domain(format!(
+                "Cannot create session with handle {handle} because workspace is required."
+            )));
+        }
+
         let workspace_record = if let Some(workspace) = request.workspace.as_deref() {
             Some(upsert_workspace(&self.pool, workspace).await?)
         } else {
             None
         };
+        if let (Some(workspace), Some(handle)) = (workspace_record.as_ref(), handle) {
+            self.ensure_handle_available(&workspace.workspace_id, handle)
+                .await?;
+        }
         let runtime_workspace = workspace_record
             .as_ref()
             .map(|workspace| workspace.canonical_path.clone());
@@ -94,6 +141,7 @@ impl SessionCommandService {
                 EventType::SessionCreated,
                 json!({
                     "workspace": runtime_workspace,
+                    "handle": request.handle,
                     "metadata": request.metadata,
                 }),
             ))
@@ -303,6 +351,27 @@ impl SessionCommandService {
         .bind(serde_json::to_string(response)?)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn ensure_handle_available(&self, workspace_id: &str, handle: &str) -> Result<()> {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT session_id FROM sessions WHERE workspace_id = ? AND handle = ? LIMIT 1",
+        )
+        .bind(workspace_id)
+        .bind(handle)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if existing.is_some() {
+            return Err(Error::Conflict {
+                code: "session_handle_conflict",
+                message: format!(
+                    "Cannot create session because {handle} is already used, please try a different handle."
+                ),
+            });
+        }
+
         Ok(())
     }
 

@@ -155,6 +155,7 @@ async fn create_session_emits_lifecycle_events_and_returns_idle_session_with_cap
     let _runtime_guard = TmuxSessionGuard::for_session(session_id);
     assert!(session_id.starts_with("sess_"));
     assert_eq!(session["client_type"], "generic");
+    assert_eq!(session["handle"], Value::Null);
     assert_eq!(session["state"], "idle");
     assert_eq!(session["workspace"], "/tmp/workspace");
     assert_eq!(session["metadata"]["purpose"], "m4");
@@ -190,6 +191,135 @@ async fn create_session_emits_lifecycle_events_and_returns_idle_session_with_cap
     assert_eq!(
         get_body["data"]["session"]["capabilities"]["accept_task"],
         true
+    );
+}
+
+#[tokio::test]
+async fn create_session_accepts_handle_and_exposes_it_on_session_views() {
+    let state = test_state().await;
+
+    let (status, body) = post_json(
+        state.clone(),
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "handle":"@reviewer"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    let session = &body["data"]["session"];
+    let session_id = session["session_id"].as_str().expect("session id");
+    let _runtime_guard = TmuxSessionGuard::for_session(session_id);
+    assert_eq!(session["handle"], "@reviewer");
+
+    let (get_status, get_body) = get(
+        state.clone(),
+        &format!("/external/v1/sessions/{session_id}"),
+    )
+    .await;
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(get_body["data"]["session"]["handle"], "@reviewer");
+
+    let (list_status, list_body) = get(state, "/external/v1/sessions").await;
+    assert_eq!(list_status, StatusCode::OK);
+    assert_eq!(list_body["data"]["sessions"][0]["handle"], "@reviewer");
+}
+
+#[tokio::test]
+async fn create_session_rejects_duplicate_handle_in_same_workspace_with_agent_friendly_error() {
+    let state = test_state().await;
+
+    let first = post_json(
+        state.clone(),
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "handle":"@reviewer"
+        }),
+    )
+    .await;
+    assert_eq!(first.0, StatusCode::CREATED);
+    let first_session_id = first.1["data"]["session"]["session_id"].as_str().unwrap();
+    let _runtime_guard = TmuxSessionGuard::for_session(first_session_id);
+
+    let duplicate = post_json(
+        state,
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "handle":"@reviewer"
+        }),
+    )
+    .await;
+
+    assert_eq!(duplicate.0, StatusCode::CONFLICT);
+    assert_eq!(duplicate.1["data"], Value::Null);
+    assert_eq!(duplicate.1["error"]["code"], "session_handle_conflict");
+    assert_eq!(
+        duplicate.1["error"]["message"],
+        "Cannot create session because @reviewer is already used, please try a different handle."
+    );
+}
+
+#[tokio::test]
+async fn create_session_rejects_handle_without_workspace() {
+    let state = test_state().await;
+
+    let (status, body) = post_json(
+        state,
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "handle":"@reviewer"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["data"], Value::Null);
+    assert_eq!(body["error"]["code"], "invalid_request");
+    assert_eq!(
+        body["error"]["message"],
+        "Cannot create session with handle @reviewer because workspace is required."
+    );
+}
+
+#[tokio::test]
+async fn create_session_rejects_invalid_handle_format() {
+    let state = test_state().await;
+
+    let (status, body) = post_json(
+        state,
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "handle":"reviewer"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["data"], Value::Null);
+    assert_eq!(body["error"]["code"], "invalid_request");
+    assert_eq!(
+        body["error"]["message"],
+        "Invalid session handle reviewer. Handle must match @[a-z][a-z0-9_-]{1,31}."
     );
 }
 

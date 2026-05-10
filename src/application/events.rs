@@ -76,10 +76,11 @@ impl EventIngestService {
             let metadata = serde_json::to_string(&session.metadata)?;
             sqlx::query(
                 r#"INSERT INTO sessions
-                   (session_id, client_type, state, current_turn_id, state_version, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                   (session_id, client_type, handle, state, current_turn_id, state_version, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(session_id) DO UPDATE SET
                        client_type = excluded.client_type,
+                       handle = excluded.handle,
                        state = excluded.state,
                        current_turn_id = excluded.current_turn_id,
                        state_version = excluded.state_version,
@@ -88,6 +89,7 @@ impl EventIngestService {
             )
             .bind(&session.session_id)
             .bind(&session.client_type)
+            .bind(&session.handle)
             .bind(session.state.to_string())
             .bind(&session.current_turn_id)
             .bind(state_version)
@@ -242,7 +244,7 @@ impl EventIngestService {
 
     async fn load_session_projection(&self, session_id: &str) -> Result<Vec<SessionProjection>> {
         let rows = sqlx::query(
-            "SELECT session_id, client_type, state, current_turn_id, state_version, metadata FROM sessions WHERE session_id = ?",
+            "SELECT session_id, client_type, handle, state, current_turn_id, state_version, metadata FROM sessions WHERE session_id = ?",
         )
         .bind(session_id)
         .fetch_all(&self.pool)

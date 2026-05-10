@@ -780,6 +780,7 @@ impl TaskCommandService {
                     CreateSessionRequest {
                         client_type: client_type.to_string(),
                         workspace: Some(workspace_record.canonical_path.clone()),
+                        handle: None,
                         metadata: json!({"created_for_task_id": task_id}),
                         initial_task: None,
                     },

@@ -116,6 +116,11 @@ impl From<Error> for ExternalApiError {
     fn from(error: Error) -> Self {
         match error {
             Error::StateConflict(message) => Self::state_conflict(message),
+            Error::Conflict { code, message } => Self {
+                status: StatusCode::CONFLICT,
+                code,
+                message,
+            },
             Error::CapabilityUnavailable(message) => Self::capability_unavailable(message),
             Error::NotFound(message) => Self::not_found(message),
             Error::Domain(message) => Self {

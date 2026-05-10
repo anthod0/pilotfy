@@ -310,6 +310,7 @@ impl DomainEvent {
 pub struct SessionProjection {
     pub session_id: String,
     pub client_type: String,
+    pub handle: Option<String>,
     pub state: SessionState,
     pub current_turn_id: Option<String>,
     pub state_version: i64,
@@ -434,6 +435,7 @@ impl ProjectionState {
             .or_insert_with(|| SessionProjection {
                 session_id: event.session_id.clone(),
                 client_type: event.client_type.clone(),
+                handle: None,
                 state: SessionState::Created,
                 current_turn_id: None,
                 state_version: 0,
@@ -441,10 +443,15 @@ impl ProjectionState {
             });
 
         session.state = state;
-        if event.event_type == EventType::SessionCreated
-            && let Some(metadata) = event.payload.get("metadata")
-        {
-            session.metadata = metadata.clone();
+        if event.event_type == EventType::SessionCreated {
+            session.handle = event
+                .payload
+                .get("handle")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+            if let Some(metadata) = event.payload.get("metadata") {
+                session.metadata = metadata.clone();
+            }
         }
         if state.is_terminal() {
             session.current_turn_id = None;
@@ -502,6 +509,7 @@ impl ProjectionState {
             .or_insert_with(|| SessionProjection {
                 session_id: event.session_id.clone(),
                 client_type: event.client_type.clone(),
+                handle: None,
                 state: SessionState::Created,
                 current_turn_id: None,
                 state_version: 0,
