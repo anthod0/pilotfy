@@ -1,15 +1,19 @@
 # llmparty
 
-`llmparty` is a console and control plane for coding agents. It lets you start and manage agent sessions, submit tasks to agents, inspect execution progress, results, and artifacts, and interrupt, restart, or terminate sessions when needed.
+`llmparty` is an external control system for coding agents. It keeps agent sessions, turns, events, and artifacts outside the agent process, so long-running work can be observed, controlled, interrupted, and resumed.
 
-It is designed for scenarios such as:
+It is built for multi-client agent control, Web Dashboard operation, automation via HTTP APIs, and future DAG-based long-term task orchestration.
 
-- Operating local or remote coding agents from a browser
-- Integrating agents into scripts, automation workflows, or higher-level orchestrators via an HTTP API
-- Managing different agent clients with a shared session / turn / event / artifact model
-- Keeping agent runtimes alive for long-running work via `tmux`, instead of starting a temporary process for every task
+## Milestones
 
-Currently supported clients are the `generic` test client, the `pi` client, and the `claude_code` client.
+`llmparty` is being built in public. The current work focuses on the control plane foundation, then gradually moves toward long-running autonomous task execution.
+
+- **Control Plane Foundation**: maintain authoritative session / turn / event / artifact state outside the agent process, with HTTP APIs for external control.
+- **Multi-client Agent Control**: support different coding agent clients such as pi, Claude Code, and future runtimes through one shared model.
+- **Web Dashboard Operation**: provide a browser interface to create sessions, submit work, inspect progress, review outputs, browse artifacts, and intervene when needed.
+- **Operational Readiness**: improve deployment, diagnostics, API documentation, logging, metrics, CI, and compatibility checks.
+- **DAG-based Long-term Planning**: represent larger goals as task graphs with dependencies, checkpoints, retries, and agent assignments.
+- **Autonomous Agent Orchestration**: let the external control system decide what should run next, which agent should handle it, when to pause or retry, and how completed work feeds into later tasks.
 
 ## Feature Overview
 
