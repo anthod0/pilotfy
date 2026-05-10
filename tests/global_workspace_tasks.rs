@@ -49,6 +49,7 @@ async fn test_state_with_planner(planner_enabled: bool) -> AppState {
             compatibility_direct_dispatch: false,
         },
         graph: Default::default(),
+        workspace_browser: Default::default(),
     }
 }
 

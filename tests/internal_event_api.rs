@@ -24,6 +24,7 @@ async fn test_state() -> AppState {
         external_api_token: None,
         planner: Default::default(),
         graph: Default::default(),
+        workspace_browser: Default::default(),
     }
 }
 

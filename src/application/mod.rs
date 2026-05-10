@@ -67,9 +67,14 @@ pub use tasks::{
 };
 pub use turns::TurnCommandService;
 pub use views::*;
+pub use workspaces::{
+    RegisterWorkspaceRequest, WorkspaceBrowserConfig, WorkspaceBrowserService,
+    WorkspaceDirectoryEntryView, WorkspaceDirectoryListingView, WorkspaceRootConfig,
+    WorkspaceRootView,
+};
 
 pub(crate) use mapping::*;
-pub(crate) use workspaces::*;
+pub(crate) use workspaces::{WorkspaceRecord, get_workspace_record, upsert_workspace};
 
 fn default_client_type() -> String {
     "generic".to_string()

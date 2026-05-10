@@ -11,12 +11,15 @@ import type {
   CreateTaskInput,
   EventView,
   InboxMessageView,
+  RegisterWorkspaceInput,
   SessionView,
   SubmitInboxMessageInput,
   SubmitPlannerInput,
   TaskEventView,
   TaskView,
   TurnView,
+  WorkspaceDirectoryListingView,
+  WorkspaceRootView,
   WorkspaceView,
 } from './types';
 
@@ -66,6 +69,23 @@ export async function listSessions(): Promise<SessionView[]> {
 
 export async function listWorkspaces(): Promise<WorkspaceView[]> {
   return (await request<{ workspaces: WorkspaceView[] }>('/workspaces')).workspaces;
+}
+
+export async function getWorkspace(workspaceId: string): Promise<WorkspaceView> {
+  return (await request<{ workspace: WorkspaceView }>(`/workspaces/${workspaceId}`)).workspace;
+}
+
+export async function registerWorkspace(input: RegisterWorkspaceInput): Promise<WorkspaceView> {
+  return (await request<{ workspace: WorkspaceView }>('/workspaces', { method: 'POST', body: input, mutating: true })).workspace;
+}
+
+export async function listWorkspaceRoots(): Promise<WorkspaceRootView[]> {
+  return (await request<{ roots: WorkspaceRootView[] }>('/workspace-roots')).roots;
+}
+
+export async function listWorkspaceRootEntries(rootId: string, path = ''): Promise<WorkspaceDirectoryListingView> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : '';
+  return request<WorkspaceDirectoryListingView>(`/workspace-roots/${encodeURIComponent(rootId)}/entries${query}`);
 }
 
 export async function listTasks(): Promise<TaskView[]> {

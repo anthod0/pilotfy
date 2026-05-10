@@ -41,6 +41,35 @@ export interface WorkspaceView {
   last_used_at: string | null;
 }
 
+export interface WorkspaceRootView {
+  root_id: string;
+  label: string;
+  canonical_path: string | null;
+  state: string;
+}
+
+export interface WorkspaceDirectoryEntryView {
+  name: string;
+  path: string;
+  kind: 'directory' | string;
+  is_workspace: boolean;
+}
+
+export interface WorkspaceDirectoryListingView {
+  root_id: string;
+  path: string;
+  canonical_path: string;
+  parent_path: string | null;
+  entries: WorkspaceDirectoryEntryView[];
+  warnings: string[];
+}
+
+export interface RegisterWorkspaceInput {
+  root_id: string;
+  path: string;
+  name?: string | null;
+}
+
 export interface TaskView {
   task_id: string;
   state: TaskState | string;
@@ -135,6 +164,7 @@ export interface SubmitPlannerInput {
 export interface CreateSessionInput {
   client_type: string;
   workspace?: string | null;
+  workspace_id?: string | null;
   handle?: string | null;
   metadata?: JsonObject;
   initial_task?: { input: string; metadata?: JsonObject } | null;

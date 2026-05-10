@@ -7,6 +7,7 @@ pub struct CreateSessionRequest {
     #[serde(default = "default_client_type")]
     pub client_type: String,
     pub workspace: Option<String>,
+    pub workspace_id: Option<String>,
     pub handle: Option<String>,
     #[serde(default)]
     pub metadata: Value,
@@ -107,15 +108,29 @@ impl SessionCommandService {
         if let Some(handle) = handle {
             validate_handle(handle)?;
         }
+        if request.workspace.is_some() && request.workspace_id.is_some() {
+            return Err(Error::Domain(
+                "workspace and workspace_id cannot both be provided".to_string(),
+            ));
+        }
         if let Some(handle) = handle
             && request.workspace.is_none()
+            && request.workspace_id.is_none()
         {
             return Err(Error::Domain(format!(
                 "Cannot create session with handle {handle} because workspace is required."
             )));
         }
 
-        let workspace_record = if let Some(workspace) = request.workspace.as_deref() {
+        let workspace_record = if let Some(workspace_id) = request.workspace_id.as_deref() {
+            Some(
+                get_workspace_record(&self.pool, workspace_id)
+                    .await?
+                    .ok_or_else(|| {
+                        Error::NotFound(format!("workspace {workspace_id} not found"))
+                    })?,
+            )
+        } else if let Some(workspace) = request.workspace.as_deref() {
             Some(upsert_workspace(&self.pool, workspace).await?)
         } else {
             None

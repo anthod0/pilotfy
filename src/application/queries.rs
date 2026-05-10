@@ -65,6 +65,19 @@ impl ExternalQueryService {
         rows.into_iter().map(row_to_workspace_view).collect()
     }
 
+    pub async fn get_workspace(&self, workspace_id: &str) -> Result<Option<WorkspaceView>> {
+        let row = sqlx::query(
+            r#"SELECT workspace_id, canonical_path, display_path, name, state, metadata,
+                      created_at, updated_at, last_used_at
+               FROM workspaces WHERE workspace_id = ?"#,
+        )
+        .bind(workspace_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        row.map(row_to_workspace_view).transpose()
+    }
+
     pub async fn list_tasks(&self) -> Result<Vec<TaskView>> {
         let rows = sqlx::query(
             r#"SELECT task_id, state, input, workspace_id, session_id, turn_id,

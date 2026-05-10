@@ -36,6 +36,10 @@ fn loads_config_from_key_value_source() {
             "LLMPARTY_GRAPH_DB_DIR".to_string(),
             "/tmp/llmparty-graph".to_string(),
         ),
+        (
+            "LLMPARTY_WORKSPACE_ROOTS".to_string(),
+            "projects|Projects|/home/me/projects;tmp|Temporary|/tmp".to_string(),
+        ),
     ]);
 
     let config = AppConfig::from_vars(&vars).expect("config should load");
@@ -50,6 +54,10 @@ fn loads_config_from_key_value_source() {
     assert!(config.planner.compatibility_direct_dispatch);
     assert!(config.graph.enabled);
     assert_eq!(config.graph.db_dir.as_deref(), Some("/tmp/llmparty-graph"));
+    assert_eq!(config.workspace_browser.roots.len(), 2);
+    assert_eq!(config.workspace_browser.roots[0].root_id, "projects");
+    assert_eq!(config.workspace_browser.roots[0].label, "Projects");
+    assert_eq!(config.workspace_browser.roots[0].path, "/home/me/projects");
 }
 
 #[test]
@@ -88,4 +96,5 @@ fn provides_development_defaults_for_optional_values() {
     assert!(!config.planner.compatibility_direct_dispatch);
     assert!(!config.graph.enabled);
     assert_eq!(config.graph.db_dir, None);
+    assert!(config.workspace_browser.roots.is_empty());
 }

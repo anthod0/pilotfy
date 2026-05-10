@@ -1,7 +1,9 @@
 use std::{collections::HashMap, env, net::SocketAddr};
 
 use crate::{
-    application::{GraphRuntimeConfig, PlannerRuntimeConfig},
+    application::{
+        GraphRuntimeConfig, PlannerRuntimeConfig, WorkspaceBrowserConfig, WorkspaceRootConfig,
+    },
     error::{Error, Result},
 };
 
@@ -16,6 +18,7 @@ pub struct AppConfig {
     pub run_migrations: bool,
     pub planner: PlannerRuntimeConfig,
     pub graph: GraphRuntimeConfig,
+    pub workspace_browser: WorkspaceBrowserConfig,
 }
 
 impl AppConfig {
@@ -83,6 +86,10 @@ impl AppConfig {
                 .or_else(|| graph_enabled.then(|| default_graph_db_dir(&database_url))),
         };
 
+        let workspace_browser = WorkspaceBrowserConfig {
+            roots: parse_workspace_roots(get(vars, "LLMPARTY_WORKSPACE_ROOTS").unwrap_or(""))?,
+        };
+
         Ok(Self {
             bind_addr,
             database_url,
@@ -90,6 +97,7 @@ impl AppConfig {
             run_migrations,
             planner,
             graph,
+            workspace_browser,
         })
     }
 }
@@ -107,6 +115,43 @@ fn default_graph_db_dir(database_url: &str) -> String {
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
     parent.join("graph").join("lbug").display().to_string()
+}
+
+fn parse_workspace_roots(value: &str) -> Result<Vec<WorkspaceRootConfig>> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    trimmed
+        .split(';')
+        .filter(|entry| !entry.trim().is_empty())
+        .map(|entry| {
+            let parts = entry.split('|').collect::<Vec<_>>();
+            if parts.len() != 3 {
+                return Err(Error::InvalidConfig {
+                    key: "LLMPARTY_WORKSPACE_ROOTS",
+                    message:
+                        "expected entries formatted as root_id|label|path separated by semicolons"
+                            .to_string(),
+                });
+            }
+            let root_id = parts[0].trim();
+            let label = parts[1].trim();
+            let path = parts[2].trim();
+            if root_id.is_empty() || label.is_empty() || path.is_empty() {
+                return Err(Error::InvalidConfig {
+                    key: "LLMPARTY_WORKSPACE_ROOTS",
+                    message: "root_id, label, and path must be non-empty".to_string(),
+                });
+            }
+            Ok(WorkspaceRootConfig {
+                root_id: root_id.to_string(),
+                label: label.to_string(),
+                path: path.to_string(),
+            })
+        })
+        .collect()
 }
 
 fn parse_bool(key: &'static str, value: &str) -> Result<bool> {

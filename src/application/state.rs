@@ -6,6 +6,7 @@ pub struct AppState {
     pub external_api_token: Option<String>,
     pub planner: PlannerRuntimeConfig,
     pub graph: GraphRuntimeConfig,
+    pub workspace_browser: WorkspaceBrowserConfig,
 }
 
 pub async fn initialize(config: &AppConfig) -> Result<AppState> {
@@ -20,5 +21,6 @@ pub async fn initialize(config: &AppConfig) -> Result<AppState> {
         external_api_token: config.external_api_token.clone(),
         planner: config.planner.clone(),
         graph: config.graph.clone(),
+        workspace_browser: config.workspace_browser.clone(),
     })
 }

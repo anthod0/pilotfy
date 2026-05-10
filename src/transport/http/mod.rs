@@ -65,7 +65,22 @@ pub fn router(state: AppState) -> Router {
             "/external/v1/sessions",
             get(external::list_sessions).post(external::create_session),
         )
-        .route("/external/v1/workspaces", get(external::list_workspaces))
+        .route(
+            "/external/v1/workspaces",
+            get(external::list_workspaces).post(external::register_workspace),
+        )
+        .route(
+            "/external/v1/workspaces/{workspace_id}",
+            get(external::get_workspace),
+        )
+        .route(
+            "/external/v1/workspace-roots",
+            get(external::list_workspace_roots),
+        )
+        .route(
+            "/external/v1/workspace-roots/{root_id}/entries",
+            get(external::list_workspace_root_entries),
+        )
         .route(
             "/external/v1/tasks",
             get(external::list_tasks).post(external::create_task),

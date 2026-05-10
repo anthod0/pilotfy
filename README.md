@@ -140,6 +140,29 @@ All external APIs are under `/external/v1/*` and require a Bearer token.
 
 The examples below assume the service is running at `127.0.0.1:8080` with token `dev-token`.
 
+### Workspace browser roots
+
+Restricted workspace browsing is configured with `LLMPARTY_WORKSPACE_ROOTS`:
+
+```bash
+export LLMPARTY_WORKSPACE_ROOTS='projects|Projects|/home/me/projects;tmp|Temporary|/tmp'
+```
+
+Each entry is `root_id|label|path`. `root_id` is only a configuration/API handle; it is not stored in the workspace database.
+
+```bash
+curl http://127.0.0.1:8080/external/v1/workspace-roots \
+  -H 'Authorization: Bearer dev-token'
+
+curl 'http://127.0.0.1:8080/external/v1/workspace-roots/projects/entries?path=llmparty' \
+  -H 'Authorization: Bearer dev-token'
+
+curl -X POST http://127.0.0.1:8080/external/v1/workspaces \
+  -H 'Authorization: Bearer dev-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"root_id":"projects","path":"llmparty","name":"llmparty"}'
+```
+
 ### Create a session
 
 ```bash
@@ -152,6 +175,12 @@ curl -X POST http://127.0.0.1:8080/external/v1/sessions \
     "workspace":"/tmp/llmparty-demo",
     "initial_task":{"input":"Please introduce the current project"}
   }'
+```
+
+Web UI callers can use a previously registered workspace ID instead of a raw path:
+
+```json
+{"client_type":"claude_code","workspace_id":"wks_example"}
 ```
 
 ### List sessions

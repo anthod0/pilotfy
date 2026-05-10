@@ -54,16 +54,6 @@ pub async fn get_session(
     Ok(ok(json!({ "session": session })))
 }
 
-pub async fn list_workspaces(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
-    authenticate(&state, &headers)?;
-    let service = ExternalQueryService::new(state.db);
-    let workspaces = service.list_workspaces().await?;
-    Ok(ok(json!({ "workspaces": workspaces })))
-}
-
 pub async fn interrupt_session(
     State(state): State<AppState>,
     headers: HeaderMap,
