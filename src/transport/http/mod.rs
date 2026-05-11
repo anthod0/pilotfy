@@ -111,6 +111,26 @@ pub fn router(state: AppState) -> Router {
             get(external::list_task_events),
         )
         .route(
+            "/external/v1/tasks/{task_id}/dag",
+            get(external::get_task_dag),
+        )
+        .route(
+            "/external/v1/tasks/{task_id}/work-items",
+            get(external::list_task_work_items),
+        )
+        .route(
+            "/external/v1/tasks/{task_id}/work-item-runs",
+            get(external::list_task_work_item_runs),
+        )
+        .route(
+            "/external/v1/tasks/{task_id}/signals",
+            get(external::list_task_signals),
+        )
+        .route(
+            "/external/v1/tasks/{task_id}/scheduler/tick",
+            post(external::scheduler_tick),
+        )
+        .route(
             "/external/v1/tasks/{task_id}/provenance",
             get(external::get_task_provenance),
         )

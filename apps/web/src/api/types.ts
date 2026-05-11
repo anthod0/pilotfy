@@ -118,6 +118,107 @@ export interface TaskEventView {
   created_at: string;
 }
 
+export interface WorkItemRuntimeView {
+  current_run_id: string | null;
+  current_state: string;
+  current_attempt: number;
+  ready_at: string | null;
+  blocked_reason: string | null;
+  retry_count: number;
+  max_retries: number;
+  priority: number;
+  optional: boolean;
+  parallelizable: boolean;
+  session_id: string | null;
+  turn_id: string | null;
+  updated_at: string;
+}
+
+export interface WorkItemView {
+  work_item_id: string;
+  task_id: string;
+  title: string;
+  description: string;
+  kind: string;
+  action: string;
+  execution_profile_id: string;
+  execution_profile_version: string | null;
+  active: boolean;
+  priority: number;
+  optional: boolean;
+  parallelizable: boolean;
+  acceptance_criteria: unknown;
+  metadata: JsonObject;
+  created_at: string;
+  updated_at: string;
+  runtime: WorkItemRuntimeView | null;
+}
+
+export interface WorkItemEdgeView {
+  edge_id: string;
+  task_id: string;
+  from_work_item_id: string;
+  to_work_item_id: string;
+  edge_type: string;
+  created_at: string;
+}
+
+export interface WorkItemRunView {
+  run_id: string;
+  work_item_id: string;
+  task_id: string;
+  attempt: number;
+  state: string;
+  session_id: string | null;
+  turn_id: string | null;
+  client_type: string | null;
+  execution_profile_id: string;
+  execution_profile_version: string | null;
+  rendered_prompt_ref: string | null;
+  output_summary: string | null;
+  failure: unknown | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface DagSignalView {
+  signal_id: string;
+  task_id: string;
+  work_item_id: string | null;
+  run_id: string | null;
+  source_session_id: string | null;
+  kind: string;
+  summary: string;
+  detail: string | null;
+  severity: string;
+  related_refs: unknown;
+  state: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DagSummaryView {
+  total_work_items: number;
+  ready_work_items: number;
+  running_work_items: number;
+  completed_work_items: number;
+  blocked_work_items: number;
+  failed_work_items: number;
+  open_signals: number;
+  total_runs: number;
+}
+
+export interface TaskDagView {
+  task_id: string;
+  summary: DagSummaryView;
+  work_items: WorkItemView[];
+  edges: WorkItemEdgeView[];
+  runs: WorkItemRunView[];
+  signals: DagSignalView[];
+}
+
 export interface TurnView {
   turn_id: string;
   session_id: string;

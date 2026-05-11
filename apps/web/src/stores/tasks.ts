@@ -4,6 +4,7 @@ import {
   confirmTaskWorkspace as apiConfirmTaskWorkspace,
   createTask as apiCreateTask,
   getTask,
+  getTaskDag,
   interruptTask as apiInterruptTask,
   listTaskEvents,
   listTasks,
@@ -13,6 +14,7 @@ import type {
   ConfirmTaskWorkspaceInput,
   CreateTaskInput,
   SubmitPlannerInput,
+  TaskDagView,
   TaskEventView,
   TaskView,
 } from '../api/types';
@@ -24,6 +26,7 @@ export const tasksError = writable<string | null>(null);
 export const selectedTaskId = writable<string | null>(null);
 export const task = writable<TaskView | null>(null);
 export const taskEvents = writable<TaskEventView[]>([]);
+export const taskDag = writable<TaskDagView | null>(null);
 export const taskLoading = writable(false);
 export const taskError = writable<string | null>(null);
 
@@ -48,10 +51,12 @@ export async function refreshTask(taskId: string): Promise<void> {
   taskLoading.set(true);
   taskError.set(null);
   try {
-    const [taskView, events] = await Promise.all([getTask(taskId), listTaskEvents(taskId)]);
+    const [taskView, events, dag] = await Promise.all([getTask(taskId), listTaskEvents(taskId), getTaskDag(taskId)]);
     task.set(taskView);
     taskEvents.set(events);
+    taskDag.set(dag);
   } catch (error) {
+    taskDag.set(null);
     taskError.set(error instanceof Error ? error.message : String(error));
   } finally {
     taskLoading.set(false);
@@ -63,7 +68,9 @@ export async function createTask(input: CreateTaskInput): Promise<TaskView> {
   await loadTasks();
   selectedTaskId.set(created.task_id);
   task.set(created);
-  taskEvents.set(await listTaskEvents(created.task_id));
+  const [events, dag] = await Promise.all([listTaskEvents(created.task_id), getTaskDag(created.task_id)]);
+  taskEvents.set(events);
+  taskDag.set(dag);
   return created;
 }
 

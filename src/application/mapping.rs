@@ -69,6 +69,112 @@ pub(crate) fn row_to_task_event_view(row: sqlx::sqlite::SqliteRow) -> Result<Tas
     })
 }
 
+pub(crate) fn row_to_work_item_with_runtime_view(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<WorkItemWithRuntimeView> {
+    let acceptance_criteria: String = row.try_get("acceptance_criteria")?;
+    let metadata: String = row.try_get("metadata")?;
+    let current_state: Option<String> = row.try_get("current_state")?;
+    let runtime = current_state
+        .map(|current_state| -> Result<WorkItemRuntimeView> {
+            Ok(WorkItemRuntimeView {
+                current_run_id: row.try_get("current_run_id")?,
+                current_state,
+                current_attempt: row.try_get("current_attempt")?,
+                ready_at: row.try_get("ready_at")?,
+                blocked_reason: row.try_get("blocked_reason")?,
+                retry_count: row.try_get("retry_count")?,
+                max_retries: row.try_get("max_retries")?,
+                priority: row.try_get("runtime_priority")?,
+                optional: row.try_get("runtime_optional")?,
+                parallelizable: row.try_get("runtime_parallelizable")?,
+                session_id: row.try_get("session_id")?,
+                turn_id: row.try_get("turn_id")?,
+                updated_at: row.try_get("runtime_updated_at")?,
+            })
+        })
+        .transpose()?;
+
+    Ok(WorkItemWithRuntimeView {
+        work_item: WorkItemRecord {
+            work_item_id: row.try_get("work_item_id")?,
+            task_id: row.try_get("task_id")?,
+            title: row.try_get("title")?,
+            description: row.try_get("description")?,
+            kind: row.try_get("kind")?,
+            action: row.try_get("action")?,
+            execution_profile_id: row.try_get("execution_profile_id")?,
+            execution_profile_version: row.try_get("execution_profile_version")?,
+            active: row.try_get("active")?,
+            priority: row.try_get("priority")?,
+            optional: row.try_get("optional")?,
+            parallelizable: row.try_get("parallelizable")?,
+            acceptance_criteria: serde_json::from_str(&acceptance_criteria)?,
+            metadata: serde_json::from_str(&metadata)?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        },
+        runtime,
+    })
+}
+
+pub(crate) fn row_to_work_item_edge_view(row: sqlx::sqlite::SqliteRow) -> Result<WorkItemEdgeView> {
+    Ok(WorkItemEdgeView {
+        edge_id: row.try_get("edge_id")?,
+        task_id: row.try_get("task_id")?,
+        from_work_item_id: row.try_get("from_work_item_id")?,
+        to_work_item_id: row.try_get("to_work_item_id")?,
+        edge_type: row.try_get("edge_type")?,
+        created_at: row.try_get("created_at")?,
+    })
+}
+
+pub(crate) fn row_to_work_item_run_record(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<WorkItemRunRecord> {
+    let failure: Option<String> = row.try_get("failure")?;
+    Ok(WorkItemRunRecord {
+        run_id: row.try_get("run_id")?,
+        work_item_id: row.try_get("work_item_id")?,
+        task_id: row.try_get("task_id")?,
+        attempt: row.try_get("attempt")?,
+        state: row.try_get("state")?,
+        session_id: row.try_get("session_id")?,
+        turn_id: row.try_get("turn_id")?,
+        client_type: row.try_get("client_type")?,
+        execution_profile_id: row.try_get("execution_profile_id")?,
+        execution_profile_version: row.try_get("execution_profile_version")?,
+        rendered_prompt_ref: row.try_get("rendered_prompt_ref")?,
+        output_summary: row.try_get("output_summary")?,
+        failure: failure
+            .map(|value| serde_json::from_str(&value))
+            .transpose()?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+        started_at: row.try_get("started_at")?,
+        completed_at: row.try_get("completed_at")?,
+    })
+}
+
+pub(crate) fn row_to_dag_signal_record(row: sqlx::sqlite::SqliteRow) -> Result<DagSignalRecord> {
+    let related_refs: String = row.try_get("related_refs")?;
+    Ok(DagSignalRecord {
+        signal_id: row.try_get("signal_id")?,
+        task_id: row.try_get("task_id")?,
+        work_item_id: row.try_get("work_item_id")?,
+        run_id: row.try_get("run_id")?,
+        source_session_id: row.try_get("source_session_id")?,
+        kind: row.try_get("kind")?,
+        summary: row.try_get("summary")?,
+        detail: row.try_get("detail")?,
+        severity: row.try_get("severity")?,
+        related_refs: serde_json::from_str(&related_refs)?,
+        state: row.try_get("state")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
 pub(crate) fn row_to_turn_view(row: sqlx::sqlite::SqliteRow) -> Result<TurnView> {
     let metadata: String = row.try_get("metadata")?;
     let metadata_json: Value = serde_json::from_str(&metadata)?;

@@ -16,6 +16,7 @@ import type {
   SessionView,
   SubmitInboxMessageInput,
   SubmitPlannerInput,
+  TaskDagView,
   TaskEventView,
   TaskView,
   TurnView,
@@ -119,6 +120,10 @@ export async function submitPlannerInput(taskId: string, input: SubmitPlannerInp
 
 export async function listTaskEvents(taskId: string): Promise<TaskEventView[]> {
   return (await request<{ events: TaskEventView[] }>(`/tasks/${taskId}/events`)).events;
+}
+
+export async function getTaskDag(taskId: string): Promise<TaskDagView> {
+  return (await request<{ dag: TaskDagView }>(`/tasks/${taskId}/dag`)).dag;
 }
 
 export async function interruptTask(taskId: string): Promise<TaskView> {

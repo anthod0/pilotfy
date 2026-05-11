@@ -1,6 +1,7 @@
 mod agent_profiles;
 mod artifacts;
 mod common;
+mod dag;
 mod events;
 mod inbox;
 mod sessions;
@@ -13,6 +14,9 @@ pub use agent_profiles::{
 };
 pub use artifacts::{discover_artifacts, get_artifact, get_artifact_content, list_artifacts};
 pub use common::{ApiResponse, ExternalApiError};
+pub use dag::{
+    get_task_dag, list_task_signals, list_task_work_item_runs, list_task_work_items, scheduler_tick,
+};
 pub use events::{stream_session_events, stream_turn_events};
 pub use inbox::{
     cancel_inbox_message, get_inbox_message, list_inbox_messages, submit_inbox_message,

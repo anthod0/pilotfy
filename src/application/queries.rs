@@ -121,6 +121,121 @@ impl ExternalQueryService {
         rows.into_iter().map(row_to_task_event_view).collect()
     }
 
+    pub async fn get_task_dag(&self, task_id: &str) -> Result<TaskDagView> {
+        let summary = self.get_task_dag_summary(task_id).await?;
+        let work_items = self.list_work_items(task_id).await?;
+        let edges = self.list_work_item_edges(task_id).await?;
+        let runs = self.list_work_item_runs(task_id).await?;
+        let signals = self.list_dag_signals(task_id).await?;
+        Ok(TaskDagView {
+            task_id: task_id.to_string(),
+            summary,
+            work_items,
+            edges,
+            runs,
+            signals,
+        })
+    }
+
+    pub async fn get_task_dag_summary(&self, task_id: &str) -> Result<DagSummaryView> {
+        let row = sqlx::query(
+            r#"SELECT
+                    (SELECT COUNT(*) FROM work_items WHERE task_id = ? AND active = 1) AS total_work_items,
+                    (SELECT COUNT(*) FROM work_item_runtime_projection WHERE task_id = ? AND current_state = 'ready') AS ready_work_items,
+                    (SELECT COUNT(*) FROM work_item_runtime_projection WHERE task_id = ? AND current_state = 'running') AS running_work_items,
+                    (SELECT COUNT(*) FROM work_item_runtime_projection WHERE task_id = ? AND current_state = 'completed') AS completed_work_items,
+                    (SELECT COUNT(*) FROM work_item_runtime_projection WHERE task_id = ? AND current_state IN ('blocked', 'needs_input')) AS blocked_work_items,
+                    (SELECT COUNT(*) FROM work_item_runtime_projection WHERE task_id = ? AND current_state = 'failed') AS failed_work_items,
+                    (SELECT COUNT(*) FROM dag_signals WHERE task_id = ? AND state = 'open') AS open_signals,
+                    (SELECT COUNT(*) FROM work_item_runs WHERE task_id = ?) AS total_runs"#,
+        )
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .bind(task_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(DagSummaryView {
+            total_work_items: row.try_get("total_work_items")?,
+            ready_work_items: row.try_get("ready_work_items")?,
+            running_work_items: row.try_get("running_work_items")?,
+            completed_work_items: row.try_get("completed_work_items")?,
+            blocked_work_items: row.try_get("blocked_work_items")?,
+            failed_work_items: row.try_get("failed_work_items")?,
+            open_signals: row.try_get("open_signals")?,
+            total_runs: row.try_get("total_runs")?,
+        })
+    }
+
+    pub async fn list_work_items(&self, task_id: &str) -> Result<Vec<WorkItemWithRuntimeView>> {
+        let rows = sqlx::query(
+            r#"SELECT wi.work_item_id, wi.task_id, wi.title, wi.description, wi.kind, wi.action,
+                      wi.execution_profile_id, wi.execution_profile_version, wi.active, wi.priority,
+                      wi.optional, wi.parallelizable, wi.acceptance_criteria, wi.metadata,
+                      wi.created_at, wi.updated_at,
+                      p.current_run_id, p.current_state, p.current_attempt, p.ready_at,
+                      p.blocked_reason, p.retry_count, p.max_retries, p.priority AS runtime_priority,
+                      p.optional AS runtime_optional, p.parallelizable AS runtime_parallelizable,
+                      p.session_id, p.turn_id, p.updated_at AS runtime_updated_at
+               FROM work_items wi
+               LEFT JOIN work_item_runtime_projection p ON p.work_item_id = wi.work_item_id
+               WHERE wi.task_id = ?
+               ORDER BY wi.active DESC, wi.priority DESC, wi.created_at, wi.work_item_id"#,
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(row_to_work_item_with_runtime_view)
+            .collect()
+    }
+
+    pub async fn list_work_item_edges(&self, task_id: &str) -> Result<Vec<WorkItemEdgeView>> {
+        let rows = sqlx::query(
+            r#"SELECT edge_id, task_id, from_work_item_id, to_work_item_id, edge_type, created_at
+               FROM work_item_edges WHERE task_id = ? ORDER BY created_at, edge_id"#,
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_work_item_edge_view).collect()
+    }
+
+    pub async fn list_work_item_runs(&self, task_id: &str) -> Result<Vec<WorkItemRunRecord>> {
+        let rows = sqlx::query(
+            r#"SELECT run_id, work_item_id, task_id, attempt, state, session_id, turn_id,
+                      client_type, execution_profile_id, execution_profile_version,
+                      rendered_prompt_ref, output_summary, failure, created_at, updated_at,
+                      started_at, completed_at
+               FROM work_item_runs WHERE task_id = ? ORDER BY created_at, run_id"#,
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_work_item_run_record).collect()
+    }
+
+    pub async fn list_dag_signals(&self, task_id: &str) -> Result<Vec<DagSignalRecord>> {
+        let rows = sqlx::query(
+            r#"SELECT signal_id, task_id, work_item_id, run_id, source_session_id, kind,
+                      summary, detail, severity, related_refs, state, created_at, updated_at
+               FROM dag_signals WHERE task_id = ? ORDER BY created_at, signal_id"#,
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_dag_signal_record).collect()
+    }
+
     pub async fn list_turns(&self, session_id: &str) -> Result<Vec<TurnView>> {
         let rows = sqlx::query(
             r#"SELECT turn_id, session_id, state, input_summary, output_summary,
