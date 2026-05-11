@@ -42,6 +42,53 @@ impl DagService {
         self.get_proposal(&proposal_id).await
     }
 
+    pub async fn save_patch_proposal(
+        &self,
+        task_id: &str,
+        summary: &str,
+        patch: &DagPatch,
+        created_by_session_id: Option<&str>,
+    ) -> Result<DagProposal> {
+        ensure_task_exists(&self.pool, task_id).await?;
+        let proposal_id = new_prefixed_id("dagprop");
+        let proposal_json = serde_json::to_string(&json!({
+            "mode": "patch",
+            "summary": summary,
+            "patch": patch,
+        }))?;
+        sqlx::query(
+            r#"INSERT INTO dag_proposals (
+                    proposal_id, task_id, mode, state, summary, proposal_json,
+                    validation_json, created_by_session_id
+               ) VALUES (?, ?, 'patch', 'proposed', ?, ?, '{}', ?)"#,
+        )
+        .bind(&proposal_id)
+        .bind(task_id)
+        .bind(summary)
+        .bind(proposal_json)
+        .bind(created_by_session_id)
+        .execute(&self.pool)
+        .await?;
+
+        self.get_proposal(&proposal_id).await
+    }
+
+    pub async fn mark_proposal_applied(&self, proposal_id: &str) -> Result<DagProposal> {
+        let updated = sqlx::query(
+            r#"UPDATE dag_proposals
+               SET state = 'applied', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE proposal_id = ?"#,
+        )
+        .bind(proposal_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if updated == 0 {
+            return Err(Error::NotFound(format!("proposal {proposal_id}")));
+        }
+        self.get_proposal(proposal_id).await
+    }
+
     pub async fn apply_initial_dag(
         &self,
         task_id: &str,

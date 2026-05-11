@@ -1,0 +1,372 @@
+use super::*;
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DagPlanningTurn {
+    pub task_id: String,
+    pub session_id: String,
+    pub turn_id: String,
+    pub profile_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DagPlanningOutcome {
+    pub proposal: DagProposal,
+    pub scheduler: DagSchedulerOutcome,
+}
+
+#[derive(Clone)]
+pub struct DagPlanningService {
+    pool: SqlitePool,
+}
+
+impl DagPlanningService {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn start_initial_planning(&self, task_id: &str) -> Result<DagPlanningTurn> {
+        let task = self.task_context(task_id).await?;
+        sqlx::query(
+            r#"UPDATE tasks
+               SET state = 'planning', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE task_id = ?"#,
+        )
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+        self.record_task_event(
+            task_id,
+            "task.planning_started",
+            json!({"mode":"initial_dag"}),
+        )
+        .await?;
+        self.create_planning_turn(
+            task_id,
+            "planner",
+            format!(
+                "Plan task {task_id} into a WorkItem DAG.\n\nTask input:\n{}",
+                task.input
+            ),
+            json!({"mode":"initial_dag"}),
+        )
+        .await
+    }
+
+    pub async fn submit_planner_output(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        raw_output: String,
+    ) -> Result<DagPlanningOutcome> {
+        let payload = parse_initial_plan_output(&raw_output)?;
+        let dag = DagService::new(self.pool.clone());
+        let proposal = dag
+            .save_proposal(task_id, &payload, Some(session_id))
+            .await?;
+        dag.apply_initial_dag(task_id, &payload).await?;
+        let proposal = dag.mark_proposal_applied(&proposal.proposal_id).await?;
+        sqlx::query(
+            r#"UPDATE tasks
+               SET state = 'running', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE task_id = ?"#,
+        )
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+        self.record_task_event(
+            task_id,
+            "dag.applied",
+            json!({"proposal_id": proposal.proposal_id, "mode": proposal.mode}),
+        )
+        .await?;
+        let scheduler = DagSchedulerService::new(self.pool.clone())
+            .schedule_task(task_id)
+            .await?;
+        Ok(DagPlanningOutcome {
+            proposal,
+            scheduler,
+        })
+    }
+
+    pub async fn start_replanning_for_signal(
+        &self,
+        task_id: &str,
+        signal_id: &str,
+    ) -> Result<DagPlanningTurn> {
+        let task = self.task_context(task_id).await?;
+        let signal = sqlx::query(
+            r#"SELECT signal_id, kind, summary, detail, severity
+               FROM dag_signals WHERE task_id = ? AND signal_id = ?"#,
+        )
+        .bind(task_id)
+        .bind(signal_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("signal {signal_id} not found")))?;
+        sqlx::query(
+            r#"UPDATE tasks
+               SET state = 'replanning', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE task_id = ?"#,
+        )
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+        self.record_task_event(
+            task_id,
+            "task.replanning_started",
+            json!({"mode":"patch", "signal_id": signal_id}),
+        )
+        .await?;
+        let prompt = format!(
+            "Replan task {task_id} by producing a DAG patch.\n\nTask input:\n{}\n\nSignal {} [{} {}]: {}\n{}",
+            task.input,
+            signal.get::<String, _>("signal_id"),
+            signal.get::<String, _>("kind"),
+            signal.get::<String, _>("severity"),
+            signal.get::<String, _>("summary"),
+            signal
+                .try_get::<Option<String>, _>("detail")?
+                .unwrap_or_default()
+        );
+        self.create_planning_turn(
+            task_id,
+            "replanner",
+            prompt,
+            json!({"mode":"patch", "signal_id": signal_id}),
+        )
+        .await
+    }
+
+    pub async fn submit_replanner_output(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        raw_output: String,
+    ) -> Result<DagPlanningOutcome> {
+        let (summary, patch) = parse_patch_output(&raw_output)?;
+        let dag = DagService::new(self.pool.clone());
+        let proposal = dag
+            .save_patch_proposal(task_id, &summary, &patch, Some(session_id))
+            .await?;
+        dag.apply_patch(task_id, &patch).await?;
+        let proposal = dag.mark_proposal_applied(&proposal.proposal_id).await?;
+        if let Some(signal_id) = self.planning_signal_id(session_id).await? {
+            sqlx::query(
+                r#"UPDATE dag_signals
+                   SET state = 'acknowledged', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                   WHERE task_id = ? AND signal_id = ? AND state = 'open'"#,
+            )
+            .bind(task_id)
+            .bind(signal_id)
+            .execute(&self.pool)
+            .await?;
+        }
+        sqlx::query(
+            r#"UPDATE tasks
+               SET state = 'running', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE task_id = ?"#,
+        )
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+        self.record_task_event(
+            task_id,
+            "dag.patch_applied",
+            json!({"proposal_id": proposal.proposal_id}),
+        )
+        .await?;
+        let scheduler = DagSchedulerService::new(self.pool.clone())
+            .schedule_task(task_id)
+            .await?;
+        Ok(DagPlanningOutcome {
+            proposal,
+            scheduler,
+        })
+    }
+
+    async fn create_planning_turn(
+        &self,
+        task_id: &str,
+        profile_id: &str,
+        prompt: String,
+        metadata: Value,
+    ) -> Result<DagPlanningTurn> {
+        let profile = AgentProfileService::new(self.pool.clone())
+            .get_latest(profile_id)
+            .await?
+            .ok_or_else(|| {
+                Error::Domain(format!("execution profile {profile_id} does not exist"))
+            })?;
+        let client_type = if profile
+            .supported_client_types
+            .iter()
+            .any(|value| value == "generic")
+        {
+            "generic".to_string()
+        } else {
+            profile
+                .supported_client_types
+                .first()
+                .cloned()
+                .unwrap_or_else(default_client_type)
+        };
+        let session = SessionCommandService::new(self.pool.clone())
+            .create_session(
+                CreateSessionRequest {
+                    client_type,
+                    workspace: None,
+                    workspace_id: None,
+                    handle: None,
+                    role: profile.default_session_role.clone(),
+                    description: profile.default_session_description.clone(),
+                    execution_profile_id: Some(profile.profile_id.clone()),
+                    execution_profile_version: Some(profile.version.clone()),
+                    metadata: json!({
+                        "dag_managed": true,
+                        "dag_planning_role": profile_id,
+                        "task_id": task_id,
+                        "planning": metadata,
+                    }),
+                    initial_task: None,
+                },
+                None,
+            )
+            .await?;
+        let session_id = session
+            .data
+            .pointer("/session/session_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| {
+                Error::Domain("created planning session response missing session_id".to_string())
+            })?;
+        let turn = TurnCommandService::new(self.pool.clone())
+            .create_and_dispatch_turn(
+                &session_id,
+                prompt,
+                json!({
+                    "task_id": task_id,
+                    "dag_managed": true,
+                    "dag_planning_role": profile_id,
+                    "planning": metadata,
+                }),
+            )
+            .await?;
+        Ok(DagPlanningTurn {
+            task_id: task_id.to_string(),
+            session_id,
+            turn_id: turn.turn_id,
+            profile_id: profile_id.to_string(),
+        })
+    }
+
+    async fn planning_signal_id(&self, session_id: &str) -> Result<Option<String>> {
+        let metadata: Option<String> =
+            sqlx::query_scalar("SELECT metadata FROM sessions WHERE session_id = ?")
+                .bind(session_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let Some(metadata) = metadata else {
+            return Ok(None);
+        };
+        let value: Value = serde_json::from_str(&metadata)?;
+        Ok(value
+            .pointer("/planning/signal_id")
+            .and_then(Value::as_str)
+            .map(str::to_string))
+    }
+
+    async fn task_context(&self, task_id: &str) -> Result<PlanningTaskContext> {
+        let row = sqlx::query("SELECT task_id, input FROM tasks WHERE task_id = ?")
+            .bind(task_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
+        Ok(PlanningTaskContext {
+            input: row.get("input"),
+        })
+    }
+
+    async fn record_task_event(
+        &self,
+        task_id: &str,
+        event_type: &str,
+        payload: Value,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO task_events (event_id, task_id, event_type, payload) VALUES (?, ?, ?, ?)",
+        )
+        .bind(new_event_id().to_string())
+        .bind(task_id)
+        .bind(event_type)
+        .bind(serde_json::to_string(&payload)?)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+}
+
+struct PlanningTaskContext {
+    input: String,
+}
+
+fn parse_initial_plan_output(raw_output: &str) -> Result<SubmitPlanPayload> {
+    let value: Value = serde_json::from_str(raw_output)?;
+    let mode = value
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("initial_dag");
+    if mode != "initial_dag" {
+        return Err(Error::Domain(format!(
+            "planner output mode must be initial_dag, got {mode}"
+        )));
+    }
+    let dag = value.get("dag").cloned().unwrap_or_else(|| value.clone());
+    Ok(SubmitPlanPayload {
+        mode: "initial_dag".to_string(),
+        summary: required_string(&value, "summary")?,
+        work_items: serde_json::from_value(
+            dag.get("work_items").cloned().unwrap_or_else(|| json!([])),
+        )?,
+        edges: serde_json::from_value(dag.get("edges").cloned().unwrap_or_else(|| json!([])))?,
+        assumptions: serde_json::from_value(
+            value
+                .get("assumptions")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        )?,
+        risks: serde_json::from_value(value.get("risks").cloned().unwrap_or_else(|| json!([])))?,
+    })
+}
+
+fn parse_patch_output(raw_output: &str) -> Result<(String, DagPatch)> {
+    let value: Value = serde_json::from_str(raw_output)?;
+    let mode = value.get("mode").and_then(Value::as_str).unwrap_or("patch");
+    if mode != "patch" {
+        return Err(Error::Domain(format!(
+            "replanner output mode must be patch, got {mode}"
+        )));
+    }
+    let summary = required_string(&value, "summary")?;
+    let mut patch_value = value.get("patch").cloned().unwrap_or_else(
+        || json!({"operations": value.get("operations").cloned().unwrap_or_else(|| json!([]))}),
+    );
+    if patch_value.get("summary").is_none()
+        && let Some(object) = patch_value.as_object_mut()
+    {
+        object.insert("summary".to_string(), Value::String(summary.clone()));
+    }
+    let mut patch: DagPatch = serde_json::from_value(patch_value)?;
+    if patch.summary.is_empty() {
+        patch.summary = summary.clone();
+    }
+    Ok((summary, patch))
+}
+
+fn required_string(value: &Value, key: &str) -> Result<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| Error::Domain(format!("planner output missing string field {key}")))
+}
