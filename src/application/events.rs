@@ -134,6 +134,9 @@ impl EventIngestService {
         TaskCommandService::new(self.pool.clone())
             .sync_task_from_turn_event(&event)
             .await?;
+        DagRunResultService::new(self.pool.clone())
+            .sync_from_turn_event(&event)
+            .await?;
 
         if matches!(
             event.event_type,
