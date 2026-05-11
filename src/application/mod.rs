@@ -28,6 +28,9 @@ use crate::{
 
 mod agent_profiles;
 mod artifacts;
+mod dag;
+mod dag_models;
+mod dag_validator;
 mod events;
 mod graph;
 mod inbox;
@@ -50,6 +53,11 @@ pub use agent_profiles::{
 };
 pub use artifacts::{
     ArtifactContentService, ArtifactDiscoveryService, ArtifactRegistrationService,
+};
+pub use dag::DagService;
+pub use dag_models::{
+    DagPatch, DagProposal, DagSignalRecord, PatchOperation, RaiseSignalPayload, SubmitPlanPayload,
+    SubmitResultPayload, WorkItemDraft, WorkItemEdgeDraft, WorkItemRecord, WorkItemRunRecord,
 };
 pub use events::{EventIngestResult, EventIngestService};
 pub(crate) use events::{nested_array_strings, nested_string, remove_internal_metadata_fields};
