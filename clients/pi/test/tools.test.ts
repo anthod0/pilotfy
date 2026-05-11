@@ -3,12 +3,9 @@ import { createLlmpartyPiExtension } from "../src/index.js";
 
 interface RegisteredTool {
   name: string;
-  description: string;
-  parameters: unknown;
-  execute: (toolCallId: string, params: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }>; details?: unknown }>;
 }
 
-function install(env: Record<string, string | undefined>, fetchImpl: typeof fetch) {
+function install(env: Record<string, string | undefined>) {
   const tools: RegisteredTool[] = [];
   const pi = {
     on: vi.fn(),
@@ -20,158 +17,16 @@ function install(env: Record<string, string | undefined>, fetchImpl: typeof fetc
     loadContext: vi.fn(),
     makeReporter: vi.fn(),
     logDiagnostic: vi.fn(),
-    fetch: fetchImpl,
   });
 
   return { pi, tools };
 }
 
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify({ data, error: null }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 describe("llmparty pi external API tools", () => {
-  test("registers tool definitions from shared llmparty tools manifest", () => {
-    const { tools } = install({}, vi.fn() as any);
+  test("does not register agent-visible tools from the pi extension", () => {
+    const { pi, tools } = install({});
 
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "createSession",
-      "sendMessage",
-      "exit",
-    ]);
-    expect(tools[0].description).toContain("Start a new llmparty agent session");
-    expect(tools[0].parameters).toMatchObject({ type: "object" });
-  });
-
-  test("create session posts to the external API with auth and maps initial_message", async () => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({
-        session: { session_id: "sess_new" },
-        initial_turn: { turn_id: "turn_new" },
-      }),
-    ) as any;
-    const { tools } = install(
-      {
-        LLMPARTY_EXTERNAL_API_URL: "http://control/external/v1",
-        LLMPARTY_EXTERNAL_API_TOKEN: "secret-token",
-        LLMPARTY_CLIENT_TYPE: "pi",
-        LLMPARTY_WORKSPACE: "/workspace",
-      },
-      fetchImpl,
-    );
-
-    const result = await tools[0].execute("call_1", {
-      handle: "@worker",
-      role: "implementation worker",
-      description: "Handles the implementation tasks for this feature.",
-      initial_message: "start work",
-    });
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "http://control/external/v1/sessions",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          authorization: "Bearer secret-token",
-          "content-type": "application/json",
-          "idempotency-key": "pi-tool-call_1",
-        }),
-        body: JSON.stringify({
-          client_type: "pi",
-          workspace: "/workspace",
-          handle: "@worker",
-          role: "implementation worker",
-          description: "Handles the implementation tasks for this feature.",
-          initial_task: { input: "start work", metadata: {} },
-          metadata: {},
-        }),
-      }),
-    );
-    expect(result.details).toMatchObject({ session_id: "sess_new" });
-  });
-
-  test("create session requires role and description before posting", async () => {
-    const fetchImpl = vi.fn() as any;
-    const { tools } = install(
-      {
-        LLMPARTY_EXTERNAL_API_URL: "http://control/external/v1",
-        LLMPARTY_EXTERNAL_API_TOKEN: "secret-token",
-      },
-      fetchImpl,
-    );
-
-    const missingRole = await tools[0].execute("call_missing_role", {
-      handle: "@worker",
-      description: "Handles the implementation tasks for this feature.",
-    });
-    const missingDescription = await tools[0].execute("call_missing_description", {
-      handle: "@worker",
-      role: "implementation worker",
-    });
-
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(missingRole.content[0].text).toContain("role is required");
-    expect(missingDescription.content[0].text).toContain("description is required");
-  });
-
-  test("send message posts inbox message and maps message to input", async () => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({ inbox_message: { message_id: "msg_1", state: "pending" } }),
-    ) as any;
-    const { tools } = install(
-      {
-        LLMPARTY_EXTERNAL_API_URL: "http://control/external/v1/",
-        LLMPARTY_EXTERNAL_API_TOKEN: "secret-token",
-      },
-      fetchImpl,
-    );
-
-    const result = await tools[1].execute("call_2", {
-      handle: "@worker",
-      message: "please continue",
-      delivery_policy: "interrupt_now",
-    });
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "http://control/external/v1/sessions/%40worker/inbox/messages",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ input: "please continue", delivery_policy: "interrupt_now", metadata: {} }),
-      }),
-    );
-    expect(result.details).toMatchObject({ message_id: "msg_1" });
-  });
-
-  test("exit session terminates only the current runtime session", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ session: { session_id: "sess_self", state: "terminated" } })) as any;
-    const { tools } = install(
-      {
-        LLMPARTY_EXTERNAL_API_URL: "http://control/external/v1",
-        LLMPARTY_EXTERNAL_API_TOKEN: "secret-token",
-        LLMPARTY_SESSION_ID: "sess_self",
-      },
-      fetchImpl,
-    );
-
-    const result = await tools[2].execute("call_3", { reason: "done" });
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "http://control/external/v1/sessions/sess_self/terminate",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ reason: "done" }) }),
-    );
-    expect(result.details).toMatchObject({ session_id: "sess_self" });
-  });
-
-  test("tools return explicit error when external API environment is missing", async () => {
-    const fetchImpl = vi.fn() as any;
-    const { tools } = install({}, fetchImpl);
-
-    const result = await tools[1].execute("call_4", { handle: "@worker", message: "hello" });
-
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain("LLMPARTY_EXTERNAL_API_URL is required");
+    expect(tools).toEqual([]);
+    expect(pi.registerTool).not.toHaveBeenCalled();
   });
 });

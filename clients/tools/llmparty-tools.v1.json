@@ -2,142 +2,266 @@
   "$schema": "./agent-tools.v1.schema.json",
   "version": 1,
   "namespace": "llmparty",
-  "description": "Stable llmparty agent tool definitions. This file is the cross-language source of truth for tool names, descriptions, input schemas, and output schemas.",
+  "description": "Stable llmparty DAG-mode agent tool definitions. This file is the cross-language source of truth for tool names, descriptions, input schemas, and output schemas. All DAG agents may register the same tools; llmparty authorizes each call server-side from the current session, execution profile, task, WorkItem, and WorkItemRun context.",
   "tools": [
     {
-      "name": "createSession",
-      "title": "Create llmparty session",
-      "description": "Start a new llmparty agent session. Use this when work should continue in a separate long-running agent session.",
+      "name": "getContext",
+      "title": "Get DAG work context",
+      "description": "Fetch the current DAG-managed context for this agent session. Planning agents receive task, DAG, signals, workspace summary, and available execution profile context. Execution agents receive the current WorkItemRun, inputs, dependencies, expected outputs, and acceptance criteria. The caller must not provide task, WorkItem, run, or profile identity; llmparty derives it from the current session.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-          "client_type": {
-            "type": "string",
-            "description": "Agent client type for the new session. Defaults to the current llmparty session client type when available."
-          },
-          "workspace": {
-            "type": "string",
-            "description": "Workspace path for the new session. Defaults to the current llmparty workspace when available."
-          },
-          "handle": {
-            "type": "string",
-            "description": "Required session identity handle. Must match @[a-z][a-z0-9_-]{1,31}; unique within the workspace."
-          },
-          "role": {
-            "type": "string",
-            "description": "Required role for this session, describing what responsibility the agent should take."
-          },
-          "description": {
-            "type": "string",
-            "description": "Required human-readable description of this session's purpose and expected work."
-          },
-          "initial_message": {
-            "type": "string",
-            "description": "Optional first message to submit to the new session as its initial task."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "Optional JSON metadata attached to the created session.",
-            "additionalProperties": true
-          }
-        },
-        "required": ["handle", "role", "description"]
+        "properties": {}
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "session_id": {
+          "mode": {
             "type": "string",
-            "description": "Identifier of the created llmparty session."
+            "enum": ["planning", "execution"],
+            "description": "Authorized DAG agent mode for the current session."
           },
-          "session": {
+          "task": {
             "type": "object",
-            "description": "External API session view returned by llmparty."
+            "description": "Current task view."
           },
-          "initial_turn": {
+          "dag": {
             "type": ["object", "null"],
-            "description": "Initial turn view when initial_message was provided, otherwise null."
+            "description": "Current approved or draft DAG context when relevant."
+          },
+          "work_item": {
+            "type": ["object", "null"],
+            "description": "Current WorkItem context for execution agents."
+          },
+          "work_item_run": {
+            "type": ["object", "null"],
+            "description": "Current WorkItemRun context for execution agents."
+          },
+          "signals": {
+            "type": "array",
+            "description": "Relevant signals for planning or execution.",
+            "items": { "type": "object" }
+          },
+          "execution_profiles": {
+            "type": "array",
+            "description": "Relevant available execution profiles for planning agents.",
+            "items": { "type": "object" }
           }
         },
-        "required": ["session_id", "session"]
+        "required": ["mode", "task"]
       }
     },
     {
-      "name": "sendMessage",
-      "title": "Send llmparty message",
-      "description": "Send a message to a llmparty session. Use this to delegate work to another session or continue work in an existing session.",
+      "name": "submitPlan",
+      "title": "Submit DAG plan",
+      "description": "Submit the planning agent's main output: an initial WorkItem DAG proposal or a DAG patch proposal. This tool proposes structured plan changes only; it does not approve, apply, or schedule the DAG. llmparty validates and authorizes the proposal server-side based on the current planning session and execution profile.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "handle": {
+          "mode": {
             "type": "string",
-            "description": "Target llmparty session identity handle. Must match @[a-z][a-z0-9_-]{1,31}."
+            "enum": ["initial_dag", "patch"],
+            "description": "Whether this submission proposes the initial DAG or a patch to an existing DAG."
           },
-          "message": {
+          "summary": {
             "type": "string",
-            "description": "Message text to submit to the target session."
+            "minLength": 1,
+            "description": "Human-readable summary of the proposed plan or patch."
           },
-          "delivery_policy": {
-            "type": "string",
-            "enum": ["after_idle", "interrupt_now"],
-            "default": "after_idle",
-            "description": "Delivery behavior. after_idle queues the message until the session is idle; interrupt_now requests interruption of the active turn before dispatching this message."
-          },
-          "metadata": {
+          "dag": {
             "type": "object",
-            "description": "Optional JSON metadata attached to the inbox message and resulting turn.",
-            "additionalProperties": true
+            "description": "Initial DAG proposal when mode is initial_dag. Temporary WorkItem IDs are allowed; llmparty assigns authoritative IDs when applying an approved DAG.",
+            "additionalProperties": true,
+            "properties": {
+              "work_items": {
+                "type": "array",
+                "items": { "type": "object", "additionalProperties": true }
+              },
+              "edges": {
+                "type": "array",
+                "items": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "patch": {
+            "type": "object",
+            "description": "DAG patch proposal when mode is patch. Supported operations are validated by llmparty before approval or application.",
+            "additionalProperties": true,
+            "properties": {
+              "operations": {
+                "type": "array",
+                "items": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "description": "Assumptions used while producing this plan.",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "risks": {
+            "type": "array",
+            "description": "Known risks in the proposed plan or patch.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "summary": { "type": "string", "minLength": 1 },
+                "severity": { "type": "string", "enum": ["low", "medium", "high"] }
+              },
+              "required": ["summary"]
+            },
+            "default": []
           }
         },
-        "required": ["handle", "message"]
+        "required": ["mode", "summary"]
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "message_id": {
-            "type": "string",
-            "description": "Identifier of the queued llmparty inbox message."
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether llmparty accepted the proposal for validation/approval workflow."
           },
-          "inbox_message": {
+          "proposal_id": {
+            "type": "string",
+            "description": "Identifier of the stored DAG proposal or patch proposal."
+          },
+          "validation": {
             "type": "object",
-            "description": "External API inbox message view returned by llmparty."
+            "description": "Validation result or diagnostics."
           }
         },
-        "required": ["message_id", "inbox_message"]
+        "required": ["accepted"]
       }
     },
     {
-      "name": "exit",
-      "title": "Exit llmparty session",
-      "description": "Ask llmparty to terminate the current agent session gracefully. Use this when this agent session should stop running.",
+      "name": "submitResult",
+      "title": "Submit WorkItem result",
+      "description": "Submit the execution agent's main output for the current WorkItemRun. Implementation, validation, review, documentation, debugging, and similar WorkItems all use this same tool. This tool reports the current node result only; llmparty decides scheduling, retry, session reuse, and downstream DAG state server-side.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "reason": {
+          "status": {
             "type": "string",
-            "description": "Optional human-readable reason for requesting self-exit."
+            "enum": ["completed", "failed", "blocked", "needs_input"],
+            "description": "Outcome for the current WorkItemRun."
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable result summary."
+          },
+          "outputs": {
+            "type": "array",
+            "description": "Logical work products produced or identified by this run. These may reference runtime artifacts or workspace files, but do not directly mutate the DAG.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["patch", "document", "test_report", "review_report", "finding", "other"]
+                },
+                "name": { "type": "string", "minLength": 1 },
+                "summary": { "type": "string" },
+                "ref": {
+                  "type": "string",
+                  "description": "Optional external reference such as artifact:<id>, file:<path>, event:<id>, or URL."
+                }
+              },
+              "required": ["kind", "name"]
+            },
+            "default": []
+          },
+          "failure": {
+            "type": "object",
+            "description": "Failure or blocking detail when status is failed, blocked, or needs_input.",
+            "additionalProperties": false,
+            "properties": {
+              "reason": { "type": "string", "minLength": 1 },
+              "retryable": { "type": "boolean" }
+            },
+            "required": ["reason"]
           }
-        }
+        },
+        "required": ["status", "summary"]
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "session_id": {
-            "type": "string",
-            "description": "Identifier of the terminated llmparty session."
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether llmparty accepted the result for the current WorkItemRun."
           },
-          "session": {
+          "work_item_run": {
             "type": "object",
-            "description": "External API session view returned by llmparty after termination."
+            "description": "Updated WorkItemRun view or summary."
           }
         },
-        "required": ["session_id", "session"]
+        "required": ["accepted"]
+      }
+    },
+    {
+      "name": "raiseSignal",
+      "title": "Raise DAG signal",
+      "description": "Report a signal from the current agent session: missing input, replan request, risk, missing dependency, scope change, assistance need, or review request. Signals do not directly modify the DAG; llmparty records them and the Scheduler/RePlanner/Human approval flow decides what happens next.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["needs_input", "replan_requested", "risk", "missing_dependency", "scope_change", "assistance_needed", "review_requested", "other"],
+            "description": "Signal category."
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Short signal summary."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detailed explanation, question, or evidence."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "default": "medium"
+          },
+          "related_refs": {
+            "type": "array",
+            "description": "Optional references related to this signal, such as work_item:<id>, artifact:<id>, file:<path>, event:<id>, or signal:<id>.",
+            "items": { "type": "string" },
+            "default": []
+          }
+        },
+        "required": ["kind", "summary"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether llmparty accepted and recorded the signal."
+          },
+          "signal_id": {
+            "type": "string",
+            "description": "Identifier of the recorded signal."
+          },
+          "signal": {
+            "type": "object",
+            "description": "Recorded signal view."
+          }
+        },
+        "required": ["accepted"]
       }
     }
   ]
