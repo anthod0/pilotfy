@@ -9,7 +9,7 @@
     clientTypeOptionsForProfile,
     defaultHandleForProfile,
     loadAgentProfiles,
-    metadataForProfile,
+    sessionProfileFields,
     selectClientTypeForProfile,
   } from '../../stores/agentProfiles';
   import WorkspaceSelector from '../workspaces/WorkspaceSelector.svelte';
@@ -40,17 +40,15 @@
   async function submit() {
     creating = true;
     try {
-      const profileMetadata = metadataForProfile(selectedProfile);
       const result = await createSession({
         client_type: clientType,
         workspace_id: workspaceId || null,
         handle: handle.trim() || null,
         role: role.trim() || null,
         description: description.trim() || null,
-        metadata: selectedProfile ? profileMetadata : {},
-        initial_task: initialTask.trim()
-          ? { input: initialTask.trim(), metadata: selectedProfile ? profileMetadata : {} }
-          : null,
+        ...sessionProfileFields(selectedProfile),
+        metadata: {},
+        initial_task: initialTask.trim() ? { input: initialTask.trim(), metadata: {} } : null,
       });
       await loadSessions();
       await selectSession(result.session.session_id);

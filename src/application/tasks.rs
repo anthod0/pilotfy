@@ -784,6 +784,8 @@ impl TaskCommandService {
                         handle: None,
                         role: None,
                         description: None,
+                        execution_profile_id: None,
+                        execution_profile_version: None,
                         metadata: json!({"created_for_task_id": task_id}),
                         initial_task: None,
                     },

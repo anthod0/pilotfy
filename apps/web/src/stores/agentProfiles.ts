@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { listAgentProfiles } from '../api/client';
-import type { AgentProfileView, JsonObject } from '../api/types';
+import type { AgentProfileView } from '../api/types';
 
 const FALLBACK_CLIENT_TYPES = ['claude_code', 'pi', 'generic'];
 
@@ -35,10 +35,13 @@ export function defaultHandleForProfile(profile: AgentProfileView | null): strin
   return prefix.startsWith('@') ? prefix : `@${prefix}`;
 }
 
-export function metadataForProfile(profile: AgentProfileView | null): JsonObject {
+export function sessionProfileFields(profile: AgentProfileView | null): {
+  execution_profile_id?: string;
+  execution_profile_version?: string;
+} {
   if (!profile) return {};
   return {
-    profile_id: profile.profile_id,
-    profile_version: profile.version,
+    execution_profile_id: profile.profile_id,
+    execution_profile_version: profile.version,
   };
 }

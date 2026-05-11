@@ -1,7 +1,7 @@
 import {
   clientTypeOptionsForProfile,
   defaultHandleForProfile,
-  metadataForProfile,
+  sessionProfileFields,
   selectClientTypeForProfile,
 } from './agentProfiles';
 import type { AgentProfileView } from '../api/types';
@@ -42,4 +42,8 @@ assertEqual(selectClientTypeForProfile('claude_code', profile()), 'pi', 'unsuppo
 assertEqual(selectClientTypeForProfile('pi', profile()), 'pi', 'supported current client kept');
 assertEqual(defaultHandleForProfile(profile()), '@reviewer', 'handle prefix converted to valid handle');
 assertEqual(defaultHandleForProfile(profile({ handle_prefix: '@qa' })), '@qa', 'at-prefixed handle kept');
-assertEqual(metadataForProfile(profile()), { profile_id: 'reviewer', profile_version: '1' }, 'profile metadata');
+assertEqual(
+  sessionProfileFields(profile()),
+  { execution_profile_id: 'reviewer', execution_profile_version: '1' },
+  'session profile fields'
+);

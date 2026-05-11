@@ -9,7 +9,6 @@
     agentProfiles,
     clientTypeOptionsForProfile,
     loadAgentProfiles,
-    metadataForProfile,
     selectClientTypeForProfile,
   } from '../../stores/agentProfiles';
   import WorkspaceSelector from '../workspaces/WorkspaceSelector.svelte';
@@ -46,7 +45,7 @@
         input: taskInput,
         client_type: clientType,
         workspace: workspacePath || null,
-        metadata: selectedProfile ? metadataForProfile(selectedProfile) : {},
+        metadata: {},
       });
       await Promise.all([loadSessions(), loadWorkspaces()]);
       if (task.session_id) await selectSession(task.session_id);
@@ -65,7 +64,7 @@
   <p class="muted">Use the current control-plane task API. Leave workspace empty to validate manual routing / confirmation.</p>
   <label>Agent profile
     <select bind:value={profileId} on:change={applyProfileDefaults}>
-      <option value="">No profile metadata</option>
+      <option value="">No profile defaults</option>
       {#each $agentProfiles as profile (profile.profile_id)}
         <option value={profile.profile_id}>{profile.name} ({profile.profile_id}@{profile.version})</option>
       {/each}

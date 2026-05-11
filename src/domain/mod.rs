@@ -313,6 +313,8 @@ pub struct SessionProjection {
     pub handle: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,
+    pub execution_profile_id: Option<String>,
+    pub execution_profile_version: Option<String>,
     pub state: SessionState,
     pub current_turn_id: Option<String>,
     pub state_version: i64,
@@ -440,6 +442,8 @@ impl ProjectionState {
                 handle: None,
                 role: None,
                 description: None,
+                execution_profile_id: None,
+                execution_profile_version: None,
                 state: SessionState::Created,
                 current_turn_id: None,
                 state_version: 0,
@@ -461,6 +465,16 @@ impl ProjectionState {
             session.description = event
                 .payload
                 .get("description")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+            session.execution_profile_id = event
+                .payload
+                .get("execution_profile_id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+            session.execution_profile_version = event
+                .payload
+                .get("execution_profile_version")
                 .and_then(Value::as_str)
                 .map(ToString::to_string);
             if let Some(metadata) = event.payload.get("metadata") {
@@ -526,6 +540,8 @@ impl ProjectionState {
                 handle: None,
                 role: None,
                 description: None,
+                execution_profile_id: None,
+                execution_profile_version: None,
                 state: SessionState::Created,
                 current_turn_id: None,
                 state_version: 0,

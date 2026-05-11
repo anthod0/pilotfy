@@ -40,6 +40,10 @@ export interface SessionView {
   session_id: string;
   client_type: string;
   handle: string | null;
+  role: string | null;
+  description: string | null;
+  execution_profile_id: string | null;
+  execution_profile_version: string | null;
   state: SessionState | string;
   current_turn_id: string | null;
   workspace_id: string | null;
@@ -189,6 +193,8 @@ export interface CreateSessionInput {
   handle?: string | null;
   role?: string | null;
   description?: string | null;
+  execution_profile_id?: string | null;
+  execution_profile_version?: string | null;
   metadata?: JsonObject;
   initial_task?: { input: string; metadata?: JsonObject } | null;
 }

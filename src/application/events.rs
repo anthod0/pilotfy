@@ -76,13 +76,16 @@ impl EventIngestService {
             let metadata = serde_json::to_string(&session.metadata)?;
             sqlx::query(
                 r#"INSERT INTO sessions
-                   (session_id, client_type, handle, role, description, state, current_turn_id, state_version, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   (session_id, client_type, handle, role, description, execution_profile_id,
+                    execution_profile_version, state, current_turn_id, state_version, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(session_id) DO UPDATE SET
                        client_type = excluded.client_type,
                        handle = excluded.handle,
                        role = excluded.role,
                        description = excluded.description,
+                       execution_profile_id = excluded.execution_profile_id,
+                       execution_profile_version = excluded.execution_profile_version,
                        state = excluded.state,
                        current_turn_id = excluded.current_turn_id,
                        state_version = excluded.state_version,
@@ -94,6 +97,8 @@ impl EventIngestService {
             .bind(&session.handle)
             .bind(&session.role)
             .bind(&session.description)
+            .bind(&session.execution_profile_id)
+            .bind(&session.execution_profile_version)
             .bind(session.state.to_string())
             .bind(&session.current_turn_id)
             .bind(state_version)
@@ -248,7 +253,7 @@ impl EventIngestService {
 
     async fn load_session_projection(&self, session_id: &str) -> Result<Vec<SessionProjection>> {
         let rows = sqlx::query(
-            "SELECT session_id, client_type, handle, role, description, state, current_turn_id, state_version, metadata FROM sessions WHERE session_id = ?",
+            "SELECT session_id, client_type, handle, role, description, execution_profile_id, execution_profile_version, state, current_turn_id, state_version, metadata FROM sessions WHERE session_id = ?",
         )
         .bind(session_id)
         .fetch_all(&self.pool)

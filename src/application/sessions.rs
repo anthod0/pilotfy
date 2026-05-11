@@ -11,6 +11,8 @@ pub struct CreateSessionRequest {
     pub handle: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,
+    pub execution_profile_id: Option<String>,
+    pub execution_profile_version: Option<String>,
     #[serde(default)]
     pub metadata: Value,
     pub initial_task: Option<InitialTaskRequest>,
@@ -161,6 +163,8 @@ impl SessionCommandService {
                     "handle": request.handle,
                     "role": request.role,
                     "description": request.description,
+                    "execution_profile_id": request.execution_profile_id,
+                    "execution_profile_version": request.execution_profile_version,
                     "metadata": request.metadata,
                 }),
             ))
