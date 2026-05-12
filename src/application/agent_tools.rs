@@ -15,6 +15,15 @@ pub enum AgentToolResponse {
     Skeleton { context: AgentToolContext },
     Planning(AgentPlanningContextView),
     Execution(AgentExecutionContextView),
+    SubmitPlan(SubmitPlanToolResponse),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SubmitPlanToolResponse {
+    pub proposal_id: String,
+    pub validation: Value,
+    pub apply: Value,
+    pub scheduler: DagSchedulerOutcome,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -48,6 +57,7 @@ pub enum AgentPlanningRole {
 
 #[derive(Clone)]
 pub struct AgentToolService {
+    pool: SqlitePool,
     resolver: AgentToolContextResolver,
     queries: ExternalQueryService,
     profiles: AgentProfileService,
@@ -56,6 +66,7 @@ pub struct AgentToolService {
 impl AgentToolService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
+            pool: pool.clone(),
             resolver: AgentToolContextResolver::new(pool.clone()),
             queries: ExternalQueryService::new(pool.clone()),
             profiles: AgentProfileService::new(pool),
@@ -71,11 +82,71 @@ impl AgentToolService {
             return Err(Error::NotFound(format!("agent tool {tool_name} not found")));
         }
         let context = self.resolver.resolve(&request).await?;
-        if tool_name == "getContext" {
-            self.get_context(context).await
-        } else {
-            Ok(AgentToolResponse::Skeleton { context })
+        match tool_name {
+            "getContext" => self.get_context(context).await,
+            "submitPlan" => self.submit_plan(context, request.input).await,
+            _ => Ok(AgentToolResponse::Skeleton { context }),
         }
+    }
+
+    async fn submit_plan(
+        &self,
+        context: AgentToolContext,
+        input: Value,
+    ) -> Result<AgentToolResponse> {
+        let AgentToolMode::Planning { role } = &context.mode else {
+            return Err(Error::StateConflict(
+                "submitPlan requires a DAG planning turn".to_string(),
+            ));
+        };
+
+        reject_duplicate_successful_submit_plan(&self.pool, &context).await?;
+
+        let mode = input
+            .get("mode")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Domain("submitPlan input missing mode".to_string()))?;
+        let planning = DagPlanningService::new(self.pool.clone());
+        let outcome = match (role, mode) {
+            (AgentPlanningRole::Planner, "initial_dag") => {
+                let payload = parse_submit_plan_initial_input(input)?;
+                planning
+                    .submit_initial_plan_payload(&context.task_id, &context.session_id, payload)
+                    .await?
+            }
+            (AgentPlanningRole::Planner, "patch") => {
+                return Err(Error::StateConflict(
+                    "Planner can only submit initial_dag plans".to_string(),
+                ));
+            }
+            (AgentPlanningRole::Replanner, "patch") => {
+                let (summary, patch) = parse_submit_plan_patch_input(input)?;
+                planning
+                    .submit_patch_payload(&context.task_id, &context.session_id, summary, patch)
+                    .await?
+            }
+            (AgentPlanningRole::Replanner, "initial_dag") => {
+                return Err(Error::StateConflict(
+                    "RePlanner can only submit patch plans".to_string(),
+                ));
+            }
+            (_, other) => {
+                return Err(Error::Domain(format!(
+                    "submitPlan mode must be initial_dag or patch, got {other}"
+                )));
+            }
+        };
+
+        Ok(AgentToolResponse::SubmitPlan(SubmitPlanToolResponse {
+            proposal_id: outcome.proposal.proposal_id.clone(),
+            validation: json!({"ok": true}),
+            apply: json!({
+                "applied": true,
+                "proposal_state": outcome.proposal.state,
+                "mode": outcome.proposal.mode,
+            }),
+            scheduler: outcome.scheduler,
+        }))
     }
 
     async fn get_context(&self, context: AgentToolContext) -> Result<AgentToolResponse> {
@@ -400,5 +471,87 @@ fn parse_planning_role(role: &str) -> Result<AgentPlanningRole> {
         other => Err(Error::StateConflict(format!(
             "unsupported DAG planning role {other}"
         ))),
+    }
+}
+
+fn parse_submit_plan_initial_input(input: Value) -> Result<SubmitPlanPayload> {
+    let mode = input
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("initial_dag");
+    if mode != "initial_dag" {
+        return Err(Error::Domain(format!(
+            "submitPlan initial payload mode must be initial_dag, got {mode}"
+        )));
+    }
+    let dag = input.get("dag").unwrap_or(&input);
+    Ok(SubmitPlanPayload {
+        mode: "initial_dag".to_string(),
+        summary: required_input_string(&input, "summary")?,
+        work_items: serde_json::from_value(
+            dag.get("work_items").cloned().unwrap_or_else(|| json!([])),
+        )?,
+        edges: serde_json::from_value(dag.get("edges").cloned().unwrap_or_else(|| json!([])))?,
+        assumptions: serde_json::from_value(
+            input
+                .get("assumptions")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        )?,
+        risks: serde_json::from_value(input.get("risks").cloned().unwrap_or_else(|| json!([])))?,
+    })
+}
+
+fn parse_submit_plan_patch_input(input: Value) -> Result<(String, DagPatch)> {
+    let mode = input.get("mode").and_then(Value::as_str).unwrap_or("patch");
+    if mode != "patch" {
+        return Err(Error::Domain(format!(
+            "submitPlan patch payload mode must be patch, got {mode}"
+        )));
+    }
+    let summary = required_input_string(&input, "summary")?;
+    let mut patch_value = input.get("patch").cloned().unwrap_or_else(
+        || json!({"operations": input.get("operations").cloned().unwrap_or_else(|| json!([]))}),
+    );
+    if patch_value.get("summary").is_none()
+        && let Some(object) = patch_value.as_object_mut()
+    {
+        object.insert("summary".to_string(), Value::String(summary.clone()));
+    }
+    let mut patch: DagPatch = serde_json::from_value(patch_value)?;
+    if patch.summary.is_empty() {
+        patch.summary = summary.clone();
+    }
+    Ok((summary, patch))
+}
+
+fn required_input_string(value: &Value, key: &str) -> Result<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| Error::Domain(format!("submitPlan input missing string field {key}")))
+}
+
+async fn reject_duplicate_successful_submit_plan(
+    pool: &SqlitePool,
+    context: &AgentToolContext,
+) -> Result<()> {
+    let existing: Option<String> = sqlx::query_scalar(
+        r#"SELECT proposal_id FROM dag_proposals
+           WHERE task_id = ? AND created_by_session_id = ? AND state = 'applied'
+           ORDER BY created_at DESC, proposal_id DESC LIMIT 1"#,
+    )
+    .bind(&context.task_id)
+    .bind(&context.session_id)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(proposal_id) = existing {
+        Err(Error::StateConflict(format!(
+            "submitPlan already applied proposal {proposal_id} for this planning session"
+        )))
+    } else {
+        Ok(())
     }
 }

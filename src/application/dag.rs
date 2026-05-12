@@ -89,6 +89,32 @@ impl DagService {
         self.get_proposal(proposal_id).await
     }
 
+    pub async fn mark_proposal_rejected(
+        &self,
+        proposal_id: &str,
+        message: &str,
+    ) -> Result<DagProposal> {
+        let validation_json = serde_json::to_string(&json!({
+            "ok": false,
+            "error": message,
+        }))?;
+        let updated = sqlx::query(
+            r#"UPDATE dag_proposals
+               SET state = 'rejected', validation_json = ?,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE proposal_id = ?"#,
+        )
+        .bind(validation_json)
+        .bind(proposal_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if updated == 0 {
+            return Err(Error::NotFound(format!("proposal {proposal_id}")));
+        }
+        self.get_proposal(proposal_id).await
+    }
+
     pub async fn apply_initial_dag(
         &self,
         task_id: &str,

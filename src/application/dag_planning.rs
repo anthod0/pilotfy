@@ -59,11 +59,26 @@ impl DagPlanningService {
         raw_output: String,
     ) -> Result<DagPlanningOutcome> {
         let payload = parse_initial_plan_output(&raw_output)?;
+        self.submit_initial_plan_payload(task_id, session_id, payload)
+            .await
+    }
+
+    pub async fn submit_initial_plan_payload(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        payload: SubmitPlanPayload,
+    ) -> Result<DagPlanningOutcome> {
         let dag = DagService::new(self.pool.clone());
         let proposal = dag
             .save_proposal(task_id, &payload, Some(session_id))
             .await?;
-        dag.apply_initial_dag(task_id, &payload).await?;
+        if let Err(error) = dag.apply_initial_dag(task_id, &payload).await {
+            let _ = dag
+                .mark_proposal_rejected(&proposal.proposal_id, &error.to_string())
+                .await;
+            return Err(error);
+        }
         let proposal = dag.mark_proposal_applied(&proposal.proposal_id).await?;
         sqlx::query(
             r#"UPDATE tasks
@@ -144,11 +159,27 @@ impl DagPlanningService {
         raw_output: String,
     ) -> Result<DagPlanningOutcome> {
         let (summary, patch) = parse_patch_output(&raw_output)?;
+        self.submit_patch_payload(task_id, session_id, summary, patch)
+            .await
+    }
+
+    pub async fn submit_patch_payload(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        summary: String,
+        patch: DagPatch,
+    ) -> Result<DagPlanningOutcome> {
         let dag = DagService::new(self.pool.clone());
         let proposal = dag
             .save_patch_proposal(task_id, &summary, &patch, Some(session_id))
             .await?;
-        dag.apply_patch(task_id, &patch).await?;
+        if let Err(error) = dag.apply_patch(task_id, &patch).await {
+            let _ = dag
+                .mark_proposal_rejected(&proposal.proposal_id, &error.to_string())
+                .await;
+            return Err(error);
+        }
         let proposal = dag.mark_proposal_applied(&proposal.proposal_id).await?;
         if let Some(signal_id) = self.planning_signal_id(session_id).await? {
             sqlx::query(
