@@ -52,7 +52,63 @@ function responseText(toolName: string, payload: unknown): string {
     const text = agentContextText(payload);
     if (text) return text;
   }
-  return `${toolName} response:\n${JSON.stringify(payload, null, 2)}`;
+
+  const result = resultRecord(payload);
+  const lines = [`${toolName} succeeded.`];
+
+  if (toolName === "llmparty_submitPlan") {
+    lines.push(`Accepted: ${booleanText(result?.accepted) ?? "unknown"}`);
+    const proposalId = stringField(result, "proposal_id");
+    if (proposalId) lines.push(`Proposal ID: ${proposalId}`);
+    return lines.join("\n");
+  }
+
+  if (toolName === "llmparty_submitResult") {
+    const status = stringField(result, "status");
+    if (status) lines.push(`Status: ${status}`);
+    const runId = stringField(result, "run_id");
+    if (runId) lines.push(`Run ID: ${runId}`);
+    return lines.join("\n");
+  }
+
+  if (toolName === "llmparty_raiseSignal") {
+    const signalId = stringField(result, "signal_id");
+    if (signalId) lines.push(`Signal ID: ${signalId}`);
+    const recorded = booleanText(result?.recorded);
+    if (recorded) lines.push(`Recorded: ${recorded}`);
+    return lines.join("\n");
+  }
+
+  return lines.join("\n");
+}
+
+function resultRecord(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const result = (payload as Record<string, unknown>).result;
+  return result && typeof result === "object" ? (result as Record<string, unknown>) : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function booleanText(value: unknown): string | undefined {
+  return typeof value === "boolean" ? (value ? "yes" : "no") : undefined;
+}
+
+function errorBodyText(body: unknown): string | undefined {
+  if (typeof body === "string") return body;
+  if (!body || typeof body !== "object") return undefined;
+  const record = body as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+  }
+  const message = record.message;
+  return typeof message === "string" ? message : undefined;
 }
 
 function agentContextText(payload: unknown): string | undefined {
@@ -144,7 +200,8 @@ function buildTool(spec: ToolSpec, dependencies: Required<LlmpartyAgentToolDepen
             message: `${piName} failed: ${response.status} ${response.statusText}`,
             details: { tool: spec.name, status: response.status, body },
           });
-          return failureResult(`${piName} failed: ${response.status} ${response.statusText}\n${JSON.stringify(body)}`, {
+          const bodyText = errorBodyText(body);
+          return failureResult(`${piName} failed: ${response.status} ${response.statusText}${bodyText ? `\n${bodyText}` : ""}`, {
             ok: false,
             status: response.status,
             body,

@@ -99,7 +99,33 @@ describe("llmparty pi agent tools", () => {
       signal: undefined,
     });
     expect(result.details).toEqual({ ok: true, tool: "submitPlan", result: { accepted: true, proposal_id: "prop_1" } });
-    expect(result.content[0].text).toContain("accepted");
+    expect(result.content[0].text).toBe("llmparty_submitPlan succeeded.\nAccepted: yes\nProposal ID: prop_1");
+    expect(result.content[0].text).not.toContain("{");
+  });
+
+  test("all tool handlers return agent-visible plain text instead of JSON", async () => {
+    const responses: Record<string, unknown> = {
+      getContext: { ok: true, tool: "getContext", result: { text: "llmparty context: execution\n\nCurrent WorkItem:\n- Title: Do it" } },
+      submitPlan: { ok: true, tool: "submitPlan", result: { accepted: true, proposal_id: "prop_1" } },
+      submitResult: { ok: true, tool: "submitResult", result: { recorded: true, run_id: "run_1", status: "completed" } },
+      raiseSignal: { ok: true, tool: "raiseSignal", result: { signal_id: "sig_1", recorded: true } },
+    };
+    const fetchImpl = vi.fn(async (url: string) => {
+      const toolName = url.split("/").at(-1)!;
+      return new Response(JSON.stringify(responses[toolName]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const { tools } = install({}, { fetch: fetchImpl as any });
+
+    for (const tool of tools) {
+      const result = await tool.execute("call_plain", { status: "completed", summary: "done" });
+
+      expect(result.content[0].type).toBe("text");
+      expect(result.content[0].text).not.toContain("{");
+      expect(result.content[0].text).not.toContain("\"");
+    }
   });
 
   test("getContext returns agent-visible plain text instead of JSON", async () => {
@@ -129,6 +155,8 @@ describe("llmparty pi agent tools", () => {
     const result = await tools.find((tool) => tool.name === "llmparty_getContext")!.execute("call_2", {});
 
     expect(result.content[0].text).toContain("llmparty_getContext failed: 403 Forbidden");
+    expect(result.content[0].text).toContain("not authorized");
+    expect(result.content[0].text).not.toContain("{");
     expect(result.content[0].text).not.toContain("secret-token");
     expect(logDiagnostic).toHaveBeenCalledWith("hook.log", expect.objectContaining({ code: "agent_tool_post_failed" }));
   });
