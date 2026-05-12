@@ -27,7 +27,14 @@ impl TurnCommandService {
             .await?
             .ok_or_else(|| Error::NotFound(format!("session {session_id} not found")))?;
 
-        if !matches!(session.state.as_str(), "idle" | "interrupted") {
+        let dispatch_mode = get_client_spec(&session.client_type)
+            .map(|spec| spec.dispatch_mode)
+            .ok_or_else(|| {
+                Error::Domain(format!("unsupported client_type: {}", session.client_type))
+            })?;
+        let can_accept_turn = matches!(session.state.as_str(), "idle" | "interrupted")
+            || (session.state == "starting" && dispatch_mode == DispatchMode::TmuxPaste);
+        if !can_accept_turn {
             return Err(Error::StateConflict(format!(
                 "session {session_id} in state {} cannot accept a new turn",
                 session.state
@@ -52,11 +59,6 @@ impl TurnCommandService {
             turn_id: turn_id.clone(),
             input: input.clone(),
         };
-        let dispatch_mode = get_client_spec(&session.client_type)
-            .map(|spec| spec.dispatch_mode)
-            .ok_or_else(|| {
-                Error::Domain(format!("unsupported client_type: {}", session.client_type))
-            })?;
         if dispatch_mode == DispatchMode::GenericTestAdapter {
             self.runtime.submit_input(agent_input.clone())?;
         }

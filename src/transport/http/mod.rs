@@ -102,6 +102,7 @@ pub fn router(state: AppState) -> Router {
             "/external/v1/tasks",
             get(external::list_tasks).post(external::create_task),
         )
+        .route("/external/v1/dag-tasks", post(external::create_dag_task))
         .route("/external/v1/tasks/{task_id}", get(external::get_task))
         .route(
             "/external/v1/tasks/{task_id}/confirm-workspace",

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createTask } from '../../stores/tasks';
+  import { createDagTask, createTask } from '../../stores/tasks';
   import { loadSessions } from '../../stores/sessions';
   import { selectSession } from '../../stores/selection';
   import { loadWorkspaces } from '../../stores/workspaces';
@@ -14,8 +14,9 @@
   import WorkspaceSelector from '../workspaces/WorkspaceSelector.svelte';
   import type { WorkspaceView } from '../../api/types';
 
+  let taskMode = 'normal' as 'normal' | 'dag';
   let profileId = '';
-  let clientType = 'claude_code';
+  let clientType = 'pi';
   let workspaceId = '';
   let workspacePath = '';
   let input = '';
@@ -29,7 +30,16 @@
   });
 
   function applyProfileDefaults() {
+    if (taskMode === 'dag' && !clientType) {
+      clientType = 'pi';
+      return;
+    }
     clientType = selectClientTypeForProfile(clientType, selectedProfile);
+  }
+
+  function applyTaskMode() {
+    if (taskMode === 'dag') clientType = 'pi';
+    else clientType = selectClientTypeForProfile(clientType, selectedProfile);
   }
 
   function handleWorkspaceSelected(event: CustomEvent<WorkspaceView | null>) {
@@ -38,15 +48,24 @@
 
   async function submit() {
     const taskInput = input.trim();
-    if (!taskInput) return;
+    if (!taskInput || (taskMode === 'dag' && !workspacePath)) return;
     creating = true;
     try {
-      const task = await createTask({
+      const payload = {
         input: taskInput,
         client_type: clientType,
         workspace: workspacePath || null,
         metadata: {},
-      });
+      };
+      if (taskMode === 'dag') {
+        const result = await createDagTask(payload);
+        await Promise.all([loadSessions(), loadWorkspaces()]);
+        await selectSession(result.planning_turn.session_id);
+        input = '';
+        setStatus('DAG task created; planner turn started.');
+        return;
+      }
+      const task = await createTask(payload);
       await Promise.all([loadSessions(), loadWorkspaces()]);
       if (task.session_id) await selectSession(task.session_id);
       input = '';
@@ -61,7 +80,12 @@
 
 <section class="panel">
   <h2>Create task</h2>
-  <p class="muted">Use the current control-plane task API. Leave workspace empty to validate manual routing / confirmation.</p>
+  <p class="muted">Use Normal for legacy workspace routing, or DAG task to start a planner-managed WorkItem DAG.</p>
+  <fieldset>
+    <legend>Task mode</legend>
+    <label><input type="radio" bind:group={taskMode} value="normal" on:change={applyTaskMode} /> Normal task</label>
+    <label><input type="radio" bind:group={taskMode} value="dag" on:change={applyTaskMode} /> DAG task</label>
+  </fieldset>
   <label>Agent profile
     <select bind:value={profileId} on:change={applyProfileDefaults}>
       <option value="">No profile defaults</option>
@@ -78,6 +102,7 @@
     </select>
   </label>
   <WorkspaceSelector bind:selectedWorkspaceId={workspaceId} on:selected={handleWorkspaceSelected} />
+  {#if taskMode === 'dag' && !workspacePath}<p class="muted">Workspace is required for DAG task planning.</p>{/if}
   <label>Task <textarea bind:value={input} placeholder="Ask the agent control layer to do work"></textarea></label>
-  <button disabled={creating || !input.trim()} on:click={submit}>{creating ? 'Creating...' : 'Create task'}</button>
+  <button disabled={creating || !input.trim() || (taskMode === 'dag' && !workspacePath)} on:click={submit}>{creating ? 'Creating...' : 'Create task'}</button>
 </section>

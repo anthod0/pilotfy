@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import {
   cancelTask as apiCancelTask,
   confirmTaskWorkspace as apiConfirmTaskWorkspace,
+  createDagTask as apiCreateDagTask,
   createTask as apiCreateTask,
   getTask,
   getTaskDag,
@@ -12,6 +13,7 @@ import {
 } from '../api/client';
 import type {
   ConfirmTaskWorkspaceInput,
+  CreateDagTaskResult,
   CreateTaskInput,
   SubmitPlannerInput,
   TaskDagView,
@@ -72,6 +74,17 @@ export async function createTask(input: CreateTaskInput): Promise<TaskView> {
   taskEvents.set(events);
   taskDag.set(dag);
   return created;
+}
+
+export async function createDagTask(input: CreateTaskInput): Promise<CreateDagTaskResult> {
+  const result = await apiCreateDagTask(input);
+  await loadTasks();
+  selectedTaskId.set(result.task.task_id);
+  task.set(result.task);
+  const [events, dag] = await Promise.all([listTaskEvents(result.task.task_id), getTaskDag(result.task.task_id)]);
+  taskEvents.set(events);
+  taskDag.set(dag);
+  return result;
 }
 
 export async function confirmTaskWorkspace(taskId: string, input: ConfirmTaskWorkspaceInput): Promise<TaskView> {

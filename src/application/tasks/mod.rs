@@ -17,6 +17,16 @@ pub struct ConfirmTaskWorkspaceRequest {
     pub client_type: String,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct CreateDagTaskRequest {
+    pub input: String,
+    pub workspace: Option<String>,
+    #[serde(default = "default_client_type")]
+    pub client_type: String,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTaskOutcome {
     pub data: Value,

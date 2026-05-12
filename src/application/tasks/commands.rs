@@ -1,6 +1,89 @@
 use super::*;
 
 impl TaskCommandService {
+    pub async fn create_dag_task(
+        &self,
+        request: CreateDagTaskRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<CreateTaskOutcome> {
+        let workspace = request.workspace.as_deref().unwrap_or_default().trim();
+        if workspace.is_empty() {
+            return Err(Error::Domain(
+                "workspace is required for DAG tasks".to_string(),
+            ));
+        }
+        if !is_supported_client_type(&request.client_type) {
+            return Err(Error::Domain(format!(
+                "unsupported client_type: {}",
+                request.client_type
+            )));
+        }
+
+        if let Some(key) = idempotency_key
+            && let Some(response) = self.idempotency_response("create_dag_task", key).await?
+        {
+            return Ok(CreateTaskOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+
+        let workspace_record = upsert_workspace(&self.pool, workspace).await?;
+        let task_id = new_task_id().to_string();
+        let mut metadata = request.metadata;
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert("dag_managed".to_string(), Value::Bool(true));
+            object.insert("mode".to_string(), Value::String("dag".to_string()));
+            object.insert(
+                "planner_client_type".to_string(),
+                Value::String(request.client_type.clone()),
+            );
+        } else {
+            metadata = json!({
+                "dag_managed": true,
+                "mode": "dag",
+                "planner_client_type": request.client_type.clone(),
+                "original_metadata": metadata,
+            });
+        }
+
+        sqlx::query(
+            r#"INSERT INTO tasks (task_id, state, input, workspace_id, routing_state, routing_confidence, metadata)
+               VALUES (?, 'created', ?, ?, 'matched', 1.0, ?)"#,
+        )
+        .bind(&task_id)
+        .bind(&request.input)
+        .bind(&workspace_record.workspace_id)
+        .bind(serde_json::to_string(&metadata)?)
+        .execute(&self.pool)
+        .await?;
+        self.record_task_event(&task_id, "task.created", json!({ "mode": "dag" }))
+            .await?;
+        self.record_task_event(
+            &task_id,
+            "task.workspace_matched",
+            json!({"workspace_id": workspace_record.workspace_id, "canonical_path": workspace_record.canonical_path}),
+        )
+        .await?;
+
+        let planning_turn = DagPlanningService::new(self.pool.clone())
+            .start_initial_planning_with_client_type(&task_id, &request.client_type)
+            .await?;
+        let task = ExternalQueryService::new(self.pool.clone())
+            .get_task(&task_id)
+            .await?
+            .ok_or_else(|| Error::Domain("created DAG task missing".to_string()))?;
+        let data = json!({ "task": task, "planning_turn": planning_turn });
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response("create_dag_task", key, &data)
+                .await?;
+        }
+        Ok(CreateTaskOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+
     pub async fn create_task(
         &self,
         request: CreateTaskRequest,

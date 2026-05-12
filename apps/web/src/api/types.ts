@@ -277,6 +277,18 @@ export interface CreateTaskInput {
   metadata?: JsonObject;
 }
 
+export interface DagPlanningTurnView {
+  task_id: string;
+  session_id: string;
+  turn_id: string;
+  profile_id: string;
+}
+
+export interface CreateDagTaskResult {
+  task: TaskView;
+  planning_turn: DagPlanningTurnView;
+}
+
 export interface ConfirmTaskWorkspaceInput {
   workspace: string;
   client_type: string;

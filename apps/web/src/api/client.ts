@@ -7,6 +7,7 @@ import type {
   ArtifactContent,
   ArtifactView,
   ConfirmTaskWorkspaceInput,
+  CreateDagTaskResult,
   CreateSessionInput,
   CreateSessionResult,
   CreateTaskInput,
@@ -104,6 +105,10 @@ export async function listTasks(): Promise<TaskView[]> {
 
 export async function createTask(input: CreateTaskInput): Promise<TaskView> {
   return (await request<{ task: TaskView }>('/tasks', { method: 'POST', body: input, mutating: true })).task;
+}
+
+export async function createDagTask(input: CreateTaskInput): Promise<CreateDagTaskResult> {
+  return request<CreateDagTaskResult>('/dag-tasks', { method: 'POST', body: input, mutating: true });
 }
 
 export async function getTask(taskId: string): Promise<TaskView> {

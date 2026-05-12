@@ -25,6 +25,24 @@ impl DagPlanningService {
     }
 
     pub async fn start_initial_planning(&self, task_id: &str) -> Result<DagPlanningTurn> {
+        self.start_initial_planning_for_client_type(task_id, None)
+            .await
+    }
+
+    pub async fn start_initial_planning_with_client_type(
+        &self,
+        task_id: &str,
+        client_type: &str,
+    ) -> Result<DagPlanningTurn> {
+        self.start_initial_planning_for_client_type(task_id, Some(client_type))
+            .await
+    }
+
+    async fn start_initial_planning_for_client_type(
+        &self,
+        task_id: &str,
+        client_type: Option<&str>,
+    ) -> Result<DagPlanningTurn> {
         let task = self.task_context(task_id).await?;
         sqlx::query(
             r#"UPDATE tasks
@@ -48,6 +66,8 @@ impl DagPlanningService {
                 task.input
             ),
             json!({"mode":"initial_dag"}),
+            client_type,
+            task.workspace_id.as_deref(),
         )
         .await
     }
@@ -148,6 +168,8 @@ impl DagPlanningService {
             "replanner",
             prompt,
             json!({"mode":"patch", "signal_id": signal_id}),
+            None,
+            task.workspace_id.as_deref(),
         )
         .await
     }
@@ -221,6 +243,8 @@ impl DagPlanningService {
         profile_id: &str,
         prompt: String,
         metadata: Value,
+        preferred_client_type: Option<&str>,
+        workspace_id: Option<&str>,
     ) -> Result<DagPlanningTurn> {
         let profile = AgentProfileService::new(self.pool.clone())
             .get_latest(profile_id)
@@ -228,7 +252,18 @@ impl DagPlanningService {
             .ok_or_else(|| {
                 Error::Domain(format!("execution profile {profile_id} does not exist"))
             })?;
-        let client_type = if profile
+        let client_type = if let Some(client_type) = preferred_client_type {
+            if !profile
+                .supported_client_types
+                .iter()
+                .any(|value| value == client_type)
+            {
+                return Err(Error::Domain(format!(
+                    "execution profile {profile_id} does not support client_type {client_type}"
+                )));
+            }
+            client_type.to_string()
+        } else if profile
             .supported_client_types
             .iter()
             .any(|value| value == "generic")
@@ -246,7 +281,7 @@ impl DagPlanningService {
                 CreateSessionRequest {
                     client_type,
                     workspace: None,
-                    workspace_id: None,
+                    workspace_id: workspace_id.map(str::to_string),
                     handle: None,
                     role: profile.default_session_role.clone(),
                     description: profile.default_session_description.clone(),
@@ -308,13 +343,14 @@ impl DagPlanningService {
     }
 
     async fn task_context(&self, task_id: &str) -> Result<PlanningTaskContext> {
-        let row = sqlx::query("SELECT task_id, input FROM tasks WHERE task_id = ?")
+        let row = sqlx::query("SELECT task_id, input, workspace_id FROM tasks WHERE task_id = ?")
             .bind(task_id)
             .fetch_optional(&self.pool)
             .await?
             .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
         Ok(PlanningTaskContext {
             input: row.get("input"),
+            workspace_id: row.try_get("workspace_id")?,
         })
     }
 
@@ -339,6 +375,7 @@ impl DagPlanningService {
 
 struct PlanningTaskContext {
     input: String,
+    workspace_id: Option<String>,
 }
 
 fn parse_initial_plan_output(raw_output: &str) -> Result<SubmitPlanPayload> {
