@@ -102,6 +102,22 @@ describe("llmparty pi agent tools", () => {
     expect(result.content[0].text).toContain("accepted");
   });
 
+  test("getContext returns agent-visible plain text instead of JSON", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, tool: "getContext", result: { text: "llmparty context: execution\n\nCurrent WorkItem:\n- Title: Do it" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const { tools } = install({}, { fetch: fetchImpl as any });
+
+    const result = await tools.find((tool) => tool.name === "llmparty_getContext")!.execute("call_context", {});
+
+    expect(result.content[0].text).toBe("llmparty context: execution\n\nCurrent WorkItem:\n- Title: Do it");
+    expect(result.content[0].text).not.toContain("{\n");
+    expect(result.details).toEqual({ ok: true, tool: "getContext", result: { text: "llmparty context: execution\n\nCurrent WorkItem:\n- Title: Do it" } });
+  });
+
   test("backend error is returned as a tool error without leaking environment", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: "not authorized" }), { status: 403, statusText: "Forbidden" }));
     const logDiagnostic = vi.fn(async () => undefined);

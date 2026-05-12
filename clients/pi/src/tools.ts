@@ -48,7 +48,25 @@ function piToolName(toolName: LlmpartyToolName): string {
 }
 
 function responseText(toolName: string, payload: unknown): string {
+  if (toolName === "llmparty_getContext") {
+    const text = agentContextText(payload);
+    if (text) return text;
+  }
   return `${toolName} response:\n${JSON.stringify(payload, null, 2)}`;
+}
+
+function agentContextText(payload: unknown): string | undefined {
+  if (typeof payload === "string") return payload;
+  if (!payload || typeof payload !== "object") return undefined;
+  const record = payload as Record<string, unknown>;
+  const result = record.result;
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const text = (result as Record<string, unknown>).text;
+    if (typeof text === "string") return text;
+  }
+  const text = record.text;
+  return typeof text === "string" ? text : undefined;
 }
 
 function failureResult(message: string, details: unknown): AgentToolResult {

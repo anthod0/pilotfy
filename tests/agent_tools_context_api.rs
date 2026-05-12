@@ -60,14 +60,13 @@ async fn authorizes_planning_context_from_session_turn_and_runtime_binding() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["ok"], true);
     assert_eq!(body["tool"], "getContext");
-    let context = &body["result"]["context"];
-    assert_eq!(context["session_id"], "sess_plan");
-    assert_eq!(context["turn_id"], "turn_plan");
-    assert_eq!(context["client_type"], "pi");
-    assert_eq!(context["runtime_instance_id"], "rt_plan");
-    assert_eq!(context["task_id"], "task_plan");
-    assert_eq!(context["mode"]["type"], "planning");
-    assert_eq!(context["mode"]["role"], "planner");
+    let text = body["result"]["text"].as_str().expect("plain text context");
+    assert!(text.contains("llmparty context: planning"));
+    assert!(text.contains("Role: planner"));
+    assert!(text.contains("Goal:"));
+    assert!(!text.contains("sess_plan"));
+    assert!(!text.contains("turn_plan"));
+    assert!(!text.contains("rt_plan"));
 }
 
 #[tokio::test]
@@ -106,11 +105,12 @@ async fn authorizes_execution_context_from_current_work_item_run_not_request_inp
     .await;
 
     assert_eq!(status, StatusCode::OK);
-    let context = &body["result"]["context"];
-    assert_eq!(context["task_id"], "task_exec");
-    assert_eq!(context["mode"]["type"], "execution");
-    assert_eq!(context["mode"]["run_id"], "run_exec");
-    assert_eq!(context["mode"]["work_item_id"], "wi_exec");
+    let text = body["result"]["text"].as_str().expect("plain text context");
+    assert!(text.contains("llmparty context: execution"));
+    assert!(text.contains("ID: wi_exec"));
+    assert!(!text.contains("task_other"));
+    assert!(!text.contains("run_other"));
+    assert!(!text.contains("wi_other"));
 }
 
 #[tokio::test]
@@ -164,26 +164,22 @@ async fn get_context_returns_planning_view_from_authoritative_task_state() {
 
     assert_eq!(status, StatusCode::OK);
     let result = &body["result"];
-    assert_eq!(result["mode"], "planning");
-    assert_eq!(result["role"], "planner");
-    assert_eq!(result["task"]["task_id"], "task_plan");
-    assert_eq!(result["dag"]["summary"]["total_work_items"], 1);
-    assert_eq!(result["dag"]["work_items"][0]["work_item_id"], "wi_plan");
-    assert_eq!(result["open_signals"].as_array().unwrap().len(), 1);
-    assert_eq!(result["open_signals"][0]["signal_id"], "sig_open");
-    assert_eq!(result["relevant_proposals"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        result["relevant_proposals"][0]["proposal_id"],
-        "prop_pending"
-    );
-    assert!(
-        result["execution_profiles"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|profile| profile["profile_id"] == "implementer")
-    );
-    assert!(result.get("runtime_diagnostics").is_none());
+    let text = result["text"].as_str().expect("plain text context");
+    assert!(text.contains("llmparty context: planning"));
+    assert!(text.contains("Role: planner"));
+    assert!(text.contains("Goal:"));
+    assert!(text.contains("Current DAG:"));
+    assert!(text.contains("wi_plan [ready] Existing item"));
+    assert!(text.contains("Open signals:"));
+    assert!(text.contains("sig_open [medium / needs_input]"));
+    assert!(text.contains("Relevant proposals:"));
+    assert!(text.contains("prop_pending [proposed / initial_dag]"));
+    assert!(text.contains("Available execution profiles:"));
+    assert!(text.contains("implementer"));
+    assert!(!text.contains("created_at"));
+    assert!(!text.contains("updated_at"));
+    assert!(!text.contains("metadata"));
+    assert!(!text.contains("null"));
 }
 
 #[tokio::test]
@@ -252,26 +248,19 @@ async fn get_context_returns_execution_view_scoped_to_current_run() {
 
     assert_eq!(status, StatusCode::OK);
     let result = &body["result"];
-    assert_eq!(result["mode"], "execution");
-    assert_eq!(result["task"]["task_id"], "task_exec");
-    assert_eq!(result["work_item"]["work_item_id"], "wi_exec");
-    assert_eq!(result["work_item_run"]["run_id"], "run_exec");
-    assert_eq!(result["acceptance_criteria"], json!(["done means done"]));
-    assert_eq!(result["dependencies"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        result["dependencies"][0]["from_work_item_id"],
-        "wi_upstream"
-    );
-    assert_eq!(
-        result["upstream_completed_items"].as_array().unwrap().len(),
-        1
-    );
-    assert_eq!(
-        result["upstream_completed_items"][0]["work_item_id"],
-        "wi_upstream"
-    );
-    assert_eq!(result["open_signals"].as_array().unwrap().len(), 1);
-    assert_eq!(result["open_signals"][0]["signal_id"], "sig_run");
-    assert!(!serde_json::to_string(result).unwrap().contains("wi_other"));
-    assert!(result.get("runtime_diagnostics").is_none());
+    let text = result["text"].as_str().expect("plain text context");
+    assert!(text.contains("llmparty context: execution"));
+    assert!(text.contains("Current WorkItem:"));
+    assert!(text.contains("ID: wi_exec"));
+    assert!(text.contains("Acceptance criteria:"));
+    assert!(text.contains("done means done"));
+    assert!(text.contains("Completed dependencies:"));
+    assert!(text.contains("wi_upstream [completed] Upstream item"));
+    assert!(text.contains("Open related signals:"));
+    assert!(text.contains("sig_run [medium / needs_input]"));
+    assert!(!text.contains("wi_other"));
+    assert!(!text.contains("created_at"));
+    assert!(!text.contains("updated_at"));
+    assert!(!text.contains("metadata"));
+    assert!(!text.contains("null"));
 }
