@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CircleAlert, FolderOpen, RefreshCw } from '@lucide/svelte'
+  import { CircleAlert, FolderOpen, RefreshCw, Trash2 } from '@lucide/svelte'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -12,7 +12,7 @@
   import * as Table from '$lib/components/ui/table/index.js'
   import { formatDateTime } from '../components/tasks/format'
   import type { WorkspaceDirectoryListingView } from '../api/types'
-  import { browseWorkspaceRoot, loadWorkspaceRoots, loadWorkspaces, registerWorkspace, workspaceRoots, workspaces, workspacesError, workspacesLoading } from '../stores/workspaces'
+  import { browseWorkspaceRoot, deleteWorkspace, loadWorkspaceRoots, loadWorkspaces, registerWorkspace, workspaceRoots, workspaces, workspacesError, workspacesLoading } from '../stores/workspaces'
 
   let rootId = ''
   let browsePath = ''
@@ -22,6 +22,8 @@
   let workspaceName = ''
   let registering = false
   let registerError: string | null = null
+  let deletingWorkspaceId: string | null = null
+  let deleteError: string | null = null
 
   onMount(async () => {
     await Promise.all([loadWorkspaces(), loadWorkspaceRoots().then((roots) => {
@@ -66,6 +68,20 @@
       registering = false
     }
   }
+
+  async function deleteRegisteredWorkspace(workspaceId: string, label: string): Promise<void> {
+    if (deletingWorkspaceId || !confirm(`Delete workspace "${label}" from llmparty? Files on disk will not be deleted.`)) return
+    deletingWorkspaceId = workspaceId
+    deleteError = null
+    try {
+      await deleteWorkspace(workspaceId)
+      if (rootId) await openPath(browsePath)
+    } catch (error) {
+      deleteError = error instanceof Error ? error.message : String(error)
+    } finally {
+      deletingWorkspaceId = null
+    }
+  }
 </script>
 
 <section class="space-y-6">
@@ -78,11 +94,11 @@
     <Button variant="outline" onclick={() => void refreshAll()}><RefreshCw class="size-4" /> Refresh</Button>
   </div>
 
-  {#if $workspacesError || browserError || registerError}
+  {#if $workspacesError || browserError || registerError || deleteError}
     <Alert.Root variant="destructive">
       <CircleAlert class="size-4" />
       <Alert.Title>Workspace error</Alert.Title>
-      <Alert.Description>{registerError ?? browserError ?? $workspacesError}</Alert.Description>
+      <Alert.Description>{deleteError ?? registerError ?? browserError ?? $workspacesError}</Alert.Description>
     </Alert.Root>
   {/if}
 
@@ -171,9 +187,23 @@
           {:else}
             <div class="space-y-3">
               {#each $workspaces as workspace}
+                {@const workspaceLabel = workspace.name ?? workspace.display_path}
                 <div class="rounded-lg border p-3 text-sm">
-                  <div class="font-medium">{workspace.name ?? workspace.display_path}</div>
-                  <div class="truncate text-muted-foreground" title={workspace.canonical_path}>{workspace.canonical_path}</div>
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="font-medium">{workspaceLabel}</div>
+                      <div class="truncate text-muted-foreground" title={workspace.canonical_path}>{workspace.canonical_path}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onclick={() => void deleteRegisteredWorkspace(workspace.workspace_id, workspaceLabel)}
+                      disabled={deletingWorkspaceId === workspace.workspace_id}
+                    >
+                      <Trash2 class="size-4" />
+                      {deletingWorkspaceId === workspace.workspace_id ? 'Deleting…' : 'Delete'}
+                    </Button>
+                  </div>
                   <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground"><Badge variant="secondary">{workspace.state}</Badge><span>Updated {formatDateTime(workspace.updated_at)}</span></div>
                 </div>
               {/each}

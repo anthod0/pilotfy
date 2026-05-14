@@ -34,6 +34,6 @@ pub use tasks::{
 };
 pub use turns::{get_turn, interrupt_turn, list_session_events, list_turn_events, list_turns};
 pub use workspaces::{
-    get_workspace, list_workspace_root_entries, list_workspace_roots, list_workspaces,
-    register_workspace,
+    delete_workspace, get_workspace, list_workspace_root_entries, list_workspace_roots,
+    list_workspaces, register_workspace,
 };

@@ -61,7 +61,9 @@ impl ExternalQueryService {
         let rows = sqlx::query(
             r#"SELECT workspace_id, canonical_path, display_path, name, state, metadata,
                       created_at, updated_at, last_used_at
-               FROM workspaces ORDER BY last_used_at DESC, created_at DESC, workspace_id"#,
+               FROM workspaces
+               WHERE state != 'deleted'
+               ORDER BY last_used_at DESC, created_at DESC, workspace_id"#,
         )
         .fetch_all(&self.pool)
         .await?;

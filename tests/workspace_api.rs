@@ -90,6 +90,21 @@ async fn post_json(state: AppState, uri: &str, body: Value) -> (StatusCode, Valu
     json_response(response).await
 }
 
+async fn delete_json(state: AppState, uri: &str) -> (StatusCode, Value) {
+    let response = http::router(state)
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(uri)
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    json_response(response).await
+}
+
 async fn json_response(response: axum::response::Response) -> (StatusCode, Value) {
     let status = response.status();
     let body = response
@@ -199,6 +214,53 @@ async fn registers_existing_directory_under_allowed_root_without_storing_root_id
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["workspace"]["workspace_id"], workspace_id);
     assert!(body["data"]["workspace"].get("root_id").is_none());
+}
+
+#[tokio::test]
+async fn soft_deletes_workspace_hiding_it_from_list_but_preserving_direct_lookup() {
+    let root = tempfile::tempdir().expect("root");
+    let app = root.path().join("app");
+    std::fs::create_dir(&app).expect("app");
+    let state = test_state(vec![WorkspaceRootConfig {
+        root_id: "projects".to_string(),
+        label: "Projects".to_string(),
+        path: root.path().display().to_string(),
+    }])
+    .await;
+    let (_, body) = post_json(
+        state.clone(),
+        "/external/v1/workspaces",
+        json!({"root_id":"projects", "path":"app"}),
+    )
+    .await;
+    let workspace_id = body["data"]["workspace"]["workspace_id"].as_str().unwrap();
+
+    let (status, body) = delete_json(
+        state.clone(),
+        &format!("/external/v1/workspaces/{workspace_id}"),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["workspace"]["workspace_id"], workspace_id);
+    assert_eq!(body["data"]["workspace"]["state"], "deleted");
+
+    let (status, body) = get_json(state.clone(), "/external/v1/workspaces").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["data"]["workspaces"].as_array().unwrap().is_empty());
+
+    let (status, body) = get_json(
+        state.clone(),
+        &format!("/external/v1/workspaces/{workspace_id}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["workspace"]["state"], "deleted");
+
+    let (status, body) =
+        delete_json(state, &format!("/external/v1/workspaces/{workspace_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["workspace"]["state"], "deleted");
 }
 
 #[tokio::test]

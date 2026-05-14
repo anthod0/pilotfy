@@ -42,6 +42,17 @@ pub async fn get_workspace(
     Ok(ok(json!({ "workspace": workspace })))
 }
 
+pub async fn delete_workspace(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(workspace_id): Path<String>,
+) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let service = WorkspaceBrowserService::new(state.db, state.workspace_browser);
+    let workspace = service.delete_workspace(&workspace_id).await?;
+    Ok(ok(json!({ "workspace": workspace })))
+}
+
 pub async fn list_workspace_roots(
     State(state): State<AppState>,
     headers: HeaderMap,

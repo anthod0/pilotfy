@@ -227,7 +227,7 @@ impl WorkspaceBrowserService {
                 .map_err(|_| Error::Domain("directory escaped workspace root".to_string()))?;
             let path = path_to_api_relative(entry_relative);
             let is_workspace = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM workspaces WHERE canonical_path = ?",
+                "SELECT COUNT(*) FROM workspaces WHERE canonical_path = ? AND state != 'deleted'",
             )
             .bind(canonical.display().to_string())
             .fetch_one(&self.pool)
@@ -294,6 +294,26 @@ impl WorkspaceBrowserService {
             .get_workspace(&record.workspace_id)
             .await?
             .ok_or_else(|| Error::NotFound(format!("workspace {} not found", record.workspace_id)))
+    }
+
+    pub async fn delete_workspace(&self, workspace_id: &str) -> Result<WorkspaceView> {
+        let result = sqlx::query(
+            r#"UPDATE workspaces
+               SET state = 'deleted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE workspace_id = ?"#,
+        )
+        .bind(workspace_id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(Error::NotFound(format!(
+                "workspace {workspace_id} not found"
+            )));
+        }
+        ExternalQueryService::new(self.pool.clone())
+            .get_workspace(workspace_id)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("workspace {workspace_id} not found")))
     }
 
     fn root(&self, root_id: &str) -> Result<&WorkspaceRootConfig> {

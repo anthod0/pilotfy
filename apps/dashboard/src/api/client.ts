@@ -92,6 +92,10 @@ export async function registerWorkspace(input: RegisterWorkspaceInput): Promise<
   return (await request<{ workspace: WorkspaceView }>('/workspaces', { method: 'POST', body: input, mutating: true })).workspace;
 }
 
+export async function deleteWorkspace(workspaceId: string): Promise<WorkspaceView> {
+  return (await request<{ workspace: WorkspaceView }>(`/workspaces/${encodeURIComponent(workspaceId)}`, { method: 'DELETE', mutating: true })).workspace;
+}
+
 export async function listWorkspaceRoots(): Promise<WorkspaceRootView[]> {
   return (await request<{ roots: WorkspaceRootView[] }>('/workspace-roots')).roots;
 }

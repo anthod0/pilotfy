@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import {
   listWorkspaceRootEntries,
+  deleteWorkspace as apiDeleteWorkspace,
   listWorkspaceRoots,
   listWorkspaces,
   registerWorkspace as apiRegisterWorkspace,
@@ -41,6 +42,12 @@ export async function browseWorkspaceRoot(rootId: string, path = ''): Promise<Wo
 
 export async function registerWorkspace(input: RegisterWorkspaceInput): Promise<WorkspaceView> {
   const workspace = await apiRegisterWorkspace(input);
+  await loadWorkspaces();
+  return workspace;
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<WorkspaceView> {
+  const workspace = await apiDeleteWorkspace(workspaceId);
   await loadWorkspaces();
   return workspace;
 }
