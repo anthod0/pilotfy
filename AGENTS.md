@@ -3,7 +3,7 @@
 - `llmparty` is a Rust console/control plane for coding agents with a web dashboard and client integrations.
 - Backend: Rust 2024, Axum, Tokio, SQLx/SQLite.
 - Frontend/dashboard and client plugins use pnpm.
-- Key paths: `src/`, `tests/`, `apps/web/`, `clients/pi/`, `clients/claude-code/`, `spec/`, `MILESTONE.md`, `README.md`.
+- Key paths: `src/`, `tests/`, `apps/dashboard/`, `clients/pi/`, `clients/claude-code/`, `spec/`, `MILESTONE.md`, `README.md`.
 
 ## Architecture rules
 
@@ -37,8 +37,8 @@
   - `cargo test`
   - `cargo clippy --all-targets --all-features -- -D warnings`
 - Dashboard:
-  - `pnpm --dir apps/web typecheck`
-  - `pnpm --dir apps/web build`
+  - `pnpm --dir=apps/dashboard run check`
+  - `pnpm --dir=apps/dashboard run build`
 - Client packages:
   - `pnpm --dir clients/pi test`
   - `pnpm --dir clients/pi typecheck`

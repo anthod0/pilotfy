@@ -63,7 +63,7 @@ run_migrations = true
 
 [dashboard]
 # Local Vite dist directory, or a remote .zip/.tar.gz/.tgz archive containing exactly one index.html.
-source = "apps/web/dist"
+source = "apps/dashboard/dist"
 cache_dir = "~/.cache/llmparty/dashboard"
 
 [runtime.pi]
@@ -91,8 +91,8 @@ Dashboard `source` may be a local built dashboard directory or a remote archive 
 ### 2. Install dependencies and build the Dashboard
 
 ```bash
-pnpm --dir apps/web install
-pnpm --dir apps/web build
+pnpm --dir=apps/dashboard install
+pnpm --dir=apps/dashboard run build
 ```
 
 ### 3. Start llmparty
@@ -305,6 +305,6 @@ cargo build
 cargo test
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-pnpm --dir apps/web typecheck
-pnpm --dir apps/web build
+pnpm --dir=apps/dashboard run check
+pnpm --dir=apps/dashboard run build
 ```

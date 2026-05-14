@@ -1,6 +1,6 @@
 # Dashboard v2 Implementation Plan
 
-> **For agentic workers:** Each phase is intended for one fresh implementation agent. Do not modify `apps/web`; it remains the legacy dashboard. Use `pnpm`, not `npm`. Run the verification commands listed for your phase before handing off.
+> **For agentic workers:** This historical plan created the current `apps/dashboard` app. The legacy dashboard app has since been removed. Use `pnpm`, not `npm`. Run the verification commands listed for your phase before handing off.
 
 **Goal:** Build a new shadcn-svelte based dashboard in `apps/dashboard` that is served from the existing `/dashboard` entrypoint by configuring `[dashboard].source = "apps/dashboard/dist"`.
 
@@ -25,8 +25,8 @@ Already initialized:
 Useful commands:
 
 ```bash
-pnpm --dir apps/dashboard check
-pnpm --dir apps/dashboard build
+pnpm --dir=apps/dashboard run check
+pnpm --dir=apps/dashboard run build
 LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 ```
 
@@ -79,9 +79,9 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 
 **Acceptance criteria:**
 
-- `apps/web` remains unchanged except unrelated lockfile side effects must be avoided.
-- `pnpm --dir apps/dashboard check` passes.
-- `pnpm --dir apps/dashboard build` passes.
+- The legacy dashboard app existed when this plan was written, but has since been removed.
+- `pnpm --dir=apps/dashboard run check` passes.
+- `pnpm --dir=apps/dashboard run build` passes.
 - `cargo test dashboard` or the relevant dashboard tests pass.
 - With `LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist`, refreshing a nested route such as `/dashboard/tasks/test/dag` serves the SPA.
 
@@ -108,7 +108,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 
 **Work summary:**
 
-1. Reuse the External API contract from `apps/web/src/api/*`, but place the new copy under `apps/dashboard/src/api/*`.
+1. Reuse the External API contract from the legacy dashboard implementation, but place the new copy under `apps/dashboard/src/api/*`.
 2. Keep API state sourced from External API responses/SSE only; do not read SQLite, runtime dirs, or workspace files directly.
 3. Implement bearer token storage and Settings UI.
 4. Implement dashboard SSE stream connection state.
@@ -120,7 +120,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 - No standalone session creation/turn composer UI is introduced in this phase; advanced manual session control is deferred to Phase 5.
 - Mutating API calls still send `Idempotency-Key`.
 - Missing token produces a clear Settings/TopBar warning.
-- `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
+- `pnpm --dir=apps/dashboard run check` and `pnpm --dir=apps/dashboard run build` pass.
 
 ---
 
@@ -154,7 +154,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 - Creating a DAG task calls `/external/v1/dag-tasks`, not legacy `/tasks` normal creation.
 - Task detail URLs are shareable and refreshable.
 - Empty/loading/error states use shadcn components.
-- `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
+- `pnpm --dir=apps/dashboard run check` and `pnpm --dir=apps/dashboard run build` pass.
 
 ---
 
@@ -193,7 +193,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 - Workspaces and Agent Profiles have independent sidebar entries.
 - Sessions are not promoted as the primary workflow; task-associated sessions remain diagnostics-only in task detail.
 - Artifact viewing uses External API only.
-- `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
+- `pnpm --dir=apps/dashboard run check` and `pnpm --dir=apps/dashboard run build` pass.
 - Run relevant backend tests if backend routes were touched by this phase.
 
 ---
@@ -250,7 +250,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 - Session detail previews turns, inbox messages, events, and output/artifact references using External API responses only.
 - Mutating session actions send `Idempotency-Key`.
 - No session state is inferred from tmux, runtime logs, local files, or database reads.
-- `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
+- `pnpm --dir=apps/dashboard run check` and `pnpm --dir=apps/dashboard run build` pass.
 - Run relevant backend tests if backend routes are added or changed by this phase.
 
 ---
@@ -262,8 +262,8 @@ Run before declaring the dashboard v2 ready:
 ```bash
 cargo fmt --check
 cargo test
-pnpm --dir apps/dashboard check
-pnpm --dir apps/dashboard build
+pnpm --dir=apps/dashboard run check
+pnpm --dir=apps/dashboard run build
 ```
 
 Manual smoke test:
@@ -276,4 +276,3 @@ Manual smoke test:
 6. Create a DAG task.
 7. Open the advanced Session Console, create a manual session, submit input/inbox, inspect events/output, and interrupt/exit the session if supported by the selected client.
 8. Refresh a nested task URL and verify the SPA loads.
-9. Switch back to `LLMPARTY_DASHBOARD_SOURCE=apps/web/dist` and verify the legacy dashboard still serves.

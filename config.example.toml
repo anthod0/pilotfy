@@ -5,7 +5,7 @@ run_migrations = true
 
 [dashboard]
 # Local Vite dist directory or a remote .tar.gz/.tgz/.zip archive containing exactly one index.html.
-source = "apps/web/dist"
+source = "apps/dashboard/dist"
 # Used only for remote sources. On startup llmparty tries to refresh this cache;
 # if refresh fails, an existing cached dashboard is served.
 cache_dir = "~/.cache/llmparty/dashboard"

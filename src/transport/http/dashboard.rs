@@ -47,7 +47,8 @@ impl ResolvedDashboard {
 
     fn unavailable_message(&self) -> String {
         self.unavailable_reason.clone().unwrap_or_else(|| {
-            "Dashboard frontend has not been built. Run `pnpm --dir apps/web build`.".to_string()
+            "Dashboard frontend has not been built. Run `pnpm --dir=apps/dashboard run build`."
+                .to_string()
         })
     }
 }
@@ -55,7 +56,7 @@ impl ResolvedDashboard {
 fn default_dist_path() -> PathBuf {
     env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join("apps/web/dist")
+        .join("apps/dashboard/dist")
 }
 
 pub async fn resolve_dashboard(config: &DashboardConfig) -> ResolvedDashboard {
