@@ -12,7 +12,6 @@ pub struct ExecutionProfileView {
     pub default_session_role: Option<String>,
     pub default_session_description: Option<String>,
     pub handle_prefix: Option<String>,
-    pub session_reuse_policy: String,
     pub expected_output_schema: Option<String>,
     pub artifact_contract: Value,
     pub default_execution_policy: Value,
@@ -35,7 +34,6 @@ pub struct UpsertExecutionProfileRequest {
     pub default_session_role: Option<String>,
     pub default_session_description: Option<String>,
     pub handle_prefix: Option<String>,
-    pub session_reuse_policy: String,
     pub expected_output_schema: Option<String>,
     #[serde(default = "empty_object")]
     pub artifact_contract: Value,
@@ -71,7 +69,7 @@ impl AgentProfileService {
         let rows = sqlx::query(
             r#"SELECT profile_id, version, name, description, supported_client_types,
                       system_prompt_template, turn_prompt_template, default_session_role,
-                      default_session_description, handle_prefix, session_reuse_policy,
+                      default_session_description, handle_prefix,
                       expected_output_schema, artifact_contract, default_execution_policy,
                       default_review_policy, metadata, created_at, updated_at
                FROM execution_profiles ep
@@ -93,7 +91,7 @@ impl AgentProfileService {
         let row = sqlx::query(
             r#"SELECT profile_id, version, name, description, supported_client_types,
                       system_prompt_template, turn_prompt_template, default_session_role,
-                      default_session_description, handle_prefix, session_reuse_policy,
+                      default_session_description, handle_prefix,
                       expected_output_schema, artifact_contract, default_execution_policy,
                       default_review_policy, metadata, created_at, updated_at
                FROM execution_profiles
@@ -164,10 +162,10 @@ impl AgentProfileService {
             r#"INSERT INTO execution_profiles (
                     profile_id, version, name, description, supported_client_types,
                     system_prompt_template, turn_prompt_template, default_session_role,
-                    default_session_description, handle_prefix, session_reuse_policy,
+                    default_session_description, handle_prefix,
                     expected_output_schema, artifact_contract, default_execution_policy,
                     default_review_policy, metadata
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(&request.profile_id)
         .bind(&request.version)
@@ -179,7 +177,6 @@ impl AgentProfileService {
         .bind(&request.default_session_role)
         .bind(&request.default_session_description)
         .bind(&request.handle_prefix)
-        .bind(&request.session_reuse_policy)
         .bind(&request.expected_output_schema)
         .bind(artifact_contract)
         .bind(default_execution_policy)
@@ -221,7 +218,7 @@ impl AgentProfileService {
         let row = sqlx::query(
             r#"SELECT profile_id, version, name, description, supported_client_types,
                       system_prompt_template, turn_prompt_template, default_session_role,
-                      default_session_description, handle_prefix, session_reuse_policy,
+                      default_session_description, handle_prefix,
                       expected_output_schema, artifact_contract, default_execution_policy,
                       default_review_policy, metadata, created_at, updated_at
                FROM execution_profiles
@@ -274,7 +271,6 @@ fn validate_request(request: &UpsertExecutionProfileRequest) -> Result<()> {
     validate_non_empty("profile_id", &request.profile_id)?;
     validate_non_empty("version", &request.version)?;
     validate_non_empty("name", &request.name)?;
-    validate_non_empty("session_reuse_policy", &request.session_reuse_policy)?;
     for client_type in &request.supported_client_types {
         if !is_supported_client_type(client_type) {
             return Err(Error::Domain(format!(
@@ -313,7 +309,6 @@ fn row_to_execution_profile_view(row: sqlx::sqlite::SqliteRow) -> Result<Executi
         default_session_role: row.try_get("default_session_role")?,
         default_session_description: row.try_get("default_session_description")?,
         handle_prefix: row.try_get("handle_prefix")?,
-        session_reuse_policy: row.try_get("session_reuse_policy")?,
         expected_output_schema: row.try_get("expected_output_schema")?,
         artifact_contract: json_field(&row, "artifact_contract")?,
         default_execution_policy: json_field(&row, "default_execution_policy")?,

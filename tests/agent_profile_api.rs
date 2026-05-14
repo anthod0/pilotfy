@@ -97,7 +97,6 @@ fn custom_profile_body(profile_id: &str, version: &str) -> Value {
         "default_session_role": "API reviewer",
         "default_session_description": "Reviews backend API WorkItems.",
         "handle_prefix": "api-review",
-        "session_reuse_policy": "fresh_per_work_item",
         "expected_output_schema": "review_result_v1",
         "artifact_contract": { "produces": ["review"] },
         "default_execution_policy": { "allow_file_writes": false },
@@ -135,9 +134,9 @@ async fn list_agent_profiles_includes_builtin_latest_profiles() {
         .find(|profile| profile["profile_id"] == "default")
         .unwrap();
     assert_eq!(default["version"], "1");
-    assert_eq!(
-        default["session_reuse_policy"],
-        "reuse_by_workspace_and_profile"
+    assert!(
+        default.get("session_reuse_policy").is_none(),
+        "session reuse policy must not be exposed: {default:?}"
     );
 }
 
@@ -151,7 +150,10 @@ async fn get_agent_profile_returns_latest_version() {
     let profile = &body["data"]["agent_profile"];
     assert_eq!(profile["profile_id"], "replanner");
     assert_eq!(profile["expected_output_schema"], "dag_patch_v1");
-    assert_eq!(profile["session_reuse_policy"], "fresh_per_run");
+    assert!(
+        profile.get("session_reuse_policy").is_none(),
+        "session reuse policy must not be exposed: {profile:?}"
+    );
 }
 
 #[tokio::test]

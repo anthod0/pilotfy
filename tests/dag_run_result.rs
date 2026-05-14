@@ -9,7 +9,7 @@ use llmparty::{
 };
 use serde_json::json;
 use sqlx::{Row, SqlitePool};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 async fn test_pool() -> SqlitePool {
     let db = connect_sqlite("sqlite://:memory:").await.expect("connect");
@@ -25,6 +25,7 @@ async fn cleanup_runtime_sessions(pool: &SqlitePool) {
     for runtime_ref in refs {
         let _ = Command::new("tmux")
             .args(["kill-session", "-t", &runtime_ref])
+            .stderr(Stdio::null())
             .status();
     }
 }
@@ -322,6 +323,13 @@ async fn all_required_completed_marks_task_completed() {
         .await
         .expect("task state");
     assert_eq!(state, "completed");
+    let session_state: String =
+        sqlx::query_scalar("SELECT state FROM sessions WHERE session_id = ?")
+            .bind(&session_id)
+            .fetch_one(&pool)
+            .await
+            .expect("session state");
+    assert_eq!(session_state, "exited");
 
     cleanup_runtime_sessions(&pool).await;
 }

@@ -396,6 +396,8 @@ impl DagRunResultService {
         )
         .await?;
 
+        self.terminate_run_session(run).await?;
+
         if !replan_signal_ids.is_empty() {
             for signal_id in replan_signal_ids {
                 Box::pin(
@@ -443,6 +445,16 @@ impl DagRunResultService {
                 signals: Vec::new(),
             }),
         }
+    }
+
+    async fn terminate_run_session(&self, run: &RunForTurn) -> Result<()> {
+        if let Some(session_id) = run.session_id.as_deref() {
+            Box::pin(
+                RuntimeControlService::new(self.pool.clone()).terminate_session(session_id, None),
+            )
+            .await?;
+        }
+        Ok(())
     }
 
     async fn aggregate_task_state(&self, task_id: &str) -> Result<()> {

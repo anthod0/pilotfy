@@ -286,14 +286,6 @@ impl DagSchedulerService {
         work_item: &SchedulerWorkItem,
         profile: &ExecutionProfileView,
     ) -> Result<String> {
-        if profile.session_reuse_policy != "fresh_per_run"
-            && let Some(session_id) = self
-                .find_idle_reusable_session(task, work_item, profile)
-                .await?
-        {
-            return Ok(session_id);
-        }
-
         let client_type = preferred_client_type(profile, task.preferred_client_type.as_deref());
         let outcome = SessionCommandService::new(self.pool.clone())
             .create_session(
@@ -322,63 +314,6 @@ impl DagSchedulerService {
             .and_then(Value::as_str)
             .map(str::to_string)
             .ok_or_else(|| Error::Domain("created session response missing session_id".to_string()))
-    }
-
-    async fn find_idle_reusable_session(
-        &self,
-        task: &SchedulerTaskContext,
-        work_item: &SchedulerWorkItem,
-        profile: &ExecutionProfileView,
-    ) -> Result<Option<String>> {
-        let row = match profile.session_reuse_policy.as_str() {
-            "reuse_by_workspace_and_profile" => {
-                let Some(workspace_id) = task.workspace_id.as_deref() else {
-                    return Ok(None);
-                };
-                sqlx::query_scalar(
-                    r#"SELECT session_id FROM sessions
-                       WHERE state = 'idle' AND current_turn_id IS NULL
-                         AND workspace_id = ?
-                         AND execution_profile_id = ? AND execution_profile_version = ?
-                       ORDER BY updated_at DESC, session_id LIMIT 1"#,
-                )
-                .bind(workspace_id)
-                .bind(&profile.profile_id)
-                .bind(&profile.version)
-                .fetch_optional(&self.pool)
-                .await?
-            }
-            "reuse_by_task_and_profile" => {
-                sqlx::query_scalar(
-                    r#"SELECT session_id FROM sessions
-                       WHERE state = 'idle' AND current_turn_id IS NULL
-                         AND execution_profile_id = ? AND execution_profile_version = ?
-                         AND json_extract(metadata, '$.task_id') = ?
-                       ORDER BY updated_at DESC, session_id LIMIT 1"#,
-                )
-                .bind(&profile.profile_id)
-                .bind(&profile.version)
-                .bind(&task.task_id)
-                .fetch_optional(&self.pool)
-                .await?
-            }
-            "fresh_per_work_item" => {
-                sqlx::query_scalar(
-                    r#"SELECT session_id FROM sessions
-                       WHERE state = 'idle' AND current_turn_id IS NULL
-                         AND execution_profile_id = ? AND execution_profile_version = ?
-                         AND json_extract(metadata, '$.work_item_id') = ?
-                       ORDER BY updated_at DESC, session_id LIMIT 1"#,
-                )
-                .bind(&profile.profile_id)
-                .bind(&profile.version)
-                .bind(&work_item.work_item_id)
-                .fetch_optional(&self.pool)
-                .await?
-            }
-            _ => None,
-        };
-        Ok(row)
     }
 
     async fn dispatch_run(
