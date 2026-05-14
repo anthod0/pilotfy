@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@xyflow/svelte/dist/style.css';
 
 @custom-variant dark (&:is(.dark *));
 

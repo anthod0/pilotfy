@@ -3,6 +3,7 @@
   import * as Empty from '$lib/components/ui/empty/index.js'
   import * as Table from '$lib/components/ui/table/index.js'
   import DagSummaryCards from '../../components/dag/DagSummaryCards.svelte'
+  import TaskDagFlow from '../../components/dag/TaskDagFlow.svelte'
   import TaskStateBadge from '../../components/tasks/TaskStateBadge.svelte'
   import { shortId } from '../../components/tasks/format'
   import { taskDag } from '../../stores/tasks'
@@ -13,11 +14,20 @@
   {#if $taskDag}
     <DagSummaryCards dag={$taskDag} />
     <Card.Root>
-      <Card.Header><Card.Title>Work item graph</Card.Title><Card.Description>Table/tree v1 with dependency IDs.</Card.Description></Card.Header>
+      <Card.Header><Card.Title>Work item graph</Card.Title><Card.Description>Interactive DAG view with automatic dagre layout.</Card.Description></Card.Header>
       <Card.Content>
         {#if !$taskDag.work_items.length}
           <Empty.Root><Empty.Header><Empty.Title>No work items yet</Empty.Title><Empty.Description>The planner has not submitted a DAG.</Empty.Description></Empty.Header></Empty.Root>
         {:else}
+          <TaskDagFlow dag={$taskDag} />
+        {/if}
+      </Card.Content>
+    </Card.Root>
+
+    {#if $taskDag.work_items.length}
+      <Card.Root>
+        <Card.Header><Card.Title>Work item list</Card.Title><Card.Description>Dependency IDs and runtime state for the graph above.</Card.Description></Card.Header>
+        <Card.Content>
           <div class="overflow-x-auto">
             <Table.Root>
               <Table.Header><Table.Row><Table.Head>Work item</Table.Head><Table.Head>Kind</Table.Head><Table.Head>State</Table.Head><Table.Head>Depends on</Table.Head><Table.Head>Priority</Table.Head></Table.Row></Table.Header>
@@ -35,8 +45,8 @@
               </Table.Body>
             </Table.Root>
           </div>
-        {/if}
-      </Card.Content>
-    </Card.Root>
+        </Card.Content>
+      </Card.Root>
+    {/if}
   {/if}
 </TaskPageFrame>
