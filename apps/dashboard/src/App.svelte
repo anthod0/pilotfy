@@ -5,6 +5,7 @@
   import { startEventStream, stopEventStream } from './services/eventStream'
   import { loadAgentProfiles } from './stores/agentProfiles'
   import { token } from './stores/auth'
+  import { subscribeAfterInitial } from './stores/subscribeAfterInitial'
   import { loadTasks } from './stores/tasks'
   import { loadWorkspaces } from './stores/workspaces'
   import { routerConf } from './routes'
@@ -14,7 +15,7 @@
   onMount(() => {
     void Promise.all([loadTasks(), loadWorkspaces(), loadAgentProfiles()])
     startEventStream()
-    unsubscribeToken = token.subscribe(() => {
+    unsubscribeToken = subscribeAfterInitial(token, () => {
       stopEventStream()
       startEventStream()
     })
