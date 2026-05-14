@@ -1,6 +1,30 @@
 import { writable } from 'svelte/store';
-import { getSession, listEvents, listTurns } from '../api/client';
-import type { EventView, SessionView, TaskDagView, TaskView, TurnView } from '../api/types';
+import {
+  createSession as apiCreateSession,
+  discoverArtifacts,
+  getSession,
+  interruptSession as apiInterruptSession,
+  listArtifacts,
+  listEvents,
+  listInboxMessages,
+  listSessions,
+  listTurns,
+  restartSession as apiRestartSession,
+  submitInboxMessage as apiSubmitInboxMessage,
+  terminateSession as apiTerminateSession,
+} from '../api/client';
+import type {
+  ArtifactView,
+  CreateSessionInput,
+  CreateSessionResult,
+  EventView,
+  InboxMessageView,
+  SessionView,
+  SubmitInboxMessageInput,
+  TaskDagView,
+  TaskView,
+  TurnView,
+} from '../api/types';
 
 export interface TaskSessionDetail {
   session: SessionView;
@@ -12,6 +36,21 @@ export interface TaskSessionDetail {
 export const taskSessions = writable<TaskSessionDetail[]>([]);
 export const taskSessionsLoading = writable(false);
 export const taskSessionsError = writable<string | null>(null);
+
+export interface SessionConsoleDetail {
+  session: SessionView;
+  turns: TurnView[];
+  inboxMessages: InboxMessageView[];
+  events: EventView[];
+  artifacts: ArtifactView[];
+}
+
+export const sessions = writable<SessionView[]>([]);
+export const sessionsLoading = writable(false);
+export const sessionsError = writable<string | null>(null);
+export const sessionDetail = writable<SessionConsoleDetail | null>(null);
+export const sessionDetailLoading = writable(false);
+export const sessionDetailError = writable<string | null>(null);
 
 function taskSessionRefs(task: TaskView | null, dag: TaskDagView | null): Map<string, Set<string>> {
   const refs = new Map<string, Set<string>>();
@@ -27,6 +66,87 @@ function taskSessionRefs(task: TaskView | null, dag: TaskDagView | null): Map<st
   for (const item of dag?.work_items ?? []) add(item.runtime?.session_id, `work item ${item.work_item_id}`);
   for (const signal of dag?.signals ?? []) add(signal.source_session_id, `signal ${signal.signal_id}`);
   return refs;
+}
+
+export async function loadSessions(): Promise<SessionView[]> {
+  sessionsLoading.set(true);
+  sessionsError.set(null);
+  try {
+    const loaded = await listSessions();
+    sessions.set(loaded);
+    return loaded;
+  } catch (error) {
+    sessions.set([]);
+    sessionsError.set(error instanceof Error ? error.message : String(error));
+    return [];
+  } finally {
+    sessionsLoading.set(false);
+  }
+}
+
+export async function loadSessionDetail(sessionId: string): Promise<SessionConsoleDetail | null> {
+  if (!sessionId) {
+    sessionDetail.set(null);
+    return null;
+  }
+  sessionDetailLoading.set(true);
+  sessionDetailError.set(null);
+  try {
+    const [session, turns, inboxMessages, events, artifacts] = await Promise.all([
+      getSession(sessionId),
+      listTurns(sessionId),
+      listInboxMessages(sessionId),
+      listEvents(sessionId),
+      listArtifacts(sessionId),
+    ]);
+    const detail = { session, turns, inboxMessages, events, artifacts } satisfies SessionConsoleDetail;
+    sessionDetail.set(detail);
+    sessions.update((items) => items.map((item) => item.session_id === session.session_id ? session : item));
+    return detail;
+  } catch (error) {
+    sessionDetail.set(null);
+    sessionDetailError.set(error instanceof Error ? error.message : String(error));
+    return null;
+  } finally {
+    sessionDetailLoading.set(false);
+  }
+}
+
+export async function createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
+  const result = await apiCreateSession(input);
+  await loadSessions();
+  await loadSessionDetail(result.session.session_id);
+  return result;
+}
+
+export async function submitInboxMessage(sessionId: string, input: SubmitInboxMessageInput): Promise<InboxMessageView> {
+  const message = await apiSubmitInboxMessage(sessionId, input);
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+  return message;
+}
+
+export async function interruptSession(sessionId: string): Promise<void> {
+  await apiInterruptSession(sessionId);
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+}
+
+export async function restartSession(sessionId: string): Promise<void> {
+  await apiRestartSession(sessionId);
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+}
+
+export async function terminateSession(sessionId: string): Promise<void> {
+  await apiTerminateSession(sessionId);
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+}
+
+export async function discoverSessionArtifacts(sessionId: string): Promise<void> {
+  await discoverArtifacts(sessionId);
+  await loadSessionDetail(sessionId);
 }
 
 export async function loadTaskSessions(task: TaskView | null, dag: TaskDagView | null): Promise<void> {
