@@ -13,6 +13,7 @@
   import { Textarea } from '$lib/components/ui/textarea/index.js'
   import { formatDateTime, jsonPreview, shortId } from '../components/tasks/format'
   import type { AgentProfileView, InboxDeliveryPolicy, SessionView, WorkspaceView } from '../api/types'
+  import { selectCurrentTurnOutput } from './sessions/currentTurnOutput'
   import {
     clientTypeOptionsForProfile,
     defaultHandleForProfile,
@@ -66,6 +67,7 @@
   })
 
   $: selectedSession = $sessions.find((session) => session.session_id === selectedSessionId) ?? $sessionDetail?.session ?? null
+  $: currentTurnOutput = $sessionDetail ? selectCurrentTurnOutput($sessionDetail.session, $sessionDetail.turns) : null
   $: selectedProfile = $agentProfiles.find((profile) => profile.profile_id === createProfileId) ?? null
   $: selectedWorkspace = $workspaces.find((workspace) => workspace.workspace_id === createWorkspaceId) ?? null
   $: clientTypeOptions = clientTypeOptionsForProfile(selectedProfile)
@@ -314,6 +316,49 @@
             </div>
             {#if interruptReason || restartReason || terminateReason}
               <p class="text-xs text-muted-foreground">Unsupported/degraded controls: {interruptReason ?? restartReason ?? terminateReason}</p>
+            {/if}
+          </Card.Content>
+        </Card.Root>
+
+        <Card.Root>
+          <Card.Header>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <Card.Title>{currentTurnOutput?.title ?? 'Current turn output'}</Card.Title>
+                <Card.Description>
+                  {#if currentTurnOutput}
+                    Turn {shortId(currentTurnOutput.turn.turn_id)} · {currentTurnOutput.turn.state} · started {currentTurnOutput.turn.started_at ? formatDateTime(currentTurnOutput.turn.started_at) : '—'}{currentTurnOutput.turn.completed_at ? ` · completed ${formatDateTime(currentTurnOutput.turn.completed_at)}` : ''}
+                  {:else}
+                    No turns are available for this session yet.
+                  {/if}
+                </Card.Description>
+              </div>
+              {#if currentTurnOutput}<Badge variant="secondary">{currentTurnOutput.turn.state}</Badge>{/if}
+            </div>
+          </Card.Header>
+          <Card.Content class="space-y-3">
+            {#if currentTurnOutput}
+              <div class="rounded-lg border bg-muted/40 p-3 text-sm">
+                <div class="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Input</div>
+                <div class="whitespace-pre-wrap">{currentTurnOutput.turn.input?.summary ?? jsonPreview(currentTurnOutput.turn.input)}</div>
+              </div>
+              <div class="rounded-lg border p-3">
+                <div class="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Output</div>
+                {#if currentTurnOutput.outputSummary}
+                  <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap text-sm leading-relaxed">{currentTurnOutput.outputSummary}</pre>
+                {:else if currentTurnOutput.turn.failure}
+                  <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap text-sm text-destructive">{jsonPreview(currentTurnOutput.turn.failure)}</pre>
+                {:else if currentTurnOutput.turn.state === 'running' || currentTurnOutput.turn.state === 'queued'}
+                  <div class="rounded border border-dashed p-4 text-sm text-muted-foreground">Waiting for output…</div>
+                {:else}
+                  <div class="rounded border border-dashed p-4 text-sm text-muted-foreground">No output summary was reported for this turn.</div>
+                {/if}
+              </div>
+              {#if currentTurnOutput.turn.output?.artifact_ids?.length}
+                <p class="text-xs text-muted-foreground">Artifacts: {currentTurnOutput.turn.output.artifact_ids.map(shortId).join(', ')}</p>
+              {/if}
+            {:else}
+              <Empty.Root><Empty.Header><Empty.Title>No current turn output</Empty.Title><Empty.Description>Create or drive a turn to see its output here.</Empty.Description></Empty.Header></Empty.Root>
             {/if}
           </Card.Content>
         </Card.Root>
