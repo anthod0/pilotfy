@@ -13,6 +13,7 @@
   let { title, description, children }: { title: string; description: string; children?: Snippet } = $props()
 
   const { taskId = 'unknown' } = getPathParams()
+  let currentPath = $state(normalizePath(window.location.pathname))
   const tabs = [
     ['Overview', `/tasks/${taskId}/overview`],
     ['DAG', `/tasks/${taskId}/dag`],
@@ -22,11 +23,22 @@
     ['Activity', `/tasks/${taskId}/activity`],
   ] as const
 
+  function normalizePath(pathname: string) {
+    return pathname.replace(/^\/dashboard/, '') || '/'
+  }
+
+  function go(path: string) {
+    navigate(path)
+    currentPath = path
+  }
+
   onMount(() => {
     selectedTaskId.set(taskId)
     void refreshTask(taskId)
   })
 </script>
+
+<svelte:window onpopstate={() => (currentPath = normalizePath(window.location.pathname))} />
 
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -44,7 +56,7 @@
 
   <div class="flex flex-wrap gap-2">
     {#each tabs as [label, path]}
-      <Button variant="outline" size="sm" onclick={() => navigate(path)}>{label}</Button>
+      <Button variant={currentPath === path ? 'default' : 'outline'} size="sm" onclick={() => go(path)}>{label}</Button>
     {/each}
   </div>
 

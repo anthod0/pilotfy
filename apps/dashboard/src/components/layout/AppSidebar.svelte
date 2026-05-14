@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Bot, Boxes, GitBranch, Home, Settings, Wrench } from '@lucide/svelte'
+  import { Bot, Boxes, GitBranch, Home, Settings } from '@lucide/svelte'
   import { navigate } from 'svelte-mini-router'
   import * as Sidebar from '$lib/components/ui/sidebar/index.js'
 
@@ -15,11 +15,6 @@
     { label: 'Workspaces', path: '/workspaces', icon: Boxes },
     { label: 'Agent Profiles', path: '/agent-profiles', icon: Bot },
     { label: 'Settings', path: '/settings', icon: Settings },
-  ]
-
-  const diagnosticsItems: Item[] = [
-    { label: 'Task Sessions', path: '/tasks/example/sessions', icon: Activity },
-    { label: 'Artifacts', path: '/tasks/example/artifacts', icon: Wrench },
   ]
 
   let currentPath = $state(normalizePath(window.location.pathname))
@@ -59,24 +54,6 @@
       <Sidebar.GroupContent>
         <Sidebar.Menu>
           {#each primaryItems as item}
-            <Sidebar.MenuItem>
-              <Sidebar.MenuButton isActive={isActive(item.path)} tooltipContent={item.label} onclick={() => go(item.path)}>
-                <item.icon />
-                <span>{item.label}</span>
-              </Sidebar.MenuButton>
-            </Sidebar.MenuItem>
-          {/each}
-        </Sidebar.Menu>
-      </Sidebar.GroupContent>
-    </Sidebar.Group>
-
-    <Sidebar.Separator />
-
-    <Sidebar.Group>
-      <Sidebar.GroupLabel>Diagnostics</Sidebar.GroupLabel>
-      <Sidebar.GroupContent>
-        <Sidebar.Menu>
-          {#each diagnosticsItems as item}
             <Sidebar.MenuItem>
               <Sidebar.MenuButton isActive={isActive(item.path)} tooltipContent={item.label} onclick={() => go(item.path)}>
                 <item.icon />
