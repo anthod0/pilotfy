@@ -4,7 +4,7 @@
 
 **Goal:** Build a new shadcn-svelte based dashboard in `apps/dashboard` that is served from the existing `/dashboard` entrypoint by configuring `[dashboard].source = "apps/dashboard/dist"`.
 
-**Architecture:** The backend continues to serve exactly one configured dashboard source. The new frontend is a Svelte + Vite SPA with browser-history routes under `/dashboard`, shadcn-svelte UI components, and External API-only data access. DAG Tasks are the primary workflow; sessions are shown only as task execution detail/diagnostics.
+**Architecture:** The backend continues to serve exactly one configured dashboard source. The new frontend is a Svelte + Vite SPA with browser-history routes under `/dashboard`, shadcn-svelte UI components, and External API-only data access. DAG Tasks are the primary workflow. Sessions are shown as task execution detail/diagnostics, with a separate advanced Session Console for manual operator control when users explicitly need to start, drive, interrupt, or exit sessions.
 
 **Tech Stack:** Rust/Axum static dashboard fallback, Svelte 5, Vite, Tailwind CSS v4, shadcn-svelte, `svelte-mini-router`, pnpm.
 
@@ -75,6 +75,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
    - `/workspaces`
    - `/agent-profiles`
    - `/settings`
+   - `/sessions` (added later by Phase 5 as an advanced console)
 
 **Acceptance criteria:**
 
@@ -116,7 +117,7 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 
 **Acceptance criteria:**
 
-- No standalone session creation/turn composer UI is introduced.
+- No standalone session creation/turn composer UI is introduced in this phase; advanced manual session control is deferred to Phase 5.
 - Mutating API calls still send `Idempotency-Key`.
 - Missing token produces a clear Settings/TopBar warning.
 - `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
@@ -190,10 +191,67 @@ LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist cargo run
 **Acceptance criteria:**
 
 - Workspaces and Agent Profiles have independent sidebar entries.
-- Sessions are not a top-level primary workflow.
+- Sessions are not promoted as the primary workflow; task-associated sessions remain diagnostics-only in task detail.
 - Artifact viewing uses External API only.
 - `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
 - Run relevant backend tests if backend routes were touched by this phase.
+
+---
+
+## Phase 5: Advanced Session Console
+
+**Purpose:** Add an explicit advanced page for manual session operation without weakening the DAG-first product flow. This page is for operators who need direct control: start a session, submit input, inspect inbox, interrupt work, exit/terminate, and preview events/output. It must use External API only and must not read runtime files, tmux state, SQLite, or workspace files directly.
+
+**Files likely touched:**
+
+- `apps/dashboard/src/routes.ts`
+- `apps/dashboard/src/components/layout/AppSidebar.svelte`
+- `apps/dashboard/src/pages/SessionsPage.svelte`
+- `apps/dashboard/src/components/sessions/*`
+- `apps/dashboard/src/stores/sessions.ts`
+- `apps/dashboard/src/stores/turns.ts`
+- `apps/dashboard/src/api/client.ts`
+- `apps/dashboard/src/api/types.ts`
+
+**Work summary:**
+
+1. Add an advanced sidebar entry and route for `/sessions` labeled clearly as a manual/diagnostic console, not the default workflow.
+2. Build a session creation panel using supported External API fields:
+   - `client_type`
+   - workspace selection by registered workspace/workspace_id
+   - optional handle, role, description
+   - optional agent/execution profile selection
+   - optional initial task/input if supported by the route
+3. Build a sessions list/detail layout:
+   - list sessions with state, client type, handle, role, workspace, profile, current turn, and updated time
+   - open one session to inspect metadata, capabilities, turns, inbox messages, events, and artifacts/output refs
+4. Add manual input controls:
+   - submit a normal turn when the session capability/API supports it
+   - submit inbox messages with delivery policy (`after_idle`, `interrupt_now`) when supported
+   - show explicit unsupported/degraded UI when the capability/API does not support an action
+5. Add session control actions exposed by External API:
+   - interrupt session
+   - restart session if supported
+   - terminate/exit session
+   - avoid fabricating success; refresh session state after each mutating action
+6. Add output/event preview:
+   - show turn input/output summary, failure details, and linked artifact IDs when present
+   - show session events with payload preview and timestamps
+   - optionally show SSE/live refresh status using the existing dashboard event stream foundation
+7. Preserve idempotency and auth behavior for all mutating requests.
+8. Keep the Task detail `Sessions` tab focused on task-associated diagnostics; do not duplicate the full manual console inside task detail.
+
+**Acceptance criteria:**
+
+- A new `/dashboard/sessions` page exists and is reachable from the sidebar as an advanced/manual console.
+- Users can create a session from registered workspace/profile data through External API.
+- Users can submit input/inbox messages, interrupt, and terminate/exit sessions when the External API and session capabilities support those actions.
+- Unsupported actions are disabled or marked unsupported with a clear explanation rather than silently failing or faking success.
+- Session detail previews turns, inbox messages, events, and output/artifact references using External API responses only.
+- Mutating session actions send `Idempotency-Key`.
+- No session state is inferred from tmux, runtime logs, local files, or database reads.
+- `pnpm --dir apps/dashboard check` and `pnpm --dir apps/dashboard build` pass.
+- Run relevant backend tests if backend routes are added or changed by this phase.
 
 ---
 
@@ -214,7 +272,8 @@ Manual smoke test:
 2. Start backend with `LLMPARTY_DASHBOARD_SOURCE=apps/dashboard/dist`.
 3. Open `/dashboard`.
 4. Set External API token.
-5. Navigate Overview, Tasks, Workspaces, Agent Profiles, Settings.
+5. Navigate Overview, Tasks, Sessions, Workspaces, Agent Profiles, Settings.
 6. Create a DAG task.
-7. Refresh a nested task URL and verify the SPA loads.
-8. Switch back to `LLMPARTY_DASHBOARD_SOURCE=apps/web/dist` and verify the legacy dashboard still serves.
+7. Open the advanced Session Console, create a manual session, submit input/inbox, inspect events/output, and interrupt/exit the session if supported by the selected client.
+8. Refresh a nested task URL and verify the SPA loads.
+9. Switch back to `LLMPARTY_DASHBOARD_SOURCE=apps/web/dist` and verify the legacy dashboard still serves.
