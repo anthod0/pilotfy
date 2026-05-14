@@ -263,12 +263,6 @@ impl DagPlanningService {
                 )));
             }
             client_type.to_string()
-        } else if profile
-            .supported_client_types
-            .iter()
-            .any(|value| value == "generic")
-        {
-            "generic".to_string()
         } else {
             profile
                 .supported_client_types

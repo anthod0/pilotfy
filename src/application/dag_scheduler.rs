@@ -418,19 +418,11 @@ fn preferred_client_type(profile: &ExecutionProfileView, task_preferred: Option<
     {
         return client_type.to_string();
     }
-    if profile
+    profile
         .supported_client_types
-        .iter()
-        .any(|value| value == "generic")
-    {
-        "generic".to_string()
-    } else {
-        profile
-            .supported_client_types
-            .first()
-            .cloned()
-            .unwrap_or_else(default_client_type)
-    }
+        .first()
+        .cloned()
+        .unwrap_or_else(default_client_type)
 }
 
 fn new_scheduler_id(prefix: &str) -> String {

@@ -262,6 +262,12 @@ async fn replan_requested_signal_automatically_starts_replanner_turn() {
         .await
         .expect("apply dag");
     let (_run_id, session_id, turn_id) = schedule_first_run(&pool, &task_id).await;
+    sqlx::query(
+        "UPDATE execution_profiles SET supported_client_types = '[\"generic\"]' WHERE profile_id = 'replanner' AND version = '1'",
+    )
+    .execute(&pool)
+    .await
+    .expect("enable generic replanner for test");
 
     ingest_turn_completed(
         &pool,

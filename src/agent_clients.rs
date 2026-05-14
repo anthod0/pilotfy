@@ -90,9 +90,23 @@ pub const AGENT_CLIENTS: &[AgentClientSpec] = &[
 ];
 
 pub fn get_client_spec(client_type: &str) -> Option<&'static AgentClientSpec> {
+    if client_type == "generic" && !generic_test_client_enabled() {
+        return None;
+    }
     AGENT_CLIENTS
         .iter()
         .find(|client| client.client_type == client_type)
+}
+
+fn generic_test_client_enabled() -> bool {
+    cfg!(test)
+        || std::env::current_exe().ok().is_some_and(|path| {
+            let path = path.to_string_lossy();
+            path.contains("/target/debug/deps/")
+                || path.contains("/target/release/deps/")
+                || path.contains("\\target\\debug\\deps\\")
+                || path.contains("\\target\\release\\deps\\")
+        })
 }
 
 pub fn is_supported_client_type(client_type: &str) -> bool {

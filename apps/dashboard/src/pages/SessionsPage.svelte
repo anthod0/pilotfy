@@ -47,7 +47,7 @@
   let actionMessage: string | null = null
   let actionBusy = false
 
-  let createClientType = 'generic'
+  let createClientType = 'pi'
   let createWorkspaceId = ''
   let createProfileId = ''
   let createHandle = ''

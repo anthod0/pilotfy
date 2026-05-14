@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import { listAgentProfiles } from '../api/client';
 import type { AgentProfileView } from '../api/types';
 
-const FALLBACK_CLIENT_TYPES = ['claude_code', 'pi', 'generic'];
+const FALLBACK_CLIENT_TYPES = ['pi', 'claude_code'];
 
 export const agentProfiles = writable<AgentProfileView[]>([]);
 export const agentProfilesLoading = writable(false);
@@ -21,7 +21,8 @@ export async function loadAgentProfiles(): Promise<void> {
 }
 
 export function clientTypeOptionsForProfile(profile: AgentProfileView | null): string[] {
-  return profile?.supported_client_types.length ? profile.supported_client_types : FALLBACK_CLIENT_TYPES;
+  const profileOptions = profile?.supported_client_types.filter((client) => client !== 'generic') ?? [];
+  return profileOptions.length ? profileOptions : FALLBACK_CLIENT_TYPES;
 }
 
 export function selectClientTypeForProfile(currentClientType: string, profile: AgentProfileView | null): string {

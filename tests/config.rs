@@ -36,6 +36,10 @@ fn loads_config_from_key_value_source() {
             "12000".to_string(),
         ),
         (
+            "LLMPARTY_DEFAULT_CLIENT_TYPE".to_string(),
+            "claude_code".to_string(),
+        ),
+        (
             "LLMPARTY_PLANNER_COMPAT_DIRECT_DISPATCH".to_string(),
             "true".to_string(),
         ),
@@ -65,6 +69,7 @@ fn loads_config_from_key_value_source() {
     );
     assert!(!config.run_migrations);
     assert!(config.planner.enabled);
+    assert_eq!(config.default_client_type, "claude_code");
     assert_eq!(config.planner.client_type, "generic");
     assert_eq!(config.planner.timeout_ms, 12_000);
     assert!(config.planner.compatibility_direct_dispatch);
@@ -106,6 +111,7 @@ bind_addr = "127.0.0.1:4040"
 database_url = "sqlite:///tmp/from-file.db"
 external_api_token = "file-token"
 run_migrations = false
+default_client_type = "claude_code"
 
 [dashboard]
 source = "/opt/llmparty/dashboard"
@@ -140,6 +146,7 @@ roots = [
         Some("/var/cache/llmparty/dashboard")
     );
     assert!(!config.run_migrations);
+    assert_eq!(config.default_client_type, "claude_code");
     assert_eq!(
         config.runtime.pi.tui_command.as_deref(),
         Some("pi -e /tmp/llmparty/clients/pi")
@@ -161,6 +168,7 @@ fn env_vars_override_config_file_values() {
         r#"
 bind_addr = "127.0.0.1:4040"
 external_api_token = "file-token"
+default_client_type = "claude_code"
 
 [dashboard]
 source = "/from/file/dashboard"
@@ -192,6 +200,7 @@ tui_command = "pi from file"
             "LLMPARTY_DASHBOARD_CACHE_DIR".to_string(),
             "/from/env/cache".to_string(),
         ),
+        ("LLMPARTY_DEFAULT_CLIENT_TYPE".to_string(), "pi".to_string()),
     ]);
 
     let config =
@@ -210,6 +219,23 @@ tui_command = "pi from file"
     assert_eq!(
         config.dashboard.cache_dir.as_deref(),
         Some("/from/env/cache")
+    );
+    assert_eq!(config.default_client_type, "pi");
+}
+
+#[test]
+fn rejects_generic_as_default_client_type() {
+    let vars = HashMap::from([(
+        "LLMPARTY_DEFAULT_CLIENT_TYPE".to_string(),
+        "generic".to_string(),
+    )]);
+
+    let error = AppConfig::from_vars(&vars).expect_err("generic default should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("default client type must be pi or claude_code")
     );
 }
 
@@ -250,6 +276,7 @@ fn provides_development_defaults_for_optional_values() {
     assert_eq!(config.dashboard.cache_dir, None);
     assert!(config.run_migrations);
     assert!(!config.planner.enabled);
+    assert_eq!(config.default_client_type, "pi");
     assert_eq!(config.planner.client_type, "pi");
     assert_eq!(config.planner.timeout_ms, 30_000);
     assert!(!config.planner.compatibility_direct_dispatch);

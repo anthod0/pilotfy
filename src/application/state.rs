@@ -1,5 +1,8 @@
 use super::*;
-use crate::{runtime::set_runtime_config, transport::http::dashboard::ResolvedDashboard};
+use crate::{
+    application::set_default_client_type, runtime::set_runtime_config,
+    transport::http::dashboard::ResolvedDashboard,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -18,6 +21,7 @@ pub async fn initialize(config: &AppConfig) -> Result<AppState> {
         run_migrations(&db).await?;
     }
 
+    set_default_client_type(config.default_client_type.clone());
     set_runtime_config(config.runtime.clone());
     let dashboard = crate::transport::http::dashboard::resolve_dashboard(&config.dashboard).await;
 

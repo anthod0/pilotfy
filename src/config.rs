@@ -23,6 +23,7 @@ pub struct AppConfig {
     pub database_url: String,
     pub external_api_token: Option<String>,
     pub run_migrations: bool,
+    pub default_client_type: String,
     pub planner: PlannerRuntimeConfig,
     pub graph: GraphRuntimeConfig,
     pub workspace_browser: WorkspaceBrowserConfig,
@@ -55,6 +56,7 @@ struct FileConfig {
     database_url: Option<String>,
     external_api_token: Option<String>,
     run_migrations: Option<bool>,
+    default_client_type: Option<String>,
     runtime: Option<RuntimeConfig>,
     workspace_browser: Option<WorkspaceBrowserConfig>,
     dashboard: Option<DashboardConfig>,
@@ -135,6 +137,12 @@ impl AppConfig {
                 .unwrap_or(true),
         };
 
+        let default_client_type = get(vars, "LLMPARTY_DEFAULT_CLIENT_TYPE")
+            .or_else(|| file.and_then(|config| config.default_client_type.as_deref()))
+            .unwrap_or("pi")
+            .to_string();
+        validate_real_default_client_type("LLMPARTY_DEFAULT_CLIENT_TYPE", &default_client_type)?;
+
         let planner = PlannerRuntimeConfig {
             enabled: match get(vars, "LLMPARTY_PLANNER_ENABLED") {
                 Some(value) => parse_bool("LLMPARTY_PLANNER_ENABLED", value)?,
@@ -205,6 +213,7 @@ impl AppConfig {
             database_url,
             external_api_token,
             run_migrations,
+            default_client_type,
             planner,
             graph,
             workspace_browser,
@@ -216,6 +225,17 @@ impl AppConfig {
 
 fn get<'a>(vars: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
     vars.get(key).map(String::as_str)
+}
+
+fn validate_real_default_client_type(key: &'static str, client_type: &str) -> Result<()> {
+    if matches!(client_type, "pi" | "claude_code") {
+        Ok(())
+    } else {
+        Err(Error::InvalidConfig {
+            key,
+            message: format!("default client type must be pi or claude_code, got {client_type}"),
+        })
+    }
 }
 
 fn non_empty(value: &str) -> Option<String> {
