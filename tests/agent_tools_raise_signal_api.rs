@@ -76,6 +76,25 @@ async fn raise_signal_records_agent_signal_and_replan_policy_starts_replanner() 
     .await
     .expect("replanner count");
     assert_eq!(replanner_count, 1);
+    let run_state: String =
+        sqlx::query_scalar("SELECT state FROM work_item_runs WHERE run_id = 'run_signal_worker'")
+            .fetch_one(&state.db)
+            .await
+            .expect("run state");
+    assert_eq!(run_state, "blocked");
+    let runtime_state: String = sqlx::query_scalar(
+        "SELECT current_state FROM work_item_runtime_projection WHERE work_item_id = 'wi_signal_worker'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("runtime state");
+    assert_eq!(runtime_state, "blocked");
+    let worker_session_state: String =
+        sqlx::query_scalar("SELECT state FROM sessions WHERE session_id = 'sess_signal_worker'")
+            .fetch_one(&state.db)
+            .await
+            .expect("worker session state");
+    assert_eq!(worker_session_state, "exited");
 
     cleanup_runtime_sessions(&state.db).await;
 }
@@ -131,4 +150,76 @@ async fn raise_signal_from_planning_turn_records_task_scoped_open_signal() {
     );
     assert_eq!(row.get::<String, _>("kind"), "risk");
     assert_eq!(row.get::<String, _>("state"), "open");
+}
+
+#[tokio::test]
+async fn raise_signal_for_needs_input_blocks_current_run_and_task() {
+    let state = test_state().await;
+    insert_task(&state.db, "task_needs_input_signal").await;
+    insert_dag_session(
+        &state.db,
+        "sess_needs_input_worker",
+        "turn_needs_input_worker",
+        "rt_needs_input_worker",
+        json!({"dag_managed": true}),
+    )
+    .await;
+    insert_execution_run(
+        &state.db,
+        "task_needs_input_signal",
+        "wi_needs_input_worker",
+        "run_needs_input_worker",
+        "sess_needs_input_worker",
+        "turn_needs_input_worker",
+    )
+    .await;
+
+    let (status, body) = post_tool(
+        state.clone(),
+        "raiseSignal",
+        json!({
+            "session_id": "sess_needs_input_worker",
+            "turn_id": "turn_needs_input_worker",
+            "runtime_instance_id": "rt_needs_input_worker",
+            "input": {
+                "kind": "needs_input",
+                "summary": "Need user decision",
+                "severity": "high"
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body:#}");
+    assert_eq!(body["result"]["policy"]["replanner_started"], false);
+    let run_state: String = sqlx::query_scalar(
+        "SELECT state FROM work_item_runs WHERE run_id = 'run_needs_input_worker'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("run state");
+    assert_eq!(run_state, "needs_input");
+    let (runtime_state, blocked_reason): (String, String) = sqlx::query_as(
+        "SELECT current_state, blocked_reason FROM work_item_runtime_projection WHERE work_item_id = 'wi_needs_input_worker'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("runtime state");
+    assert_eq!(runtime_state, "needs_input");
+    assert_eq!(blocked_reason, "Need user decision");
+    let task_state: String =
+        sqlx::query_scalar("SELECT state FROM tasks WHERE task_id = 'task_needs_input_signal'")
+            .fetch_one(&state.db)
+            .await
+            .expect("task state");
+    assert_eq!(task_state, "blocked");
+    let worker_session_state: String = sqlx::query_scalar(
+        "SELECT state FROM sessions WHERE session_id = 'sess_needs_input_worker'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .expect("worker session state");
+    assert_eq!(worker_session_state, "exited");
+
+    cleanup_runtime_sessions(&state.db).await;
 }

@@ -68,6 +68,13 @@ async fn submit_plan_from_planner_saves_applies_and_schedules_initial_dag() {
         .await
         .expect("task state");
     assert_eq!(task_state, "running");
+    let planner_session_state: String =
+        sqlx::query_scalar("SELECT state FROM sessions WHERE session_id = ?")
+            .bind("sess_planner_submit")
+            .fetch_one(&state.db)
+            .await
+            .expect("planner session state");
+    assert_eq!(planner_session_state, "exited");
 
     cleanup_runtime_sessions(&state.db).await;
 }

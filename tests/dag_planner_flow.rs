@@ -21,6 +21,7 @@ async fn cleanup_runtime_sessions(pool: &SqlitePool) {
     for runtime_ref in refs {
         let _ = Command::new("tmux")
             .args(["kill-session", "-t", &runtime_ref])
+            .stderr(std::process::Stdio::null())
             .status();
     }
 }
@@ -140,6 +141,13 @@ async fn planner_output_applies_initial_dag_and_starts_scheduler_without_routing
     assert_eq!(metadata["dag_managed"], true);
     assert_eq!(metadata["dag_planning_role"], "planner");
     assert_eq!(metadata["task_id"], task_id);
+    let planner_session_state: String =
+        sqlx::query_scalar("SELECT state FROM sessions WHERE session_id = ?")
+            .bind(&planner_turn.session_id)
+            .fetch_one(&pool)
+            .await
+            .expect("planner session state");
+    assert_eq!(planner_session_state, "exited");
 
     cleanup_runtime_sessions(&pool).await;
 }
@@ -238,6 +246,13 @@ async fn replanner_output_applies_patch_and_resumes_scheduler() {
             ("sig_unrelated".to_string(), "open".to_string())
         ]
     );
+    let replanner_session_state: String =
+        sqlx::query_scalar("SELECT state FROM sessions WHERE session_id = ?")
+            .bind(&replanner_turn.session_id)
+            .fetch_one(&pool)
+            .await
+            .expect("replanner session state");
+    assert_eq!(replanner_session_state, "exited");
 
     cleanup_runtime_sessions(&pool).await;
 }

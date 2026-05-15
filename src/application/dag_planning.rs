@@ -117,6 +117,8 @@ impl DagPlanningService {
         let scheduler = DagSchedulerService::new(self.pool.clone())
             .schedule_task(task_id)
             .await?;
+        Box::pin(RuntimeControlService::new(self.pool.clone()).terminate_session(session_id, None))
+            .await?;
         Ok(DagPlanningOutcome {
             proposal,
             scheduler,
@@ -230,6 +232,8 @@ impl DagPlanningService {
         .await?;
         let scheduler = DagSchedulerService::new(self.pool.clone())
             .schedule_task(task_id)
+            .await?;
+        Box::pin(RuntimeControlService::new(self.pool.clone()).terminate_session(session_id, None))
             .await?;
         Ok(DagPlanningOutcome {
             proposal,

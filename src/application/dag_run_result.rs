@@ -127,6 +127,14 @@ impl DagRunResultService {
             }),
         )
         .await?;
+        let execution_run = if matches!(&context.mode, AgentToolMode::Execution { .. }) {
+            Some(self.run_for_tool_context(context).await?)
+        } else {
+            None
+        };
+        if let Some(run) = execution_run.as_ref() {
+            self.block_run_for_signal(run, &payload).await?;
+        }
         let replanner_started = if payload.kind == "replan_requested" {
             Box::pin(
                 DagPlanningService::new(self.pool.clone())
@@ -137,6 +145,12 @@ impl DagRunResultService {
         } else {
             false
         };
+        if let Some(run) = execution_run.as_ref() {
+            self.terminate_run_session(run).await?;
+            if !replanner_started {
+                self.aggregate_task_state(&run.task_id).await?;
+            }
+        }
         Ok(RaiseSignalToolOutcome {
             signal_id,
             task_id: context.task_id.clone(),
@@ -274,6 +288,54 @@ impl DagRunResultService {
         )
         .bind(&run.run_id)
         .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn block_run_for_signal(
+        &self,
+        run: &RunForTurn,
+        payload: &RaiseSignalPayload,
+    ) -> Result<()> {
+        if is_terminal_run_state(&run.state) {
+            return Ok(());
+        }
+        let next_state = signal_blocking_state(&payload.kind);
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            r#"UPDATE work_item_runs
+               SET state = ?, output_summary = ?, completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE run_id = ? AND state IN ('queued', 'running')"#,
+        )
+        .bind(next_state)
+        .bind(&payload.summary)
+        .bind(&run.run_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"UPDATE work_item_runtime_projection
+               SET current_state = ?, blocked_reason = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE work_item_id = ? AND current_run_id = ?"#,
+        )
+        .bind(next_state)
+        .bind(&payload.summary)
+        .bind(&run.work_item_id)
+        .bind(&run.run_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        self.record_task_event(
+            &run.task_id,
+            "dag.run_blocked_by_signal",
+            json!({
+                "run_id": run.run_id,
+                "work_item_id": run.work_item_id,
+                "state": next_state,
+                "signal_kind": payload.kind,
+                "summary": payload.summary,
+            }),
+        )
         .await?;
         Ok(())
     }
@@ -580,6 +642,13 @@ fn normalize_result_status(status: &str) -> String {
     match status {
         "completed" | "failed" | "blocked" | "needs_input" => status.to_string(),
         _ => "completed".to_string(),
+    }
+}
+
+fn signal_blocking_state(kind: &str) -> &'static str {
+    match kind {
+        "needs_input" | "assistance_needed" => "needs_input",
+        _ => "blocked",
     }
 }
 
