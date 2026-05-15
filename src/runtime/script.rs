@@ -1,0 +1,113 @@
+use std::path::Path;
+
+use crate::{
+    agent_clients::{self, DispatchMode, StartupHook},
+    error::{Error, Result},
+};
+
+use super::{RuntimeStartRequest, claude_code, config::configured_tui_command, shell_quote};
+
+pub(super) struct RuntimePaths<'a> {
+    pub(super) runtime_dir: &'a Path,
+    pub(super) log_path: &'a Path,
+    pub(super) adapter_event_log: &'a Path,
+    pub(super) current_turn_file: &'a Path,
+    pub(super) pi_hook_log: &'a Path,
+    pub(super) claude_hook_log: &'a Path,
+}
+
+pub(super) fn write_runtime_script(
+    path: &Path,
+    workspace: &Path,
+    runtime_paths: &RuntimePaths<'_>,
+    request: &RuntimeStartRequest,
+    runtime_instance_id: &str,
+) -> Result<()> {
+    let client_spec = agent_clients::get_client_spec(&request.client_type).ok_or_else(|| {
+        Error::Domain(format!("unsupported client_type: {}", request.client_type))
+    })?;
+    let (log_setup, runtime_body) = match client_spec.dispatch_mode {
+        DispatchMode::TmuxPaste => {
+            let default_command = client_spec.default_command.ok_or_else(|| {
+                Error::Domain(format!(
+                    "{} tmux runtime missing default command",
+                    request.client_type
+                ))
+            })?;
+            let command = client_spec
+                .command_env
+                .and_then(|env| std::env::var(env).ok())
+                .or_else(|| configured_tui_command(&request.client_type))
+                .unwrap_or_else(|| default_command.to_string());
+            (
+                "echo \"llmparty runtime started\" >> \"$LLMPARTY_RUNTIME_LOG\"".to_string(),
+                format!("exec sh -lc {}\n", shell_quote(&command)),
+            )
+        }
+        DispatchMode::GenericTestAdapter | DispatchMode::None => (
+            "exec >> \"$LLMPARTY_RUNTIME_LOG\" 2>&1\necho \"llmparty runtime started\"".to_string(),
+            "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
+        ),
+    };
+    let content = format!(
+        r#"#!/usr/bin/env sh
+export LLMPARTY_SESSION_ID={}
+export LLMPARTY_CLIENT_TYPE={}
+export LLMPARTY_WORKSPACE={}
+export LLMPARTY_RUNTIME_DIR={}
+export LLMPARTY_RUNTIME_LOG={}
+export LLMPARTY_ADAPTER_EVENT_LOG={}
+export LLMPARTY_CURRENT_TURN_FILE={}
+export LLMPARTY_INTERNAL_EVENT_URL={}
+export LLMPARTY_EXTERNAL_API_URL={}
+export LLMPARTY_EXTERNAL_API_TOKEN={}
+export LLMPARTY_RUNTIME_INSTANCE_ID={}
+export LLMPARTY_PI_HOOK_LOG={}
+export LLMPARTY_CLAUDE_HOOK_LOG={}
+{}
+{}
+"#,
+        shell_quote(&request.session_id),
+        shell_quote(&request.client_type),
+        shell_quote(&workspace.display().to_string()),
+        shell_quote(&runtime_paths.runtime_dir.display().to_string()),
+        shell_quote(&runtime_paths.log_path.display().to_string()),
+        shell_quote(&runtime_paths.adapter_event_log.display().to_string()),
+        shell_quote(&runtime_paths.current_turn_file.display().to_string()),
+        shell_quote(&internal_event_url()),
+        shell_quote(&external_api_url()),
+        shell_quote(&external_api_token()),
+        shell_quote(runtime_instance_id),
+        shell_quote(&runtime_paths.pi_hook_log.display().to_string()),
+        shell_quote(&runtime_paths.claude_hook_log.display().to_string()),
+        log_setup,
+        runtime_body,
+    );
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+pub(super) fn internal_event_url() -> String {
+    std::env::var("LLMPARTY_INTERNAL_EVENT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080/internal/v1/events".to_string())
+}
+
+fn external_api_url() -> String {
+    std::env::var("LLMPARTY_EXTERNAL_API_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080/external/v1".to_string())
+}
+
+fn external_api_token() -> String {
+    std::env::var("LLMPARTY_EXTERNAL_API_TOKEN").unwrap_or_default()
+}
+
+pub(super) fn run_startup_hooks(hooks: &[StartupHook], workspace: &Path) -> Result<()> {
+    for hook in hooks {
+        match hook {
+            StartupHook::ClaudeCodeTrustWorkspace => {
+                claude_code::ensure_workspace_trusted(workspace)?
+            }
+        }
+    }
+    Ok(())
+}

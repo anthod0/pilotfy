@@ -4,15 +4,10 @@
 //! module stays independent from HTTP transport details.
 
 mod claude_code;
-
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
-    sync::{OnceLock, RwLock},
-    thread,
-    time::Duration,
-};
+mod config;
+mod paths;
+mod script;
+mod tmux;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,13 +15,14 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::{
     adapters::{AdapterCapabilities, AgentInputSink, GenericTestAdapter},
-    agent_clients::{self, DispatchMode, StartupHook},
+    agent_clients,
     application::SessionCapabilities,
-    config::RuntimeConfig,
     error::{Error, Result},
     ids::new_runtime_instance_id,
     time::utc_now,
 };
+
+pub use config::set_runtime_config;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeStartRequest {
@@ -54,18 +50,6 @@ pub struct AgentInput {
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericRuntimeManager;
-
-fn runtime_config() -> &'static RwLock<RuntimeConfig> {
-    static CONFIG: OnceLock<RwLock<RuntimeConfig>> = OnceLock::new();
-    CONFIG.get_or_init(|| RwLock::new(RuntimeConfig::default()))
-}
-
-pub fn set_runtime_config(config: RuntimeConfig) {
-    let mut guard = runtime_config()
-        .write()
-        .expect("runtime config lock poisoned");
-    *guard = config;
-}
 
 impl From<AdapterCapabilities> for SessionCapabilities {
     fn from(capabilities: AdapterCapabilities) -> Self {
@@ -96,21 +80,21 @@ impl GenericRuntimeManager {
                 Error::Domain(format!("unsupported client_type: {}", request.client_type))
             })?;
         let capabilities = client_spec.capabilities.clone();
-        let tmux_session = tmux_session_name(&request);
-        let workspace = workspace_path(&request)?;
-        run_startup_hooks(client_spec.startup_hooks, &workspace)?;
-        let runtime_dir = runtime_dir(&request.session_id)?;
+        let tmux_session = tmux::tmux_session_name(&request);
+        let workspace = paths::workspace_path(&request)?;
+        script::run_startup_hooks(client_spec.startup_hooks, &workspace)?;
+        let runtime_dir = paths::runtime_dir(&request.session_id)?;
         std::fs::create_dir_all(&runtime_dir)?;
         let log_path = runtime_dir.join("runtime.log");
         let adapter_event_log = runtime_dir.join("adapter-events.jsonl");
         let current_turn_file = runtime_dir.join("current-turn.json");
         let pi_hook_log = runtime_dir.join("pi-hook.log");
         let claude_hook_log = runtime_dir.join("claude-hook.log");
-        let internal_event_url = internal_event_url();
+        let internal_event_url = script::internal_event_url();
         let runtime_instance_id = new_runtime_instance_id().to_string();
         std::fs::File::create(&log_path)?;
         let script_path = runtime_dir.join("runtime.sh");
-        let runtime_paths = RuntimePaths {
+        let runtime_paths = script::RuntimePaths {
             runtime_dir: &runtime_dir,
             log_path: &log_path,
             adapter_event_log: &adapter_event_log,
@@ -118,7 +102,7 @@ impl GenericRuntimeManager {
             pi_hook_log: &pi_hook_log,
             claude_hook_log: &claude_hook_log,
         };
-        write_runtime_script(
+        script::write_runtime_script(
             &script_path,
             &workspace,
             &runtime_paths,
@@ -126,7 +110,7 @@ impl GenericRuntimeManager {
             &runtime_instance_id,
         )?;
 
-        let status = spawn_tmux_session(&tmux_session, &workspace, &script_path)
+        let status = tmux::spawn_tmux_session(&tmux_session, &workspace, &script_path)
             .map_err(|err| Error::Domain(format!("tmux runtime spawn failed: {err}")))?;
         if !status.success() {
             return Err(Error::Domain(format!(
@@ -183,90 +167,15 @@ impl GenericRuntimeManager {
         client_type: &str,
         input: &AgentInput,
     ) -> Result<()> {
-        if !self.is_alive(runtime_ref) {
-            return Err(Error::Domain(format!(
-                "{client_type} runtime {runtime_ref} is not alive"
-            )));
-        }
-
-        let buffer_name = format!("llmparty_{}", sanitize_tmux_identifier(&input.turn_id));
-        let mut child = Command::new("tmux")
-            .args(["load-buffer", "-b", &buffer_name, "-"])
-            .stdin(Stdio::piped())
-            .spawn()
-            .map_err(|err| Error::Domain(format!("tmux dispatch buffer failed: {err}")))?;
-        {
-            let stdin = child.stdin.as_mut().ok_or_else(|| {
-                Error::Domain("tmux dispatch buffer stdin unavailable".to_string())
-            })?;
-            stdin.write_all(input.input.as_bytes())?;
-        }
-        let status = child
-            .wait()
-            .map_err(|err| Error::Domain(format!("tmux dispatch buffer failed: {err}")))?;
-        if !status.success() {
-            return Err(Error::Domain(format!(
-                "tmux dispatch buffer failed with status {status}"
-            )));
-        }
-
-        let status = Command::new("tmux")
-            .args(["paste-buffer", "-t", runtime_ref, "-b", &buffer_name])
-            .status()
-            .map_err(|err| Error::Domain(format!("tmux dispatch paste failed: {err}")))?;
-        if !status.success() {
-            return Err(Error::Domain(format!(
-                "tmux dispatch paste failed with status {status}"
-            )));
-        }
-
-        let status = Command::new("tmux")
-            .args(["send-keys", "-t", runtime_ref, "Enter"])
-            .status()
-            .map_err(|err| Error::Domain(format!("tmux dispatch submit failed: {err}")))?;
-        if !status.success() {
-            return Err(Error::Domain(format!(
-                "tmux dispatch submit failed with status {status}"
-            )));
-        }
-
-        let _ = Command::new("tmux")
-            .args(["delete-buffer", "-b", &buffer_name])
-            .status();
-        Ok(())
+        tmux::dispatch_tui_turn(runtime_ref, client_type, input)
     }
 
     pub fn interrupt_session(&self, runtime_ref: &str) -> Result<()> {
-        if !self.is_alive(runtime_ref) {
-            return Err(Error::Domain(format!(
-                "tmux runtime {runtime_ref} is not alive"
-            )));
-        }
-        let status = Command::new("tmux")
-            .args(["send-keys", "-t", runtime_ref, "Escape"])
-            .status()
-            .map_err(|err| Error::Domain(format!("tmux runtime interrupt failed: {err}")))?;
-        if !status.success() {
-            return Err(Error::Domain(format!(
-                "tmux runtime interrupt failed with status {status}"
-            )));
-        }
-        Ok(())
+        tmux::interrupt_session(runtime_ref)
     }
 
     pub fn terminate_session(&self, runtime_ref: &str) -> Result<()> {
-        let status = Command::new("tmux")
-            .args(["kill-session", "-t", runtime_ref])
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|err| Error::Domain(format!("tmux runtime terminate failed: {err}")))?;
-        if status.success() || !self.is_alive(runtime_ref) {
-            Ok(())
-        } else {
-            Err(Error::Domain(format!(
-                "tmux runtime terminate failed with status {status}"
-            )))
-        }
+        tmux::terminate_session(runtime_ref)
     }
 
     pub fn restart_session(&self, request: RuntimeStartRequest) -> Result<RuntimeStartResult> {
@@ -274,11 +183,7 @@ impl GenericRuntimeManager {
     }
 
     pub fn is_alive(&self, runtime_ref: &str) -> bool {
-        Command::new("tmux")
-            .args(["has-session", "-t", runtime_ref])
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        tmux::is_alive(runtime_ref)
     }
 }
 
@@ -290,221 +195,6 @@ impl RuntimeStartResult {
         }
         metadata
     }
-}
-
-fn spawn_tmux_session(
-    tmux_session: &str,
-    workspace: &Path,
-    script_path: &Path,
-) -> std::io::Result<ExitStatus> {
-    let command = || {
-        Command::new("tmux")
-            .args([
-                "new-session",
-                "-d",
-                "-s",
-                tmux_session,
-                "-c",
-                &workspace.display().to_string(),
-                &format!("sh {}", shell_quote(&script_path.display().to_string())),
-            ])
-            .status()
-    };
-
-    let first = command()?;
-    if first.success() {
-        return Ok(first);
-    }
-
-    thread::sleep(Duration::from_millis(50));
-    command()
-}
-
-fn tmux_session_name(request: &RuntimeStartRequest) -> String {
-    let short_id = short_session_id(&request.session_id);
-    let handle = request
-        .handle
-        .as_deref()
-        .map(|value| value.trim_start_matches('@'))
-        .filter(|value| !value.is_empty())
-        .map(sanitize_tmux_identifier);
-    let role = request
-        .role
-        .as_deref()
-        .filter(|value| !value.is_empty())
-        .map(sanitize_tmux_identifier);
-    let mut parts = vec!["llmparty".to_string()];
-    if let Some(handle) = handle {
-        parts.push(handle);
-    }
-    if let Some(role) = role {
-        parts.push(role);
-    }
-    if parts.len() == 1 {
-        return format!("llmparty_{}", sanitize_tmux_identifier(&request.session_id));
-    }
-    parts.push(short_id);
-    parts.join("_")
-}
-
-fn short_session_id(session_id: &str) -> String {
-    let id_body = session_id.rsplit('_').next().unwrap_or(session_id);
-    let mut chars: Vec<char> = id_body.chars().rev().take(8).collect();
-    chars.reverse();
-    chars.into_iter().collect()
-}
-
-fn workspace_path(request: &RuntimeStartRequest) -> Result<PathBuf> {
-    let path = request
-        .workspace
-        .as_ref()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::temp_dir()
-                .join("llmparty-workspaces")
-                .join(&request.session_id)
-        });
-    std::fs::create_dir_all(&path)?;
-    Ok(path)
-}
-
-fn runtime_dir(session_id: &str) -> Result<PathBuf> {
-    Ok(llmparty_data_dir()?.join("runtimes").join(session_id))
-}
-
-fn llmparty_data_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("LLMPARTY_DATA_DIR") {
-        return Ok(PathBuf::from(path));
-    }
-
-    let home = std::env::var("HOME").map_err(|_| Error::InvalidConfig {
-        key: "HOME",
-        message: "required to derive llmparty data directory".to_string(),
-    })?;
-    Ok(PathBuf::from(home).join(".local/share/llmparty"))
-}
-
-struct RuntimePaths<'a> {
-    runtime_dir: &'a Path,
-    log_path: &'a Path,
-    adapter_event_log: &'a Path,
-    current_turn_file: &'a Path,
-    pi_hook_log: &'a Path,
-    claude_hook_log: &'a Path,
-}
-
-fn write_runtime_script(
-    path: &Path,
-    workspace: &Path,
-    runtime_paths: &RuntimePaths<'_>,
-    request: &RuntimeStartRequest,
-    runtime_instance_id: &str,
-) -> Result<()> {
-    let client_spec = agent_clients::get_client_spec(&request.client_type).ok_or_else(|| {
-        Error::Domain(format!("unsupported client_type: {}", request.client_type))
-    })?;
-    let (log_setup, runtime_body) = match client_spec.dispatch_mode {
-        DispatchMode::TmuxPaste => {
-            let default_command = client_spec.default_command.ok_or_else(|| {
-                Error::Domain(format!(
-                    "{} tmux runtime missing default command",
-                    request.client_type
-                ))
-            })?;
-            let command = client_spec
-                .command_env
-                .and_then(|env| std::env::var(env).ok())
-                .or_else(|| configured_tui_command(&request.client_type))
-                .unwrap_or_else(|| default_command.to_string());
-            (
-                "echo \"llmparty runtime started\" >> \"$LLMPARTY_RUNTIME_LOG\"".to_string(),
-                format!("exec sh -lc {}\n", shell_quote(&command)),
-            )
-        }
-        DispatchMode::GenericTestAdapter | DispatchMode::None => (
-            "exec >> \"$LLMPARTY_RUNTIME_LOG\" 2>&1\necho \"llmparty runtime started\"".to_string(),
-            "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
-        ),
-    };
-    let content = format!(
-        r#"#!/usr/bin/env sh
-export LLMPARTY_SESSION_ID={}
-export LLMPARTY_CLIENT_TYPE={}
-export LLMPARTY_WORKSPACE={}
-export LLMPARTY_RUNTIME_DIR={}
-export LLMPARTY_RUNTIME_LOG={}
-export LLMPARTY_ADAPTER_EVENT_LOG={}
-export LLMPARTY_CURRENT_TURN_FILE={}
-export LLMPARTY_INTERNAL_EVENT_URL={}
-export LLMPARTY_EXTERNAL_API_URL={}
-export LLMPARTY_EXTERNAL_API_TOKEN={}
-export LLMPARTY_RUNTIME_INSTANCE_ID={}
-export LLMPARTY_PI_HOOK_LOG={}
-export LLMPARTY_CLAUDE_HOOK_LOG={}
-{}
-{}
-"#,
-        shell_quote(&request.session_id),
-        shell_quote(&request.client_type),
-        shell_quote(&workspace.display().to_string()),
-        shell_quote(&runtime_paths.runtime_dir.display().to_string()),
-        shell_quote(&runtime_paths.log_path.display().to_string()),
-        shell_quote(&runtime_paths.adapter_event_log.display().to_string()),
-        shell_quote(&runtime_paths.current_turn_file.display().to_string()),
-        shell_quote(&internal_event_url()),
-        shell_quote(&external_api_url()),
-        shell_quote(&external_api_token()),
-        shell_quote(runtime_instance_id),
-        shell_quote(&runtime_paths.pi_hook_log.display().to_string()),
-        shell_quote(&runtime_paths.claude_hook_log.display().to_string()),
-        log_setup,
-        runtime_body,
-    );
-    std::fs::write(path, content)?;
-    Ok(())
-}
-
-fn configured_tui_command(client_type: &str) -> Option<String> {
-    let guard = runtime_config()
-        .read()
-        .expect("runtime config lock poisoned");
-    match client_type {
-        "pi" => guard.pi.tui_command.clone(),
-        "claude_code" => guard.claude_code.tui_command.clone(),
-        _ => None,
-    }
-}
-
-fn internal_event_url() -> String {
-    std::env::var("LLMPARTY_INTERNAL_EVENT_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080/internal/v1/events".to_string())
-}
-
-fn external_api_url() -> String {
-    std::env::var("LLMPARTY_EXTERNAL_API_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080/external/v1".to_string())
-}
-
-fn external_api_token() -> String {
-    std::env::var("LLMPARTY_EXTERNAL_API_TOKEN").unwrap_or_default()
-}
-
-fn run_startup_hooks(hooks: &[StartupHook], workspace: &Path) -> Result<()> {
-    for hook in hooks {
-        match hook {
-            StartupHook::ClaudeCodeTrustWorkspace => {
-                claude_code::ensure_workspace_trusted(workspace)?
-            }
-        }
-    }
-    Ok(())
-}
-
-fn sanitize_tmux_identifier(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect()
 }
 
 fn shell_quote(value: &str) -> String {
