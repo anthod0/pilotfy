@@ -19,7 +19,10 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": ["planning", "execution"],
+            "enum": [
+              "planning",
+              "execution"
+            ],
             "description": "Authorized DAG agent mode for the current session."
           },
           "task": {
@@ -27,29 +30,45 @@
             "description": "Current task view."
           },
           "dag": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "Current approved or draft DAG context when relevant."
           },
           "work_item": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "Current WorkItem context for execution agents."
           },
           "work_item_run": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "Current WorkItemRun context for execution agents."
           },
           "signals": {
             "type": "array",
             "description": "Relevant signals for planning or execution.",
-            "items": { "type": "object" }
+            "items": {
+              "type": "object"
+            }
           },
           "execution_profiles": {
             "type": "array",
             "description": "Relevant available execution profiles for planning agents.",
-            "items": { "type": "object" }
+            "items": {
+              "type": "object"
+            }
           }
         },
-        "required": ["mode", "task"]
+        "required": [
+          "mode",
+          "task"
+        ]
       }
     },
     {
@@ -62,7 +81,10 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": ["initial_dag", "patch"],
+            "enum": [
+              "initial_dag",
+              "patch"
+            ],
             "description": "Whether this submission proposes the initial DAG or a patch to an existing DAG."
           },
           "summary": {
@@ -73,33 +95,302 @@
           "dag": {
             "type": "object",
             "description": "Initial DAG proposal when mode is initial_dag. Temporary WorkItem IDs are allowed; llmparty assigns authoritative IDs when applying an approved DAG.",
-            "additionalProperties": true,
+            "additionalProperties": false,
             "properties": {
               "work_items": {
                 "type": "array",
-                "items": { "type": "object", "additionalProperties": true }
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "temp_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Temporary WorkItem ID for references in this proposal."
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "design",
+                        "implementation",
+                        "review",
+                        "test",
+                        "debug",
+                        "documentation",
+                        "planning",
+                        "other"
+                      ]
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "agent_turn",
+                        "human_input",
+                        "noop"
+                      ]
+                    },
+                    "execution_profile_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "execution_profile_version": {
+                      "type": "string"
+                    },
+                    "priority": {
+                      "type": "integer",
+                      "default": 0
+                    },
+                    "optional": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "parallelizable": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "acceptance_criteria": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "default": {}
+                    }
+                  },
+                  "required": [
+                    "temp_id",
+                    "title",
+                    "description",
+                    "kind",
+                    "action",
+                    "execution_profile_id"
+                  ]
+                }
               },
               "edges": {
                 "type": "array",
-                "items": { "type": "object", "additionalProperties": true }
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "from_work_item_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to_work_item_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "edge_type": {
+                      "type": "string",
+                      "enum": [
+                        "depends_on"
+                      ],
+                      "default": "depends_on"
+                    }
+                  },
+                  "required": [
+                    "from_work_item_id",
+                    "to_work_item_id"
+                  ]
+                },
+                "default": []
               }
-            }
+            },
+            "required": [
+              "work_items"
+            ]
           },
           "patch": {
             "type": "object",
             "description": "DAG patch proposal when mode is patch. Supported operations are validated by llmparty before approval or application.",
-            "additionalProperties": true,
+            "additionalProperties": false,
             "properties": {
               "operations": {
                 "type": "array",
-                "items": { "type": "object", "additionalProperties": true }
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "add_work_item"
+                        },
+                        "work_item": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "temp_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Temporary WorkItem ID for references in this proposal."
+                            },
+                            "title": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "description": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "design",
+                                "implementation",
+                                "review",
+                                "test",
+                                "debug",
+                                "documentation",
+                                "planning",
+                                "other"
+                              ]
+                            },
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "agent_turn",
+                                "human_input",
+                                "noop"
+                              ]
+                            },
+                            "execution_profile_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "execution_profile_version": {
+                              "type": "string"
+                            },
+                            "priority": {
+                              "type": "integer",
+                              "default": 0
+                            },
+                            "optional": {
+                              "type": "boolean",
+                              "default": false
+                            },
+                            "parallelizable": {
+                              "type": "boolean",
+                              "default": true
+                            },
+                            "acceptance_criteria": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "default": []
+                            },
+                            "metadata": {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "default": {}
+                            }
+                          },
+                          "required": [
+                            "temp_id",
+                            "title",
+                            "description",
+                            "kind",
+                            "action",
+                            "execution_profile_id"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "work_item"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "add_edge"
+                        },
+                        "edge": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "from_work_item_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "to_work_item_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "edge_type": {
+                              "type": "string",
+                              "enum": [
+                                "depends_on"
+                              ],
+                              "default": "depends_on"
+                            }
+                          },
+                          "required": [
+                            "from_work_item_id",
+                            "to_work_item_id"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "edge"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "supersede_work_item"
+                        },
+                        "work_item_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "work_item_id",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
               }
-            }
+            },
+            "required": [
+              "operations"
+            ]
           },
           "assumptions": {
             "type": "array",
             "description": "Assumptions used while producing this plan.",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "default": []
           },
           "risks": {
@@ -109,24 +400,35 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "summary": { "type": "string", "minLength": 1 },
-                "severity": { "type": "string", "enum": ["low", "medium", "high"] }
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                }
               },
-              "required": ["summary"]
+              "required": [
+                "summary"
+              ]
             },
             "default": []
           }
         },
-        "required": ["mode", "summary"]
+        "required": [
+          "mode",
+          "summary"
+        ]
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "accepted": {
-            "type": "boolean",
-            "description": "Whether llmparty accepted the proposal for validation/approval workflow."
-          },
           "proposal_id": {
             "type": "string",
             "description": "Identifier of the stored DAG proposal or patch proposal."
@@ -134,9 +436,22 @@
           "validation": {
             "type": "object",
             "description": "Validation result or diagnostics."
+          },
+          "apply": {
+            "type": "object",
+            "description": "Apply outcome for the proposal."
+          },
+          "scheduler": {
+            "type": "object",
+            "description": "Scheduler outcome after applying the proposal."
           }
         },
-        "required": ["accepted"]
+        "required": [
+          "proposal_id",
+          "validation",
+          "apply",
+          "scheduler"
+        ]
       }
     },
     {
@@ -149,7 +464,12 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["completed", "failed", "blocked", "needs_input"],
+            "enum": [
+              "completed",
+              "failed",
+              "blocked",
+              "needs_input"
+            ],
             "description": "Outcome for the current WorkItemRun."
           },
           "summary": {
@@ -166,16 +486,31 @@
               "properties": {
                 "kind": {
                   "type": "string",
-                  "enum": ["patch", "document", "test_report", "review_report", "finding", "other"]
+                  "enum": [
+                    "patch",
+                    "document",
+                    "test_report",
+                    "review_report",
+                    "finding",
+                    "other"
+                  ]
                 },
-                "name": { "type": "string", "minLength": 1 },
-                "summary": { "type": "string" },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "summary": {
+                  "type": "string"
+                },
                 "ref": {
                   "type": "string",
                   "description": "Optional external reference such as artifact:<id>, file:<path>, event:<id>, or URL."
                 }
               },
-              "required": ["kind", "name"]
+              "required": [
+                "kind",
+                "name"
+              ]
             },
             "default": []
           },
@@ -184,13 +519,23 @@
             "description": "Failure or blocking detail when status is failed, blocked, or needs_input.",
             "additionalProperties": false,
             "properties": {
-              "reason": { "type": "string", "minLength": 1 },
-              "retryable": { "type": "boolean" }
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              }
             },
-            "required": ["reason"]
+            "required": [
+              "reason"
+            ]
           }
         },
-        "required": ["status", "summary"]
+        "required": [
+          "status",
+          "summary"
+        ]
       },
       "outputSchema": {
         "type": "object",
@@ -205,7 +550,9 @@
             "description": "Updated WorkItemRun view or summary."
           }
         },
-        "required": ["accepted"]
+        "required": [
+          "accepted"
+        ]
       }
     },
     {
@@ -218,7 +565,16 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["needs_input", "replan_requested", "risk", "missing_dependency", "scope_change", "assistance_needed", "review_requested", "other"],
+            "enum": [
+              "needs_input",
+              "replan_requested",
+              "risk",
+              "missing_dependency",
+              "scope_change",
+              "assistance_needed",
+              "review_requested",
+              "other"
+            ],
             "description": "Signal category."
           },
           "summary": {
@@ -232,17 +588,26 @@
           },
           "severity": {
             "type": "string",
-            "enum": ["low", "medium", "high"],
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
             "default": "medium"
           },
           "related_refs": {
             "type": "array",
             "description": "Optional references related to this signal, such as work_item:<id>, artifact:<id>, file:<path>, event:<id>, or signal:<id>.",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "default": []
           }
         },
-        "required": ["kind", "summary"]
+        "required": [
+          "kind",
+          "summary"
+        ]
       },
       "outputSchema": {
         "type": "object",
@@ -261,7 +626,9 @@
             "description": "Recorded signal view."
           }
         },
-        "required": ["accepted"]
+        "required": [
+          "accepted"
+        ]
       }
     }
   ]

@@ -40,7 +40,7 @@ pub struct SubmitPlanPayload {
     #[serde(default)]
     pub assumptions: Vec<String>,
     #[serde(default)]
-    pub risks: Vec<String>,
+    pub risks: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

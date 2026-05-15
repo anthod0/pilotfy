@@ -43,17 +43,25 @@ pub(super) fn parse_submit_plan_initial_input(input: Value) -> Result<SubmitPlan
     Ok(SubmitPlanPayload {
         mode: "initial_dag".to_string(),
         summary: required_input_string(&input, "summary")?,
-        work_items: serde_json::from_value(
+        work_items: parse_input_array(
+            "dag.work_items",
             dag.get("work_items").cloned().unwrap_or_else(|| json!([])),
         )?,
-        edges: serde_json::from_value(dag.get("edges").cloned().unwrap_or_else(|| json!([])))?,
-        assumptions: serde_json::from_value(
+        edges: parse_input_array(
+            "dag.edges",
+            dag.get("edges").cloned().unwrap_or_else(|| json!([])),
+        )?,
+        assumptions: parse_input_array(
+            "assumptions",
             input
                 .get("assumptions")
                 .cloned()
                 .unwrap_or_else(|| json!([])),
         )?,
-        risks: serde_json::from_value(input.get("risks").cloned().unwrap_or_else(|| json!([])))?,
+        risks: parse_input_array(
+            "risks",
+            input.get("risks").cloned().unwrap_or_else(|| json!([])),
+        )?,
     })
 }
 
@@ -73,11 +81,17 @@ pub(super) fn parse_submit_plan_patch_input(input: Value) -> Result<(String, Dag
     {
         object.insert("summary".to_string(), Value::String(summary.clone()));
     }
-    let mut patch: DagPatch = serde_json::from_value(patch_value)?;
+    let mut patch: DagPatch = serde_json::from_value(patch_value)
+        .map_err(|err| Error::Domain(format!("invalid submitPlan patch: {err}")))?;
     if patch.summary.is_empty() {
         patch.summary = summary.clone();
     }
     Ok((summary, patch))
+}
+
+fn parse_input_array<T: serde::de::DeserializeOwned>(field: &str, value: Value) -> Result<Vec<T>> {
+    serde_json::from_value(value)
+        .map_err(|err| Error::Domain(format!("invalid submitPlan {field}: {err}")))
 }
 
 fn required_input_string(value: &Value, key: &str) -> Result<String> {

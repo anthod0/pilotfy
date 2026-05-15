@@ -177,6 +177,97 @@ async fn submit_plan_enforces_planner_replanner_and_worker_modes() {
 }
 
 #[tokio::test]
+async fn submit_plan_rejects_malformed_work_item_as_bad_request() {
+    let state = test_state().await;
+    insert_task(&state.db, "task_malformed_plan").await;
+    insert_dag_session(
+        &state.db,
+        "sess_malformed_plan",
+        "turn_malformed_plan",
+        "rt_malformed_plan",
+        json!({
+            "dag_managed": true,
+            "dag_planning_role": "planner",
+            "task_id": "task_malformed_plan"
+        }),
+    )
+    .await;
+
+    let mut input = valid_initial_dag_input();
+    input["dag"]["work_items"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("kind");
+
+    let (status, body) = post_tool(
+        state,
+        "submitPlan",
+        json!({
+            "session_id": "sess_malformed_plan",
+            "turn_id": "turn_malformed_plan",
+            "runtime_instance_id": "rt_malformed_plan",
+            "input": input
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body:#}");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid submitPlan dag.work_items")
+    );
+}
+
+#[tokio::test]
+async fn submit_plan_accepts_structured_risks_from_tool_contract() {
+    let state = test_state().await;
+    insert_task(&state.db, "task_structured_risks").await;
+    insert_dag_session(
+        &state.db,
+        "sess_structured_risks",
+        "turn_structured_risks",
+        "rt_structured_risks",
+        json!({
+            "dag_managed": true,
+            "dag_planning_role": "planner",
+            "task_id": "task_structured_risks"
+        }),
+    )
+    .await;
+
+    let mut input = valid_initial_dag_input();
+    input["risks"] = json!([{ "summary": "May need fixture updates", "severity": "low" }]);
+
+    let (status, body) = post_tool(
+        state.clone(),
+        "submitPlan",
+        json!({
+            "session_id": "sess_structured_risks",
+            "turn_id": "turn_structured_risks",
+            "runtime_instance_id": "rt_structured_risks",
+            "input": input
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body:#}");
+    let proposal_json: String = sqlx::query_scalar(
+        "SELECT proposal_json FROM dag_proposals WHERE task_id = ? AND created_by_session_id = ?",
+    )
+    .bind("task_structured_risks")
+    .bind("sess_structured_risks")
+    .fetch_one(&state.db)
+    .await
+    .expect("proposal json");
+    let proposal: serde_json::Value = serde_json::from_str(&proposal_json).unwrap();
+    assert_eq!(proposal["risks"][0]["summary"], "May need fixture updates");
+
+    cleanup_runtime_sessions(&state.db).await;
+}
+
+#[tokio::test]
 async fn submit_plan_rejects_invalid_dag_without_partial_apply() {
     let state = test_state().await;
     insert_task(&state.db, "task_invalid_plan").await;

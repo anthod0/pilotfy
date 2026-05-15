@@ -72,6 +72,37 @@ describe("llmparty pi agent tools", () => {
     );
   });
 
+  test("submitPlan schema matches backend WorkItem draft contract", () => {
+    const tools = buildLlmpartyTools({
+      env: {},
+      loadContext: vi.fn(),
+      logDiagnostic: vi.fn(),
+    });
+    const submitPlan = tools.find((tool) => tool.name === "llmparty_submitPlan")! as any;
+    const workItem = submitPlan.parameters.properties.dag.properties.work_items.items;
+
+    expect(workItem.required).toEqual([
+      "temp_id",
+      "title",
+      "description",
+      "kind",
+      "action",
+      "execution_profile_id",
+    ]);
+    expect(workItem.properties.kind.enum).toEqual([
+      "design",
+      "implementation",
+      "review",
+      "test",
+      "debug",
+      "documentation",
+      "planning",
+      "other",
+    ]);
+    expect(workItem.properties.action.enum).toEqual(["agent_turn", "human_input", "noop"]);
+    expect(submitPlan.parameters.properties.risks.items.properties.summary.type).toBe("string");
+  });
+
   test("tool handler posts current authorized context and input to Internal Agent Tool API", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, tool: "submitPlan", result: { accepted: true, proposal_id: "prop_1" } }), {
