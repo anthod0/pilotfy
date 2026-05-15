@@ -44,11 +44,11 @@ function isLlmpartyToolName(name: string): name is LlmpartyToolName {
 }
 
 function piToolName(toolName: LlmpartyToolName): string {
-  return `llmparty_${toolName}`;
+  return toolName;
 }
 
 function responseText(toolName: string, payload: unknown): string {
-  if (toolName === "llmparty_getContext") {
+  if (toolName === "getContext") {
     const text = agentContextText(payload);
     if (text) return text;
   }
@@ -56,14 +56,14 @@ function responseText(toolName: string, payload: unknown): string {
   const result = resultRecord(payload);
   const lines = [`${toolName} succeeded.`];
 
-  if (toolName === "llmparty_submitPlan") {
+  if (toolName === "submitPlan") {
     lines.push(`Accepted: ${booleanText(result?.accepted) ?? "unknown"}`);
     const proposalId = stringField(result, "proposal_id");
     if (proposalId) lines.push(`Proposal ID: ${proposalId}`);
     return lines.join("\n");
   }
 
-  if (toolName === "llmparty_submitResult") {
+  if (toolName === "submitResult") {
     const status = stringField(result, "status");
     if (status) lines.push(`Status: ${status}`);
     const runId = stringField(result, "run_id");
@@ -71,7 +71,7 @@ function responseText(toolName: string, payload: unknown): string {
     return lines.join("\n");
   }
 
-  if (toolName === "llmparty_raiseSignal") {
+  if (toolName === "raiseSignal") {
     const signalId = stringField(result, "signal_id");
     if (signalId) lines.push(`Signal ID: ${signalId}`);
     const recorded = booleanText(result?.recorded);

@@ -35,7 +35,7 @@ function install(env: Record<string, string | undefined> = {}, overrides: Partia
 }
 
 describe("llmparty pi agent tools", () => {
-  test("builds four namespaced DAG agent tools from the shared contract", () => {
+  test("builds four DAG agent tools from the shared contract without a pi-only prefix", () => {
     const tools = buildLlmpartyTools({
       env: {},
       loadContext: vi.fn(),
@@ -43,10 +43,10 @@ describe("llmparty pi agent tools", () => {
     });
 
     expect(tools.map((tool) => tool.name)).toEqual([
-      "llmparty_getContext",
-      "llmparty_submitPlan",
-      "llmparty_submitResult",
-      "llmparty_raiseSignal",
+      "getContext",
+      "submitPlan",
+      "submitResult",
+      "raiseSignal",
     ]);
     expect(tools[0].description).toContain("Fetch the current DAG-managed context");
   });
@@ -55,10 +55,10 @@ describe("llmparty pi agent tools", () => {
     const { pi, tools } = install();
 
     expect(tools.map((tool) => tool.name)).toEqual([
-      "llmparty_getContext",
-      "llmparty_submitPlan",
-      "llmparty_submitResult",
-      "llmparty_raiseSignal",
+      "getContext",
+      "submitPlan",
+      "submitResult",
+      "raiseSignal",
     ]);
     expect(pi.registerTool).toHaveBeenCalledTimes(4);
   });
@@ -78,7 +78,7 @@ describe("llmparty pi agent tools", () => {
       loadContext: vi.fn(),
       logDiagnostic: vi.fn(),
     });
-    const submitPlan = tools.find((tool) => tool.name === "llmparty_submitPlan")! as any;
+    const submitPlan = tools.find((tool) => tool.name === "submitPlan")! as any;
     const workItem = submitPlan.parameters.properties.dag.properties.work_items.items;
 
     expect(workItem.required).toEqual([
@@ -112,7 +112,7 @@ describe("llmparty pi agent tools", () => {
     );
     const { tools } = install({}, { fetch: fetchImpl as any });
 
-    const result = await tools.find((tool) => tool.name === "llmparty_submitPlan")!.execute("call_1", {
+    const result = await tools.find((tool) => tool.name === "submitPlan")!.execute("call_1", {
       mode: "initial_dag",
       summary: "Plan",
       dag: { work_items: [], edges: [] },
@@ -130,7 +130,7 @@ describe("llmparty pi agent tools", () => {
       signal: undefined,
     });
     expect(result.details).toEqual({ ok: true, tool: "submitPlan", result: { accepted: true, proposal_id: "prop_1" } });
-    expect(result.content[0].text).toBe("llmparty_submitPlan succeeded.\nAccepted: yes\nProposal ID: prop_1");
+    expect(result.content[0].text).toBe("submitPlan succeeded.\nAccepted: yes\nProposal ID: prop_1");
     expect(result.content[0].text).not.toContain("{");
   });
 
@@ -168,7 +168,7 @@ describe("llmparty pi agent tools", () => {
     );
     const { tools } = install({}, { fetch: fetchImpl as any });
 
-    const result = await tools.find((tool) => tool.name === "llmparty_getContext")!.execute("call_context", {});
+    const result = await tools.find((tool) => tool.name === "getContext")!.execute("call_context", {});
 
     expect(result.content[0].text).toBe("llmparty context: execution\n\nCurrent WorkItem:\n- Title: Do it");
     expect(result.content[0].text).not.toContain("{\n");
@@ -183,9 +183,9 @@ describe("llmparty pi agent tools", () => {
       { fetch: fetchImpl as any, logDiagnostic },
     );
 
-    const result = await tools.find((tool) => tool.name === "llmparty_getContext")!.execute("call_2", {});
+    const result = await tools.find((tool) => tool.name === "getContext")!.execute("call_2", {});
 
-    expect(result.content[0].text).toContain("llmparty_getContext failed: 403 Forbidden");
+    expect(result.content[0].text).toContain("getContext failed: 403 Forbidden");
     expect(result.content[0].text).toContain("not authorized");
     expect(result.content[0].text).not.toContain("{");
     expect(result.content[0].text).not.toContain("secret-token");
@@ -204,10 +204,10 @@ describe("llmparty pi agent tools", () => {
       },
     );
 
-    const result = await tools.find((tool) => tool.name === "llmparty_submitResult")!.execute("call_3", { status: "completed", summary: "done" });
+    const result = await tools.find((tool) => tool.name === "submitResult")!.execute("call_3", { status: "completed", summary: "done" });
 
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain("llmparty_submitResult unavailable: missing context");
+    expect(result.content[0].text).toContain("submitResult unavailable: missing context");
     expect(logDiagnostic).toHaveBeenCalledWith("hook.log", expect.objectContaining({ code: "agent_tool_context_unavailable" }));
   });
 });
