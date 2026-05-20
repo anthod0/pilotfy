@@ -1,0 +1,205 @@
+use llmparty::{
+    application::{
+        AddWorkItemEdgeRequest, GraphEdgeKind, GraphProjectionService, GraphRuntimeConfig,
+        SqliteDagGraphStore, UpsertTaskRequest, UpsertWorkItemRequest,
+    },
+    storage::sqlite::{connect_sqlite, run_migrations},
+};
+use serde_json::json;
+use sqlx::SqlitePool;
+
+async fn test_pool() -> SqlitePool {
+    let db = connect_sqlite("sqlite::memory:")
+        .await
+        .expect("connect sqlite");
+    run_migrations(&db).await.expect("migrate");
+    db
+}
+
+async fn insert_task(pool: &SqlitePool, task_id: &str) {
+    sqlx::query(
+        r#"INSERT INTO tasks (task_id, state, input, routing_state)
+           VALUES (?, 'running', 'Graph projection test task', 'resolved')"#,
+    )
+    .bind(task_id)
+    .execute(pool)
+    .await
+    .expect("insert task");
+}
+
+#[tokio::test]
+async fn sqlite_graph_store_persists_work_items_and_edges() {
+    let pool = test_pool().await;
+    insert_task(&pool, "task_graph_store").await;
+    let store = SqliteDagGraphStore::new(pool);
+
+    store
+        .upsert_task(UpsertTaskRequest {
+            task_id: "task_graph_store".to_string(),
+            title: "Graph task".to_string(),
+            description: "Persist graph data".to_string(),
+            ref_: Some("event:task.created:evt_1".to_string()),
+            metadata: json!({"source":"test"}),
+        })
+        .await
+        .expect("upsert task");
+    for (work_item_id, title, priority) in [("wi_a", "A", 10), ("wi_b", "B", 0)] {
+        store
+            .upsert_work_item(UpsertWorkItemRequest {
+                work_item_id: work_item_id.to_string(),
+                task_id: "task_graph_store".to_string(),
+                title: title.to_string(),
+                description: format!("Work item {title}"),
+                kind: "implementation".to_string(),
+                action: "agent_turn".to_string(),
+                execution_profile_id: "default".to_string(),
+                execution_profile_version: None,
+                review_policy: None,
+                execution_policy: None,
+                escalation_policy: None,
+                priority,
+                optional: false,
+                parallelizable: true,
+                acceptance_criteria: json!(["done"]),
+                active: true,
+                ref_: None,
+                metadata: json!({}),
+            })
+            .await
+            .expect("upsert work item");
+    }
+    let edge = AddWorkItemEdgeRequest {
+        task_id: "task_graph_store".to_string(),
+        from_work_item_id: "wi_a".to_string(),
+        to_work_item_id: "wi_b".to_string(),
+        edge_type: GraphEdgeKind::DependsOn,
+        ref_: None,
+    };
+    store.add_edge(edge.clone()).await.expect("add edge");
+    store.add_edge(edge).await.expect("idempotent edge");
+
+    let snapshot = store
+        .task_graph("task_graph_store")
+        .await
+        .expect("snapshot");
+    assert_eq!(snapshot.task.as_ref().unwrap().title, "Graph task");
+    assert_eq!(snapshot.work_items.len(), 2);
+    assert_eq!(snapshot.edges.len(), 1);
+    assert_eq!(snapshot.edges[0].edge_type, GraphEdgeKind::DependsOn);
+
+    let dependencies = store.list_dependencies("wi_b").await.expect("dependencies");
+    assert_eq!(dependencies.len(), 1);
+    assert_eq!(dependencies[0].work_item_id, "wi_a");
+}
+
+#[tokio::test]
+async fn graph_projection_rebuilds_from_task_events() {
+    let pool = test_pool().await;
+    insert_task(&pool, "task_graph_projection").await;
+
+    for (event_id, event_type, payload) in [
+        (
+            "evt_task_created",
+            "task.created",
+            json!({"input":"Build a graph-backed DAG"}),
+        ),
+        (
+            "evt_dag_applied",
+            "dag.applied",
+            json!({"proposal_id":"dagprop_1"}),
+        ),
+        (
+            "evt_wi_a",
+            "work_item.created",
+            json!({
+                "work_item_id":"wi_design",
+                "task_id":"task_graph_projection",
+                "title":"Design",
+                "description":"Design graph model",
+                "kind":"design",
+                "action":"agent_turn",
+                "execution_profile_id":"planner",
+                "execution_profile_version": null,
+                "priority": 5,
+                "optional": false,
+                "parallelizable": true,
+                "acceptance_criteria":["design recorded"],
+                "metadata":{"phase":"design"}
+            }),
+        ),
+        (
+            "evt_wi_b",
+            "work_item.created",
+            json!({
+                "work_item_id":"wi_impl",
+                "task_id":"task_graph_projection",
+                "title":"Implement",
+                "description":"Implement graph store",
+                "kind":"implementation",
+                "action":"agent_turn",
+                "execution_profile_id":"implementer",
+                "priority": 1
+            }),
+        ),
+        (
+            "evt_edge",
+            "work_item.edge_added",
+            json!({
+                "task_id":"task_graph_projection",
+                "from_work_item_id":"wi_design",
+                "to_work_item_id":"wi_impl",
+                "edge_type":"depends_on"
+            }),
+        ),
+        (
+            "evt_signal",
+            "signal.emitted",
+            json!({
+                "signal_id":"sig_1",
+                "task_id":"task_graph_projection",
+                "work_item_id":"wi_impl",
+                "source":"agent",
+                "kind":"risk",
+                "summary":"Migration risk",
+                "detail":"Schema is destructive",
+                "severity":"high",
+                "related_refs":["work_item:wi_impl"]
+            }),
+        ),
+    ] {
+        sqlx::query(
+            r#"INSERT INTO task_events (event_id, task_id, event_type, payload)
+               VALUES (?, 'task_graph_projection', ?, ?)"#,
+        )
+        .bind(event_id)
+        .bind(event_type)
+        .bind(payload.to_string())
+        .execute(&pool)
+        .await
+        .expect("insert task event");
+    }
+
+    let projection = GraphProjectionService::new(pool.clone(), GraphRuntimeConfig::default());
+    projection
+        .project_task("task_graph_projection")
+        .await
+        .expect("project task");
+    projection
+        .project_task("task_graph_projection")
+        .await
+        .expect("idempotent replay");
+
+    let store = SqliteDagGraphStore::new(pool);
+    let snapshot = store
+        .task_graph("task_graph_projection")
+        .await
+        .expect("snapshot");
+    assert_eq!(
+        snapshot.task.as_ref().unwrap().title,
+        "Build a graph-backed DAG"
+    );
+    assert_eq!(snapshot.work_items.len(), 2);
+    assert_eq!(snapshot.edges.len(), 1);
+    assert_eq!(snapshot.signals.len(), 1);
+    assert_eq!(snapshot.signals[0].severity, "high");
+}
