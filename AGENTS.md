@@ -20,6 +20,13 @@
 - Preserve idempotency behavior for mutating External API routes that accept `Idempotency-Key`.
 - Use the capability model to represent client differences. When a client cannot support an action or fact source, return an explicit unsupported/degraded result rather than fabricating success events.
 
+## Database migration rules
+
+- Never modify an existing SQL migration file after it has been committed or may have been applied to any database.
+- SQLx migration checksums are authoritative: changing existing `migrations/*.sql` files causes `VersionMismatch` failures for users with existing databases.
+- Database schema/data fixes must be implemented by appending a new numbered SQL migration only.
+- If a historical migration appears wrong, preserve it and add a follow-up migration that transforms existing databases from the old state to the desired state.
+
 ## Domain model and data ownership
 
 - `Task`: user's global intent and primary Web UI object; may exist before workspace/session routing.

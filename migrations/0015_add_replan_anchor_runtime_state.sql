@@ -15,9 +15,8 @@ CREATE TABLE work_item_runtime_projection_new (
     parallelizable INTEGER NOT NULL DEFAULT 1 CHECK(parallelizable IN (0, 1)),
     session_id TEXT,
     turn_id TEXT,
-    lease_owner TEXT,
-    lease_expires_at TEXT,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    FOREIGN KEY(work_item_id) REFERENCES work_items(work_item_id),
     FOREIGN KEY(task_id) REFERENCES tasks(task_id),
     FOREIGN KEY(current_run_id) REFERENCES work_item_runs(run_id),
     FOREIGN KEY(session_id) REFERENCES sessions(session_id),
@@ -27,12 +26,12 @@ CREATE TABLE work_item_runtime_projection_new (
 INSERT INTO work_item_runtime_projection_new (
     work_item_id, task_id, current_run_id, current_state, current_attempt, ready_at,
     blocked_reason, retry_count, max_retries, priority, optional, parallelizable,
-    session_id, turn_id, lease_owner, lease_expires_at, updated_at
+    session_id, turn_id, updated_at
 )
 SELECT
     work_item_id, task_id, current_run_id, current_state, current_attempt, ready_at,
     blocked_reason, retry_count, max_retries, priority, optional, parallelizable,
-    session_id, turn_id, lease_owner, lease_expires_at, updated_at
+    session_id, turn_id, updated_at
 FROM work_item_runtime_projection;
 
 DROP TABLE work_item_runtime_projection;
