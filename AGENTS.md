@@ -5,6 +5,11 @@
 - Frontend/dashboard and client plugins use pnpm.
 - Key paths: `src/`, `tests/`, `apps/dashboard/`, `clients/pi/`, `clients/claude-code/`, `spec/`, `MILESTONE.md`, `README.md`.
 
+## Development mode
+
+- This project is still in active development. When choosing an approach, prefer the best solution or the one closest to the final target architecture.
+- If necessary, major changes are allowed. Old branches/approaches should be deprecated and removed promptly; backward compatibility is not required unless explicitly requested.
+
 ## Architecture rules
 
 - External API state must come from the event store/projections. Do not treat tmux state, runtime logs, pi/Claude internals, or workspace files as authoritative.
