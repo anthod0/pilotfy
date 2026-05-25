@@ -74,11 +74,26 @@ impl DagService {
     }
 
     pub async fn mark_proposal_applied(&self, proposal_id: &str) -> Result<DagProposal> {
+        self.mark_proposal_applied_with_result(proposal_id, json!({ "ok": true }))
+            .await
+    }
+
+    pub async fn mark_proposal_applied_with_result(
+        &self,
+        proposal_id: &str,
+        apply_result: Value,
+    ) -> Result<DagProposal> {
+        let validation_json = serde_json::to_string(&json!({
+            "ok": true,
+            "apply_result": apply_result,
+        }))?;
         let updated = sqlx::query(
             r#"UPDATE dag_proposals
-               SET state = 'applied', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               SET state = 'applied', validation_json = ?,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                WHERE proposal_id = ?"#,
         )
+        .bind(validation_json)
         .bind(proposal_id)
         .execute(&self.pool)
         .await?
@@ -201,9 +216,16 @@ impl DagService {
         Ok(())
     }
 
-    pub async fn apply_patch(&self, task_id: &str, patch: &DagPatch) -> Result<()> {
+    pub async fn apply_patch(
+        &self,
+        task_id: &str,
+        patch: &DagPatch,
+    ) -> Result<DagPatchApplySummary> {
         ensure_task_exists(&self.pool, task_id).await?;
         self.validate_patch(task_id, patch).await?;
+
+        let auto_superseded = self.auto_supersede_work_items(task_id, patch).await?;
+        let auto_superseded_for_event = auto_superseded.clone();
 
         let mut tx = self.pool.begin().await?;
         append_task_event(
@@ -213,10 +235,47 @@ impl DagService {
             json!({
                 "task_id": task_id,
                 "summary": patch.summary,
+                "anchor_work_item_id": patch.anchor_work_item_id,
+                "supersede_policy": patch.supersede_policy,
+                "auto_superseded_work_item_ids": auto_superseded_for_event,
                 "operations": patch.operations,
             }),
         )
         .await?;
+
+        let mut applied_supersedes = HashSet::new();
+        let mut superseded_work_item_ids = Vec::new();
+        let mut added_work_item_ids = Vec::new();
+        for work_item_id in auto_superseded {
+            applied_supersedes.insert(work_item_id.clone());
+            superseded_work_item_ids.push(work_item_id.clone());
+            let reason = format!(
+                "replanned_by_anchor:{}",
+                patch.anchor_work_item_id.as_deref().unwrap_or_default()
+            );
+            append_task_event(
+                &mut tx,
+                task_id,
+                "work_item.superseded",
+                json!({
+                    "task_id": task_id,
+                    "work_item_id": work_item_id,
+                    "reason": reason,
+                }),
+            )
+            .await?;
+            sqlx::query(
+                r#"UPDATE work_item_runtime_projection
+                   SET current_state = 'superseded', blocked_reason = ?,
+                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                   WHERE task_id = ? AND work_item_id = ?"#,
+            )
+            .bind(&reason)
+            .bind(task_id)
+            .bind(&work_item_id)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         let mut temp_id_map = HashMap::new();
         for operation in &patch.operations {
@@ -226,6 +285,7 @@ impl DagService {
                     if let Some(temp_id) = &work_item.temp_id {
                         temp_id_map.insert(temp_id.clone(), work_item_id.clone());
                     }
+                    added_work_item_ids.push(work_item_id.clone());
                     append_task_event(
                         &mut tx,
                         task_id,
@@ -260,6 +320,10 @@ impl DagService {
                     work_item_id,
                     reason,
                 } => {
+                    if !applied_supersedes.insert(work_item_id.clone()) {
+                        continue;
+                    }
+                    superseded_work_item_ids.push(work_item_id.clone());
                     append_task_event(
                         &mut tx,
                         task_id,
@@ -291,7 +355,12 @@ impl DagService {
             .project_task(task_id)
             .await?;
         initialize_projection(&self.pool, task_id).await?;
-        Ok(())
+        Ok(DagPatchApplySummary {
+            anchor_work_item_id: patch.anchor_work_item_id.clone(),
+            supersede_policy: patch.supersede_policy.clone(),
+            superseded_work_item_ids,
+            added_work_item_ids,
+        })
     }
 
     async fn get_proposal(&self, proposal_id: &str) -> Result<DagProposal> {
@@ -348,7 +417,97 @@ impl DagService {
         Ok(())
     }
 
+    async fn auto_supersede_work_items(
+        &self,
+        task_id: &str,
+        patch: &DagPatch,
+    ) -> Result<Vec<String>> {
+        match patch.supersede_policy.as_str() {
+            "none" | "explicit_only" => return Ok(Vec::new()),
+            "direct_downstream" | "reachable_downstream" => {}
+            other => {
+                return Err(Error::Domain(format!(
+                    "unknown patch supersede_policy {other}"
+                )));
+            }
+        }
+        let anchor = patch.anchor_work_item_id.as_deref().ok_or_else(|| {
+            Error::Domain(format!(
+                "patch supersede_policy {} requires anchor_work_item_id",
+                patch.supersede_policy
+            ))
+        })?;
+
+        let snapshot = SqliteDagGraphStore::new(self.pool.clone())
+            .task_graph(task_id)
+            .await?;
+        let active_ids: HashSet<String> = snapshot
+            .work_items
+            .iter()
+            .filter(|work_item| work_item.active)
+            .map(|work_item| work_item.work_item_id.clone())
+            .collect();
+        if !active_ids.contains(anchor) {
+            return Err(Error::NotFound(format!("work item {anchor}")));
+        }
+
+        let mut candidates = HashSet::new();
+        let mut frontier = vec![anchor.to_string()];
+        while let Some(from_id) = frontier.pop() {
+            for edge in snapshot.edges.iter().filter(|edge| {
+                edge.edge_type == GraphEdgeKind::DependsOn
+                    && edge.from_work_item_id == from_id
+                    && active_ids.contains(&edge.to_work_item_id)
+            }) {
+                if candidates.insert(edge.to_work_item_id.clone())
+                    && patch.supersede_policy == "reachable_downstream"
+                {
+                    frontier.push(edge.to_work_item_id.clone());
+                }
+            }
+            if patch.supersede_policy == "direct_downstream" {
+                break;
+            }
+        }
+
+        let state_rows = sqlx::query(
+            "SELECT work_item_id, current_state FROM work_item_runtime_projection WHERE task_id = ?",
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let states: HashMap<String, String> = state_rows
+            .into_iter()
+            .map(|row| (row.get("work_item_id"), row.get("current_state")))
+            .collect();
+
+        let mut superseded = Vec::new();
+        for work_item_id in candidates {
+            match states.get(&work_item_id).map(String::as_str) {
+                Some("running") => {
+                    return Err(Error::StateConflict(format!(
+                        "cannot modify running WorkItem {work_item_id}"
+                    )));
+                }
+                Some("completed") | Some("replan_anchor") | Some("superseded") => {}
+                _ => superseded.push(work_item_id),
+            }
+        }
+        Ok(superseded)
+    }
+
     async fn validate_patch(&self, task_id: &str, patch: &DagPatch) -> Result<()> {
+        validate_supersede_policy(&patch.supersede_policy)?;
+        if patch.supersede_policy != "explicit_only" && patch.supersede_policy != "none" {
+            let anchor = patch.anchor_work_item_id.as_deref().ok_or_else(|| {
+                Error::Domain(format!(
+                    "patch supersede_policy {} requires anchor_work_item_id",
+                    patch.supersede_policy
+                ))
+            })?;
+            ensure_work_item_exists(&self.pool, task_id, anchor).await?;
+        }
+
         let mut added_work_items = Vec::new();
         let mut temp_ids = HashSet::new();
         for operation in &patch.operations {
@@ -378,16 +537,22 @@ impl DagService {
         let snapshot = SqliteDagGraphStore::new(self.pool.clone())
             .task_graph(task_id)
             .await?;
-        let superseded: HashSet<String> = patch
-            .operations
-            .iter()
-            .filter_map(|operation| match operation {
-                PatchOperation::SupersedeWorkItem { work_item_id, .. } => {
-                    Some(work_item_id.clone())
-                }
-                _ => None,
-            })
+        let mut superseded: HashSet<String> = self
+            .auto_supersede_work_items(task_id, patch)
+            .await?
+            .into_iter()
             .collect();
+        superseded.extend(
+            patch
+                .operations
+                .iter()
+                .filter_map(|operation| match operation {
+                    PatchOperation::SupersedeWorkItem { work_item_id, .. } => {
+                        Some(work_item_id.clone())
+                    }
+                    _ => None,
+                }),
+        );
         let mut nodes: Vec<String> = snapshot
             .work_items
             .iter()
@@ -548,6 +713,15 @@ async fn ensure_task_exists(pool: &SqlitePool, task_id: &str) -> Result<()> {
         Ok(())
     } else {
         Err(Error::NotFound(format!("task {task_id}")))
+    }
+}
+
+fn validate_supersede_policy(policy: &str) -> Result<()> {
+    match policy {
+        "none" | "explicit_only" | "direct_downstream" | "reachable_downstream" => Ok(()),
+        other => Err(Error::Domain(format!(
+            "unknown patch supersede_policy {other}"
+        ))),
     }
 }
 

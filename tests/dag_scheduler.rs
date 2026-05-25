@@ -338,6 +338,8 @@ async fn scheduler_allows_replan_anchor_to_start_new_path() {
         &task_id,
         &DagPatch {
             summary: "replace old path".to_string(),
+            anchor_work_item_id: None,
+            supersede_policy: "explicit_only".to_string(),
             operations: vec![
                 PatchOperation::SupersedeWorkItem {
                     work_item_id: old_next_id,

@@ -198,13 +198,21 @@ impl DagPlanningService {
         let proposal = dag
             .save_patch_proposal(task_id, &summary, &patch, Some(session_id))
             .await?;
-        if let Err(error) = dag.apply_patch(task_id, &patch).await {
-            let _ = dag
-                .mark_proposal_rejected(&proposal.proposal_id, &error.to_string())
-                .await;
-            return Err(error);
-        }
-        let proposal = dag.mark_proposal_applied(&proposal.proposal_id).await?;
+        let apply_summary = match dag.apply_patch(task_id, &patch).await {
+            Ok(summary) => summary,
+            Err(error) => {
+                let _ = dag
+                    .mark_proposal_rejected(&proposal.proposal_id, &error.to_string())
+                    .await;
+                return Err(error);
+            }
+        };
+        let proposal = dag
+            .mark_proposal_applied_with_result(
+                &proposal.proposal_id,
+                serde_json::to_value(&apply_summary)?,
+            )
+            .await?;
         if let Some(signal_id) = self.planning_signal_id(session_id).await? {
             sqlx::query(
                 r#"UPDATE dag_signals

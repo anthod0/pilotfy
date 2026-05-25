@@ -224,6 +224,18 @@ async fn replanner_output_applies_patch_and_resumes_scheduler() {
 
     assert_eq!(outcome.proposal.mode, "patch");
     assert_eq!(outcome.proposal.state, "applied");
+    assert_eq!(outcome.proposal.validation_json["ok"], true);
+    assert_eq!(
+        outcome.proposal.validation_json["apply_result"]["supersede_policy"],
+        "explicit_only"
+    );
+    assert_eq!(
+        outcome.proposal.validation_json["apply_result"]["added_work_item_ids"]
+            .as_array()
+            .expect("added work item ids")
+            .len(),
+        1
+    );
     assert_eq!(outcome.scheduler.dispatched_runs.len(), 1);
 
     let graph = SqliteDagGraphStore::new(pool.clone())

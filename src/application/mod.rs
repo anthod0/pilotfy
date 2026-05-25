@@ -64,8 +64,9 @@ pub use artifacts::{
 };
 pub use dag::DagService;
 pub use dag_models::{
-    DagPatch, DagProposal, DagSignalRecord, PatchOperation, RaiseSignalPayload, SubmitPlanPayload,
-    SubmitResultPayload, WorkItemDraft, WorkItemEdgeDraft, WorkItemRecord, WorkItemRunRecord,
+    DagPatch, DagPatchApplySummary, DagProposal, DagSignalRecord, PatchOperation,
+    RaiseSignalPayload, SubmitPlanPayload, SubmitResultPayload, WorkItemDraft, WorkItemEdgeDraft,
+    WorkItemRecord, WorkItemRunRecord,
 };
 pub use dag_planning::{DagPlanningOutcome, DagPlanningService, DagPlanningTurn};
 pub use dag_run_result::DagRunResultService;

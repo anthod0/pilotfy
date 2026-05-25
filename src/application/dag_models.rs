@@ -47,6 +47,10 @@ pub struct SubmitPlanPayload {
 pub struct DagPatch {
     pub summary: String,
     #[serde(default)]
+    pub anchor_work_item_id: Option<String>,
+    #[serde(default = "default_supersede_policy")]
+    pub supersede_policy: String,
+    #[serde(default)]
     pub operations: Vec<PatchOperation>,
 }
 
@@ -63,6 +67,14 @@ pub enum PatchOperation {
         work_item_id: String,
         reason: String,
     },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DagPatchApplySummary {
+    pub anchor_work_item_id: Option<String>,
+    pub supersede_policy: String,
+    pub superseded_work_item_ids: Vec<String>,
+    pub added_work_item_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -167,6 +179,10 @@ fn default_parallelizable() -> bool {
 
 fn default_edge_type() -> String {
     "depends_on".to_string()
+}
+
+fn default_supersede_policy() -> String {
+    "explicit_only".to_string()
 }
 
 fn default_severity() -> String {

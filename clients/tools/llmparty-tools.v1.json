@@ -218,6 +218,22 @@
             "description": "DAG patch proposal when mode is patch. Supported operations are validated by llmparty before approval or application.",
             "additionalProperties": false,
             "properties": {
+              "anchor_work_item_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Existing WorkItem that anchors an automatic cutover. Required for direct_downstream or reachable_downstream supersede policies."
+              },
+              "supersede_policy": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "explicit_only",
+                  "direct_downstream",
+                  "reachable_downstream"
+                ],
+                "default": "explicit_only",
+                "description": "Controls which existing active WorkItems are automatically superseded before adding patch operations. reachable_downstream replaces the old active path after anchor_work_item_id."
+              },
               "operations": {
                 "type": "array",
                 "items": {

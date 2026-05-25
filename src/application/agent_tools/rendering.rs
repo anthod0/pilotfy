@@ -126,7 +126,8 @@ pub(super) fn render_planning_context(
             lines.push("- Submit an initial DAG with submitPlan.".to_string())
         }
         AgentPlanningRole::Replanner => {
-            lines.push("- Submit a DAG patch with submitPlan.".to_string())
+            lines.push("- Submit a DAG patch with submitPlan.".to_string());
+            lines.push("- To replace an old path, set patch.anchor_work_item_id and supersede_policy='reachable_downstream' so llmparty supersedes the old active downstream path before scheduling the replacement.".to_string())
         }
     }
     lines.push(
