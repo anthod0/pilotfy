@@ -296,6 +296,8 @@ curl -X DELETE http://127.0.0.1:8080/external/v1/sessions/sess_example \
 | `LLMPARTY_INTERNAL_EVENT_URL`   | Auto-derived or manually set                   | URL used by agents / hooks to report events      |
 | `LLMPARTY_DASHBOARD_SOURCE`     | Not set                                        | Local dashboard dist directory or remote archive |
 | `LLMPARTY_DASHBOARD_CACHE_DIR`  | `~/.cache/llmparty/dashboard`                  | Cache directory for remote dashboard archives    |
+| `LLMPARTY_GRAPH_ENABLED`        | `true`                                         | Enable WorkItem DAG graph storage; default builds include the required `lbug` feature |
+| `LLMPARTY_GRAPH_DB_DIR`         | Next to SQLite database under `graph/lbug`     | Ladybug graph database directory when graph storage is enabled |
 | `LLMPARTY_PI_TUI_COMMAND`       | `pi`                                           | Startup command used for pi sessions             |
 
 ## Development Commands

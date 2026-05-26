@@ -29,4 +29,5 @@ tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 
 [features]
+default = ["lbug"]
 lbug = ["dep:lbug"]

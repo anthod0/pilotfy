@@ -259,7 +259,10 @@ fn provides_development_defaults_for_optional_values() {
     assert_eq!(config.dashboard.cache_dir, None);
     assert!(config.run_migrations);
     assert_eq!(config.default_client_type, "pi");
-    assert!(!config.graph.enabled);
-    assert_eq!(config.graph.db_dir, None);
+    assert!(config.graph.enabled);
+    assert_eq!(
+        config.graph.db_dir.as_deref(),
+        Some("~/.local/share/llmparty/graph/lbug")
+    );
     assert!(config.workspace_browser.roots.is_empty());
 }

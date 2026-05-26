@@ -142,7 +142,7 @@ impl AppConfig {
 
         let graph_enabled = match get(vars, "LLMPARTY_GRAPH_ENABLED") {
             Some(value) => parse_bool("LLMPARTY_GRAPH_ENABLED", value)?,
-            None => false,
+            None => true,
         };
         let graph = GraphRuntimeConfig {
             enabled: graph_enabled,
