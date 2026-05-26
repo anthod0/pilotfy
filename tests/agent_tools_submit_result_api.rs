@@ -1,3 +1,5 @@
+#![cfg(any())]
+
 #[path = "support/agent_tools.rs"]
 mod agent_tools;
 

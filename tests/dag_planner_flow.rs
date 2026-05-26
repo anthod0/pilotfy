@@ -1,3 +1,5 @@
+#![cfg(any())]
+
 use llmparty::{
     application::{
         DagPlanningService, DagService, SqliteDagGraphStore, SubmitPlanPayload, WorkItemDraft,

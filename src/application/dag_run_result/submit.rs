@@ -233,7 +233,7 @@ impl DagRunResultService {
         if !replan_signal_ids.is_empty() {
             for signal_id in replan_signal_ids {
                 Box::pin(
-                    DagPlanningService::new(self.pool.clone())
+                    DagPlanningService::with_graph(self.pool.clone(), self.graph.clone())
                         .start_replanning_for_signal(&run.task_id, &signal_id),
                 )
                 .await?;
@@ -245,8 +245,11 @@ impl DagRunResultService {
         }
 
         let scheduler = if result.state == "completed" {
-            Box::pin(DagSchedulerService::new(self.pool.clone()).schedule_task(&run.task_id))
-                .await?
+            Box::pin(
+                DagSchedulerService::with_graph(self.pool.clone(), self.graph.clone())
+                    .schedule_task(&run.task_id),
+            )
+            .await?
         } else {
             DagSchedulerOutcome {
                 dispatched_runs: Vec::new(),

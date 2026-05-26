@@ -17,11 +17,16 @@ pub struct DagPlanningOutcome {
 #[derive(Clone)]
 pub struct DagPlanningService {
     pool: SqlitePool,
+    graph: GraphRuntimeConfig,
 }
 
 impl DagPlanningService {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self::with_graph(pool, GraphRuntimeConfig::default())
+    }
+
+    pub fn with_graph(pool: SqlitePool, graph: GraphRuntimeConfig) -> Self {
+        Self { pool, graph }
     }
 
     pub async fn start_initial_planning(&self, task_id: &str) -> Result<DagPlanningTurn> {
@@ -89,7 +94,7 @@ impl DagPlanningService {
         session_id: &str,
         payload: SubmitPlanPayload,
     ) -> Result<DagPlanningOutcome> {
-        let dag = DagService::new(self.pool.clone());
+        let dag = DagService::with_graph(self.pool.clone(), self.graph.clone());
         let proposal = dag
             .save_proposal(task_id, &payload, Some(session_id))
             .await?;
@@ -114,7 +119,7 @@ impl DagPlanningService {
             json!({"proposal_id": proposal.proposal_id, "mode": proposal.mode}),
         )
         .await?;
-        let scheduler = DagSchedulerService::new(self.pool.clone())
+        let scheduler = DagSchedulerService::with_graph(self.pool.clone(), self.graph.clone())
             .schedule_task(task_id)
             .await?;
         Box::pin(RuntimeControlService::new(self.pool.clone()).terminate_session(session_id, None))
@@ -194,7 +199,7 @@ impl DagPlanningService {
         summary: String,
         patch: DagPatch,
     ) -> Result<DagPlanningOutcome> {
-        let dag = DagService::new(self.pool.clone());
+        let dag = DagService::with_graph(self.pool.clone(), self.graph.clone());
         let proposal = dag
             .save_patch_proposal(task_id, &summary, &patch, Some(session_id))
             .await?;
@@ -238,7 +243,7 @@ impl DagPlanningService {
             json!({"proposal_id": proposal.proposal_id}),
         )
         .await?;
-        let scheduler = DagSchedulerService::new(self.pool.clone())
+        let scheduler = DagSchedulerService::with_graph(self.pool.clone(), self.graph.clone())
             .schedule_task(task_id)
             .await?;
         Box::pin(RuntimeControlService::new(self.pool.clone()).terminate_session(session_id, None))

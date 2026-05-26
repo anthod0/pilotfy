@@ -66,7 +66,7 @@ pub async fn scheduler_tick(
     authenticate(&state, &headers)?;
     let query = ExternalQueryService::with_graph(state.db.clone(), state.graph.clone());
     ensure_task_exists(&query, &task_id).await?;
-    let scheduler = DagSchedulerService::new(state.db)
+    let scheduler = DagSchedulerService::with_graph(state.db, state.graph)
         .schedule_task(&task_id)
         .await?;
     Ok((StatusCode::OK, ok(json!({ "scheduler": scheduler }))).into_response())

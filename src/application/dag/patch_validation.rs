@@ -53,7 +53,7 @@ impl DagService {
             ))
         })?;
 
-        let snapshot = SqliteDagGraphStore::new(self.pool.clone())
+        let snapshot = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?;
         let active_ids: HashSet<String> = snapshot
@@ -120,11 +120,11 @@ impl DagService {
                     patch.supersede_policy
                 ))
             })?;
-            ensure_work_item_exists(&self.pool, task_id, anchor).await?;
+            ensure_work_item_exists(&self.pool, &self.graph, task_id, anchor).await?;
         }
 
         let expanded_operations = expand_patch_operations(&patch.operations);
-        let snapshot = SqliteDagGraphStore::new(self.pool.clone())
+        let snapshot = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?;
         let active_ids: HashSet<String> = snapshot
@@ -177,12 +177,12 @@ impl DagService {
                     }
                 }
                 PatchOperation::SupersedeWorkItem { work_item_id, .. } => {
-                    ensure_work_item_exists(&self.pool, task_id, work_item_id).await?;
+                    ensure_work_item_exists(&self.pool, &self.graph, task_id, work_item_id).await?;
                     ensure_work_item_not_running(&self.pool, task_id, work_item_id).await?;
                 }
                 PatchOperation::ReactivateWorkItem { work_item_id, .. }
                 | PatchOperation::SetWorkItemOutcome { work_item_id, .. } => {
-                    let exists = SqliteDagGraphStore::new(self.pool.clone())
+                    let exists = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
                         .get_work_item(work_item_id)
                         .await?
                         .is_some_and(|work_item| work_item.task_id == task_id);

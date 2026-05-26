@@ -1,7 +1,11 @@
 use super::*;
 
-pub(super) async fn initialize_projection(pool: &SqlitePool, task_id: &str) -> Result<()> {
-    let snapshot = SqliteDagGraphStore::new(pool.clone())
+pub(super) async fn initialize_projection(
+    pool: &SqlitePool,
+    graph: &GraphRuntimeConfig,
+    task_id: &str,
+) -> Result<()> {
+    let snapshot = GraphProjectionService::new(pool.clone(), graph.clone())
         .task_graph(task_id)
         .await?;
     let runtime_rows = sqlx::query(

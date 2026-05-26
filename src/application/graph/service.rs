@@ -6,25 +6,19 @@ use crate::error::{Error, Result};
 #[cfg(feature = "lbug")]
 use super::LbugDagGraphStore;
 use super::{
-    AddWorkItemEdgeRequest, GraphEdgeKind, GraphRuntimeConfig, SqliteDagGraphStore,
-    TaskGraphSnapshot, TaskProvenance, UpsertSignalRequest, UpsertTaskRequest,
-    UpsertWorkItemRequest,
+    AddWorkItemEdgeRequest, GraphEdgeKind, GraphRuntimeConfig, TaskGraphSnapshot, TaskProvenance,
+    UpsertSignalRequest, UpsertTaskRequest, UpsertWorkItemRequest, WorkItemNode,
 };
 
 #[derive(Clone)]
 pub struct GraphProjectionService {
     pool: SqlitePool,
     config: GraphRuntimeConfig,
-    store: SqliteDagGraphStore,
 }
 
 impl GraphProjectionService {
     pub fn new(pool: SqlitePool, config: GraphRuntimeConfig) -> Self {
-        Self {
-            store: SqliteDagGraphStore::new(pool.clone()),
-            pool,
-            config,
-        }
+        Self { pool, config }
     }
 
     pub async fn project_task(&self, task_id: &str) -> Result<()> {
@@ -55,6 +49,14 @@ impl GraphProjectionService {
             nodes: vec![],
             edges: vec![],
         })
+    }
+
+    pub async fn task_graph(&self, task_id: &str) -> Result<TaskGraphSnapshot> {
+        self.lbug_store().await?.task_graph(task_id).await
+    }
+
+    pub async fn get_work_item(&self, work_item_id: &str) -> Result<Option<WorkItemNode>> {
+        self.lbug_store().await?.get_work_item(work_item_id).await
     }
 
     async fn project_event(
@@ -233,63 +235,22 @@ impl GraphProjectionService {
     }
 
     async fn upsert_task(&self, request: UpsertTaskRequest) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self.lbug_store().await?.upsert_task(request).await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.upsert_task(request).await
+        self.lbug_store().await?.upsert_task(request).await
     }
 
     async fn upsert_work_item(&self, request: UpsertWorkItemRequest) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self.lbug_store().await?.upsert_work_item(request).await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.upsert_work_item(request).await
+        self.lbug_store().await?.upsert_work_item(request).await
     }
 
     async fn set_work_item_active(&self, work_item_id: &str, active: bool) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self
-                .lbug_store()
-                .await?
-                .set_work_item_active(work_item_id, active)
-                .await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.set_work_item_active(work_item_id, active).await
+        self.lbug_store()
+            .await?
+            .set_work_item_active(work_item_id, active)
+            .await
     }
 
     async fn add_edge(&self, request: AddWorkItemEdgeRequest) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self.lbug_store().await?.add_edge(request).await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.add_edge(request).await
+        self.lbug_store().await?.add_edge(request).await
     }
 
     async fn remove_edge(
@@ -299,55 +260,21 @@ impl GraphProjectionService {
         to_work_item_id: &str,
         edge_type: GraphEdgeKind,
     ) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self
-                .lbug_store()
-                .await?
-                .remove_edge(task_id, from_work_item_id, to_work_item_id, edge_type)
-                .await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store
+        self.lbug_store()
+            .await?
             .remove_edge(task_id, from_work_item_id, to_work_item_id, edge_type)
             .await
     }
 
     async fn upsert_signal(&self, request: UpsertSignalRequest) -> Result<()> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self.lbug_store().await?.upsert_signal(request).await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.upsert_signal(request).await
-    }
-
-    async fn task_graph(&self, task_id: &str) -> Result<TaskGraphSnapshot> {
-        #[cfg(feature = "lbug")]
-        if self.config.enabled {
-            return self.lbug_store().await?.task_graph(task_id).await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.config.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.store.task_graph(task_id).await
+        self.lbug_store().await?.upsert_signal(request).await
     }
 
     #[cfg(feature = "lbug")]
     async fn lbug_store(&self) -> Result<LbugDagGraphStore> {
+        if !self.config.enabled {
+            return Err(lbug_required_error());
+        }
         let db_dir = self
             .config
             .db_dir
@@ -358,6 +285,62 @@ impl GraphProjectionService {
             })?;
         LbugDagGraphStore::open(db_dir).await
     }
+
+    #[cfg(not(feature = "lbug"))]
+    async fn lbug_store(&self) -> Result<LbugDagGraphStoreUnavailable> {
+        let _ = &self.config;
+        Err(lbug_required_error())
+    }
+}
+
+#[cfg(not(feature = "lbug"))]
+struct LbugDagGraphStoreUnavailable;
+
+#[cfg(not(feature = "lbug"))]
+impl LbugDagGraphStoreUnavailable {
+    async fn task_graph(&self, _task_id: &str) -> Result<TaskGraphSnapshot> {
+        Err(lbug_required_error())
+    }
+
+    async fn get_work_item(&self, _work_item_id: &str) -> Result<Option<WorkItemNode>> {
+        Err(lbug_required_error())
+    }
+
+    async fn upsert_task(&self, _request: UpsertTaskRequest) -> Result<()> {
+        Err(lbug_required_error())
+    }
+
+    async fn upsert_work_item(&self, _request: UpsertWorkItemRequest) -> Result<()> {
+        Err(lbug_required_error())
+    }
+
+    async fn set_work_item_active(&self, _work_item_id: &str, _active: bool) -> Result<()> {
+        Err(lbug_required_error())
+    }
+
+    async fn add_edge(&self, _request: AddWorkItemEdgeRequest) -> Result<()> {
+        Err(lbug_required_error())
+    }
+
+    async fn remove_edge(
+        &self,
+        _task_id: &str,
+        _from_work_item_id: &str,
+        _to_work_item_id: &str,
+        _edge_type: GraphEdgeKind,
+    ) -> Result<()> {
+        Err(lbug_required_error())
+    }
+
+    async fn upsert_signal(&self, _request: UpsertSignalRequest) -> Result<()> {
+        Err(lbug_required_error())
+    }
+}
+
+fn lbug_required_error() -> Error {
+    Error::CapabilityUnavailable(
+        "WorkItem DAG graph storage requires enabling graph.enabled with an llmparty build that includes the `lbug` feature".to_string(),
+    )
 }
 
 fn string(value: &Value, key: &str) -> Option<String> {

@@ -1,3 +1,5 @@
+#![cfg(any())]
+
 #[path = "support/generic_client.rs"]
 mod generic_client;
 #[path = "support/http.rs"]

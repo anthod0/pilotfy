@@ -2,7 +2,7 @@ use super::*;
 
 impl DagRunResultService {
     pub(super) async fn aggregate_task_state(&self, task_id: &str) -> Result<()> {
-        let graph = SqliteDagGraphStore::new(self.pool.clone())
+        let graph = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?;
         let active_items: std::collections::HashMap<String, bool> = graph

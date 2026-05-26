@@ -120,7 +120,7 @@ impl AgentToolService {
             .get("mode")
             .and_then(Value::as_str)
             .ok_or_else(|| Error::Domain("submitPlan input missing mode".to_string()))?;
-        let planning = DagPlanningService::new(self.pool.clone());
+        let planning = DagPlanningService::with_graph(self.pool.clone(), self.graph.clone());
         let outcome = match (role, mode) {
             (AgentPlanningRole::Planner, "initial_dag") => {
                 let payload = parse_submit_plan_initial_input(input)?;

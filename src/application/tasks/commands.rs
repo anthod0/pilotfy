@@ -66,7 +66,7 @@ impl TaskCommandService {
         )
         .await?;
 
-        let planning_turn = DagPlanningService::new(self.pool.clone())
+        let planning_turn = DagPlanningService::with_graph(self.pool.clone(), self.graph.clone())
             .start_initial_planning_with_client_type(&task_id, &request.client_type)
             .await?;
         let task = ExternalQueryService::with_graph(self.pool.clone(), self.graph.clone())
@@ -176,7 +176,7 @@ impl TaskCommandService {
         .await?;
         self.record_task_event(task_id, "task.resumed", json!({}))
             .await?;
-        let scheduler = DagSchedulerService::new(self.pool.clone())
+        let scheduler = DagSchedulerService::with_graph(self.pool.clone(), self.graph.clone())
             .schedule_task(task_id)
             .await?;
         let task = ExternalQueryService::with_graph(self.pool.clone(), self.graph.clone())

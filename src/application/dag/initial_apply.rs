@@ -10,8 +10,7 @@ impl DagService {
         dag_validator::validate_plan_shape(payload)?;
         self.ensure_profiles_exist(&payload.work_items).await?;
 
-        let graph_store = SqliteDagGraphStore::new(self.pool.clone());
-        if graph_store
+        if GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?
             .work_items
@@ -83,7 +82,7 @@ impl DagService {
         GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .project_task(task_id)
             .await?;
-        initialize_projection(&self.pool, task_id).await?;
+        initialize_projection(&self.pool, &self.graph, task_id).await?;
         Ok(())
     }
 }

@@ -4,7 +4,6 @@ use super::*;
 pub struct ExternalQueryService {
     pool: SqlitePool,
     graph: GraphRuntimeConfig,
-    graph_store: SqliteDagGraphStore,
 }
 
 impl ExternalQueryService {
@@ -13,11 +12,7 @@ impl ExternalQueryService {
     }
 
     pub fn with_graph(pool: SqlitePool, graph: GraphRuntimeConfig) -> Self {
-        Self {
-            graph,
-            graph_store: SqliteDagGraphStore::new(pool.clone()),
-            pool,
-        }
+        Self { graph, pool }
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>> {
@@ -675,27 +670,8 @@ impl ExternalQueryService {
     }
 
     async fn task_graph_snapshot(&self, task_id: &str) -> Result<TaskGraphSnapshot> {
-        #[cfg(feature = "lbug")]
-        if self.graph.enabled {
-            let db_dir = self
-                .graph
-                .db_dir
-                .as_ref()
-                .ok_or_else(|| Error::InvalidConfig {
-                    key: "LLMPARTY_GRAPH_DB_DIR",
-                    message: "graph.enabled requires a Ladybug database path".to_string(),
-                })?;
-            return LbugDagGraphStore::open(db_dir)
-                .await?
-                .task_graph(task_id)
-                .await;
-        }
-        #[cfg(not(feature = "lbug"))]
-        if self.graph.enabled {
-            return Err(Error::CapabilityUnavailable(
-                "lbug graph store requires building llmparty with the `lbug` feature".to_string(),
-            ));
-        }
-        self.graph_store.task_graph(task_id).await
+        GraphProjectionService::new(self.pool.clone(), self.graph.clone())
+            .task_graph(task_id)
+            .await
     }
 }

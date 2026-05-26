@@ -158,10 +158,11 @@ pub(super) fn validate_supersede_policy(policy: &str) -> Result<()> {
 
 pub(super) async fn ensure_work_item_exists(
     pool: &SqlitePool,
+    graph: &GraphRuntimeConfig,
     task_id: &str,
     work_item_id: &str,
 ) -> Result<()> {
-    let work_item = SqliteDagGraphStore::new(pool.clone())
+    let work_item = GraphProjectionService::new(pool.clone(), graph.clone())
         .get_work_item(work_item_id)
         .await?;
     if work_item

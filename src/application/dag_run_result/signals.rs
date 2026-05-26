@@ -53,7 +53,7 @@ impl DagRunResultService {
         }
         let replanner_started = if payload.kind == "replan_requested" {
             Box::pin(
-                DagPlanningService::new(self.pool.clone())
+                DagPlanningService::with_graph(self.pool.clone(), self.graph.clone())
                     .start_replanning_for_signal(&context.task_id, &signal_id),
             )
             .await?;

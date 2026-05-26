@@ -40,11 +40,16 @@ pub(crate) struct SchedulerWorkItem {
 #[derive(Clone)]
 pub struct DagSchedulerService {
     pool: SqlitePool,
+    graph: GraphRuntimeConfig,
 }
 
 impl DagSchedulerService {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self::with_graph(pool, GraphRuntimeConfig::default())
+    }
+
+    pub fn with_graph(pool: SqlitePool, graph: GraphRuntimeConfig) -> Self {
+        Self { pool, graph }
     }
 
     pub async fn schedule_task(&self, task_id: &str) -> Result<DagSchedulerOutcome> {
@@ -87,7 +92,7 @@ impl DagSchedulerService {
 
     pub async fn recompute_ready(&self, task_id: &str) -> Result<()> {
         ensure_task_not_terminal(&self.pool, task_id).await?;
-        let snapshot = SqliteDagGraphStore::new(self.pool.clone())
+        let snapshot = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?;
         let active_ids: HashSet<String> = snapshot
@@ -163,7 +168,7 @@ impl DagSchedulerService {
         task_id: &str,
     ) -> Result<Option<SchedulerWorkItem>> {
         ensure_task_not_terminal(&self.pool, task_id).await?;
-        let snapshot = SqliteDagGraphStore::new(self.pool.clone())
+        let snapshot = GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .task_graph(task_id)
             .await?;
         let active_items: HashMap<String, WorkItemNode> = snapshot

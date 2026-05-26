@@ -77,8 +77,8 @@ pub(crate) use events::{nested_array_strings, nested_string, remove_internal_met
 pub use graph::LbugDagGraphStore;
 pub use graph::{
     AddWorkItemEdgeRequest, GraphEdgeKind, GraphProjectionService, GraphRuntimeConfig, SignalNode,
-    SqliteDagGraphStore, TaskGraphSnapshot, TaskNode, TaskProvenance, UpsertSignalRequest,
-    UpsertTaskRequest, UpsertWorkItemRequest, WorkItemEdgeRecord, WorkItemNode,
+    TaskGraphSnapshot, TaskNode, TaskProvenance, UpsertSignalRequest, UpsertTaskRequest,
+    UpsertWorkItemRequest, WorkItemEdgeRecord, WorkItemNode,
 };
 pub use inbox::{InboxCommandOutcome, InboxCommandService, SubmitInboxMessageRequest};
 pub use queries::ExternalQueryService;

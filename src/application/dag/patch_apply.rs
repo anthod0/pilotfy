@@ -219,7 +219,7 @@ impl DagService {
         GraphProjectionService::new(self.pool.clone(), self.graph.clone())
             .project_task(task_id)
             .await?;
-        initialize_projection(&self.pool, task_id).await?;
+        initialize_projection(&self.pool, &self.graph, task_id).await?;
         Ok(DagPatchApplySummary {
             anchor_work_item_id: patch.anchor_work_item_id.clone(),
             supersede_policy: patch.supersede_policy.clone(),

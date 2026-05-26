@@ -1,15 +1,16 @@
 #[cfg(feature = "lbug")]
 use llmparty::application::LbugDagGraphStore;
-use llmparty::{
-    application::{
-        AddWorkItemEdgeRequest, GraphEdgeKind, GraphProjectionService, GraphRuntimeConfig,
-        SqliteDagGraphStore, UpsertTaskRequest, UpsertWorkItemRequest,
-    },
-    storage::sqlite::{connect_sqlite, run_migrations},
+#[cfg(feature = "lbug")]
+use llmparty::application::{
+    AddWorkItemEdgeRequest, GraphEdgeKind, GraphProjectionService, GraphRuntimeConfig,
+    UpsertTaskRequest, UpsertWorkItemRequest,
 };
+use llmparty::storage::sqlite::{connect_sqlite, run_migrations};
+#[cfg(feature = "lbug")]
 use serde_json::json;
 use sqlx::SqlitePool;
 
+#[cfg(feature = "lbug")]
 fn task_request(task_id: &str) -> UpsertTaskRequest {
     UpsertTaskRequest {
         task_id: task_id.to_string(),
@@ -20,6 +21,7 @@ fn task_request(task_id: &str) -> UpsertTaskRequest {
     }
 }
 
+#[cfg(feature = "lbug")]
 fn work_item_request(
     task_id: &str,
     work_item_id: &str,
@@ -56,6 +58,7 @@ async fn test_pool() -> SqlitePool {
     db
 }
 
+#[cfg(feature = "lbug")]
 async fn insert_task(pool: &SqlitePool, task_id: &str) {
     sqlx::query(
         r#"INSERT INTO tasks (task_id, state, input, routing_state)
@@ -68,48 +71,18 @@ async fn insert_task(pool: &SqlitePool, task_id: &str) {
 }
 
 #[tokio::test]
-async fn sqlite_graph_store_persists_work_items_and_edges() {
+async fn migrations_do_not_create_sqlite_graph_store_tables() {
     let pool = test_pool().await;
-    insert_task(&pool, "task_graph_store").await;
-    let store = SqliteDagGraphStore::new(pool);
-
-    store
-        .upsert_task(task_request("task_graph_store"))
-        .await
-        .expect("upsert task");
-    for (work_item_id, title, priority) in [("wi_a", "A", 10), ("wi_b", "B", 0)] {
-        store
-            .upsert_work_item(work_item_request(
-                "task_graph_store",
-                work_item_id,
-                title,
-                priority,
-            ))
-            .await
-            .expect("upsert work item");
-    }
-    let edge = AddWorkItemEdgeRequest {
-        task_id: "task_graph_store".to_string(),
-        from_work_item_id: "wi_a".to_string(),
-        to_work_item_id: "wi_b".to_string(),
-        edge_type: GraphEdgeKind::DependsOn,
-        ref_: None,
-    };
-    store.add_edge(edge.clone()).await.expect("add edge");
-    store.add_edge(edge).await.expect("idempotent edge");
-
-    let snapshot = store
-        .task_graph("task_graph_store")
-        .await
-        .expect("snapshot");
-    assert_eq!(snapshot.task.as_ref().unwrap().title, "Graph task");
-    assert_eq!(snapshot.work_items.len(), 2);
-    assert_eq!(snapshot.edges.len(), 1);
-    assert_eq!(snapshot.edges[0].edge_type, GraphEdgeKind::DependsOn);
-
-    let dependencies = store.list_dependencies("wi_b").await.expect("dependencies");
-    assert_eq!(dependencies.len(), 1);
-    assert_eq!(dependencies[0].work_item_id, "wi_a");
+    let table_count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM sqlite_master
+           WHERE type = 'table' AND name IN (
+             'graph_tasks', 'graph_work_items', 'graph_work_item_edges', 'graph_signals'
+           )"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count graph tables");
+    assert_eq!(table_count, 0);
 }
 
 #[cfg(feature = "lbug")]
@@ -224,6 +197,7 @@ async fn graph_projection_projects_events_to_lbug_when_enabled() {
     assert_eq!(snapshot.work_items[0].work_item_id, "wi_lbug_design");
 }
 
+#[cfg(feature = "lbug")]
 #[tokio::test]
 async fn graph_projection_rebuilds_from_task_events() {
     let pool = test_pool().await;
@@ -311,7 +285,12 @@ async fn graph_projection_rebuilds_from_task_events() {
         .expect("insert task event");
     }
 
-    let projection = GraphProjectionService::new(pool.clone(), GraphRuntimeConfig::default());
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let graph = GraphRuntimeConfig {
+        enabled: true,
+        db_dir: Some(temp_dir.path().join("graphdb").display().to_string()),
+    };
+    let projection = GraphProjectionService::new(pool.clone(), graph.clone());
     projection
         .project_task("task_graph_projection")
         .await
@@ -321,8 +300,9 @@ async fn graph_projection_rebuilds_from_task_events() {
         .await
         .expect("idempotent replay");
 
-    let store = SqliteDagGraphStore::new(pool);
-    let snapshot = store
+    let snapshot = LbugDagGraphStore::open(graph.db_dir.unwrap())
+        .await
+        .expect("open lbug store")
         .task_graph("task_graph_projection")
         .await
         .expect("snapshot");
