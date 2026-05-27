@@ -63,6 +63,20 @@ describe("llmparty pi agent tools", () => {
     expect(pi.registerTool).toHaveBeenCalledTimes(4);
   });
 
+  test("planner agent kind registers planning tools only", () => {
+    const { pi, tools } = install({ LLMPARTY_AGENT_KIND: "planner" });
+
+    expect(tools.map((tool) => tool.name)).toEqual(["getContext", "submitPlan", "raiseSignal"]);
+    expect(pi.registerTool).toHaveBeenCalledTimes(3);
+  });
+
+  test("executor agent kind registers execution tools only", () => {
+    const { pi, tools } = install({ LLMPARTY_AGENT_KIND: "executor" });
+
+    expect(tools.map((tool) => tool.name)).toEqual(["getContext", "submitResult", "raiseSignal"]);
+    expect(pi.registerTool).toHaveBeenCalledTimes(3);
+  });
+
   test("converts internal event URL to agent tool URL", () => {
     expect(internalAgentToolUrl("http://localhost/internal/v1/events", "submitPlan")).toBe(
       "http://localhost/internal/v1/agent-tools/submitPlan",

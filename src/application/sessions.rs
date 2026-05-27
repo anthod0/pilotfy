@@ -46,6 +46,27 @@ fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
         .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
 }
 
+pub(crate) fn llmparty_agent_kind(metadata: &Value) -> Option<String> {
+    if metadata.get("dag_managed").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    if metadata
+        .get("dag_planning_role")
+        .and_then(Value::as_str)
+        .is_some()
+    {
+        return Some("planner".to_string());
+    }
+    if metadata
+        .get("work_item_id")
+        .and_then(Value::as_str)
+        .is_some()
+    {
+        return Some("executor".to_string());
+    }
+    None
+}
+
 fn validate_handle(handle: &str) -> Result<()> {
     let mut chars = handle.chars();
     if chars.next() != Some('@') {
@@ -190,6 +211,7 @@ impl SessionCommandService {
             workspace: runtime_workspace.clone(),
             handle: request.handle.clone(),
             role: request.role.clone(),
+            agent_kind: llmparty_agent_kind(&request.metadata),
         })?;
         self.upsert_runtime_binding(&session_id, &runtime).await?;
         self.update_session_workspace(&session_id, workspace_record.as_ref())
@@ -485,5 +507,43 @@ impl SessionCommandService {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn llmparty_agent_kind_maps_planning_sessions_to_planner() {
+        assert_eq!(
+            llmparty_agent_kind(&json!({
+                "dag_managed": true,
+                "dag_planning_role": "replanner",
+                "task_id": "task_1"
+            })),
+            Some("planner".to_string())
+        );
+    }
+
+    #[test]
+    fn llmparty_agent_kind_maps_work_item_sessions_to_executor() {
+        assert_eq!(
+            llmparty_agent_kind(&json!({
+                "dag_managed": true,
+                "task_id": "task_1",
+                "work_item_id": "wi_1"
+            })),
+            Some("executor".to_string())
+        );
+    }
+
+    #[test]
+    fn llmparty_agent_kind_ignores_non_dag_sessions() {
+        assert_eq!(
+            llmparty_agent_kind(&json!({ "work_item_id": "wi_1" })),
+            None
+        );
     }
 }

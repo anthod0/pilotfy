@@ -49,6 +49,11 @@ pub(super) fn write_runtime_script(
             "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
         ),
     };
+    let agent_kind_export = request
+        .agent_kind
+        .as_ref()
+        .map(|agent_kind| format!("export LLMPARTY_AGENT_KIND={}\n", shell_quote(agent_kind)))
+        .unwrap_or_default();
     let content = format!(
         r#"#!/usr/bin/env sh
 export LLMPARTY_SESSION_ID={}
@@ -64,7 +69,7 @@ export LLMPARTY_EXTERNAL_API_TOKEN={}
 export LLMPARTY_RUNTIME_INSTANCE_ID={}
 export LLMPARTY_PI_HOOK_LOG={}
 export LLMPARTY_CLAUDE_HOOK_LOG={}
-{}
+{}{}
 {}
 "#,
         shell_quote(&request.session_id),
@@ -80,6 +85,7 @@ export LLMPARTY_CLAUDE_HOOK_LOG={}
         shell_quote(runtime_instance_id),
         shell_quote(&runtime_paths.pi_hook_log.display().to_string()),
         shell_quote(&runtime_paths.claude_hook_log.display().to_string()),
+        agent_kind_export,
         log_setup,
         runtime_body,
     );

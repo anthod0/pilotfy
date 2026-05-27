@@ -26,6 +26,18 @@ interface ActiveTurnState {
   ended: boolean;
 }
 
+type LlmpartyAgentKind = "planner" | "executor";
+
+const TOOL_NAMES_BY_AGENT_KIND: Record<LlmpartyAgentKind, Set<string>> = {
+  planner: new Set(["getContext", "submitPlan", "raiseSignal"]),
+  executor: new Set(["getContext", "submitResult", "raiseSignal"]),
+};
+
+function allowedToolNamesForAgentKind(kind: string | undefined): Set<string> | undefined {
+  if (kind === "planner" || kind === "executor") return TOOL_NAMES_BY_AGENT_KIND[kind];
+  return undefined;
+}
+
 function textFromContent(content: unknown): string | undefined {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return undefined;
@@ -86,12 +98,14 @@ export function createLlmpartyPiExtension(pi: ExtensionAPI, dependencies: Llmpar
   const contextLoader = dependencies.loadContext ?? loadTurnContext;
   const makeReporter = dependencies.makeReporter ?? ((logFile: string) => new EventReporter({ logFile }));
   const logDiagnostic = dependencies.logDiagnostic ?? appendDiagnostic;
+  const allowedToolNames = allowedToolNamesForAgentKind(env.LLMPARTY_AGENT_KIND);
   for (const tool of buildLlmpartyTools({
     env,
     loadContext: contextLoader,
     logDiagnostic,
     fetch: dependencies.fetch,
   })) {
+    if (allowedToolNames && !allowedToolNames.has(tool.name)) continue;
     pi.registerTool(tool as any);
   }
 

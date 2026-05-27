@@ -36,6 +36,7 @@ pub struct RuntimeStartRequest {
     pub workspace: Option<String>,
     pub handle: Option<String>,
     pub role: Option<String>,
+    pub agent_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -360,6 +361,7 @@ mod tests {
                 workspace: None,
                 handle: None,
                 role: None,
+                agent_kind: None,
             })
             .expect("generic runtime should start");
 
@@ -389,6 +391,7 @@ mod tests {
                 workspace: None,
                 handle: Some("@planner".to_string()),
                 role: Some("execution reviewer".to_string()),
+                agent_kind: None,
             })
             .expect("generic runtime should start");
 
@@ -408,6 +411,7 @@ mod tests {
             workspace: None,
             handle: None,
             role: None,
+            agent_kind: None,
         };
 
         let first = manager
@@ -430,5 +434,39 @@ mod tests {
             second.metadata["runtime_instance_id"]
         );
         assert_ne!(first.metadata["started_at"], second.metadata["started_at"]);
+    }
+
+    #[test]
+    fn runtime_script_exports_llmparty_agent_kind_when_present() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let runtime_dir = dir.path();
+        let script_path = runtime_dir.join("runtime.sh");
+        let paths = script::RuntimePaths {
+            runtime_dir,
+            log_path: &runtime_dir.join("runtime.log"),
+            adapter_event_log: &runtime_dir.join("adapter-events.jsonl"),
+            current_turn_file: &runtime_dir.join("current-turn.json"),
+            pi_hook_log: &runtime_dir.join("pi-hook.log"),
+            claude_hook_log: &runtime_dir.join("claude-hook.log"),
+        };
+
+        script::write_runtime_script(
+            &script_path,
+            runtime_dir,
+            &paths,
+            &RuntimeStartRequest {
+                session_id: "sess_planner".to_string(),
+                client_type: "pi".to_string(),
+                workspace: Some(runtime_dir.display().to_string()),
+                handle: None,
+                role: None,
+                agent_kind: Some("planner".to_string()),
+            },
+            "rtinst_1",
+        )
+        .expect("write runtime script");
+
+        let content = std::fs::read_to_string(script_path).expect("runtime script");
+        assert!(content.contains("export LLMPARTY_AGENT_KIND='planner'"));
     }
 }

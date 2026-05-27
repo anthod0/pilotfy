@@ -1,4 +1,4 @@
-use super::*;
+use super::{sessions::llmparty_agent_kind, *};
 use crate::agent_clients::{ReadinessMode, get_client_spec};
 
 fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
@@ -263,6 +263,7 @@ impl RuntimeControlService {
                 workspace: session.workspace.clone(),
                 handle: session.handle.clone(),
                 role: session.role.clone(),
+                agent_kind: llmparty_agent_kind(&session.metadata),
             },
             prior_restart_count + 1,
         )?;
