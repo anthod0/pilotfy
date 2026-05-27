@@ -33,9 +33,9 @@ const TOOL_NAMES_BY_AGENT_KIND: Record<LlmpartyAgentKind, Set<string>> = {
   executor: new Set(["getContext", "submitResult", "raiseSignal"]),
 };
 
-function allowedToolNamesForAgentKind(kind: string | undefined): Set<string> | undefined {
+function allowedToolNamesForAgentKind(kind: string | undefined): Set<string> {
   if (kind === "planner" || kind === "executor") return TOOL_NAMES_BY_AGENT_KIND[kind];
-  return undefined;
+  return new Set();
 }
 
 function textFromContent(content: unknown): string | undefined {
@@ -105,7 +105,7 @@ export function createLlmpartyPiExtension(pi: ExtensionAPI, dependencies: Llmpar
     logDiagnostic,
     fetch: dependencies.fetch,
   })) {
-    if (allowedToolNames && !allowedToolNames.has(tool.name)) continue;
+    if (!allowedToolNames.has(tool.name)) continue;
     pi.registerTool(tool as any);
   }
 

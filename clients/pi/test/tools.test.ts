@@ -51,16 +51,18 @@ describe("llmparty pi agent tools", () => {
     expect(tools[0].description).toContain("Fetch the current DAG-managed context");
   });
 
-  test("registers agent-visible llmparty tools from the pi extension", () => {
+  test("does not register llmparty tools when agent kind is missing", () => {
     const { pi, tools } = install();
 
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "getContext",
-      "submitPlan",
-      "submitResult",
-      "raiseSignal",
-    ]);
-    expect(pi.registerTool).toHaveBeenCalledTimes(4);
+    expect(tools.map((tool) => tool.name)).toEqual([]);
+    expect(pi.registerTool).not.toHaveBeenCalled();
+  });
+
+  test("does not register llmparty tools when agent kind is unsupported", () => {
+    const { pi, tools } = install({ LLMPARTY_AGENT_KIND: "unknown" });
+
+    expect(tools.map((tool) => tool.name)).toEqual([]);
+    expect(pi.registerTool).not.toHaveBeenCalled();
   });
 
   test("planner agent kind registers planning tools only", () => {
@@ -124,7 +126,7 @@ describe("llmparty pi agent tools", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const { tools } = install({}, { fetch: fetchImpl as any });
+    const { tools } = install({ LLMPARTY_AGENT_KIND: "planner" }, { fetch: fetchImpl as any });
 
     const result = await tools.find((tool) => tool.name === "submitPlan")!.execute("call_1", {
       mode: "initial_dag",
@@ -162,7 +164,7 @@ describe("llmparty pi agent tools", () => {
         headers: { "Content-Type": "application/json" },
       });
     });
-    const { tools } = install({}, { fetch: fetchImpl as any });
+    const { tools } = install({ LLMPARTY_AGENT_KIND: "planner" }, { fetch: fetchImpl as any });
 
     for (const tool of tools) {
       const result = await tool.execute("call_plain", { status: "completed", summary: "done" });
@@ -180,7 +182,7 @@ describe("llmparty pi agent tools", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const { tools } = install({}, { fetch: fetchImpl as any });
+    const { tools } = install({ LLMPARTY_AGENT_KIND: "executor" }, { fetch: fetchImpl as any });
 
     const result = await tools.find((tool) => tool.name === "getContext")!.execute("call_context", {});
 
@@ -193,7 +195,7 @@ describe("llmparty pi agent tools", () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: "not authorized" }), { status: 403, statusText: "Forbidden" }));
     const logDiagnostic = vi.fn(async () => undefined);
     const { tools } = install(
-      { LLMPARTY_EXTERNAL_API_TOKEN: "secret-token" },
+      { LLMPARTY_AGENT_KIND: "executor", LLMPARTY_EXTERNAL_API_TOKEN: "secret-token" },
       { fetch: fetchImpl as any, logDiagnostic },
     );
 
@@ -210,7 +212,7 @@ describe("llmparty pi agent tools", () => {
     const fetchImpl = vi.fn();
     const logDiagnostic = vi.fn(async () => undefined);
     const { tools } = install(
-      {},
+      { LLMPARTY_AGENT_KIND: "executor" },
       {
         fetch: fetchImpl as any,
         logDiagnostic,
