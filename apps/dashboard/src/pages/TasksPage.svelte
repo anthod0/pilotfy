@@ -3,7 +3,6 @@
   import { navigate } from 'svelte-mini-router'
   import { CircleAlert, Plus, RefreshCw } from '@lucide/svelte'
   import * as Alert from '$lib/components/ui/alert/index.js'
-  import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Card from '$lib/components/ui/card/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -49,7 +48,6 @@
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
-      <Badge variant="secondary">DAG-first workflow</Badge>
       <h2 class="text-3xl font-semibold tracking-tight">DAG Tasks</h2>
       <p class="max-w-3xl text-muted-foreground">Create and inspect DAG-managed tasks. Creation uses <code>/external/v1/dag-tasks</code>.</p>
     </div>

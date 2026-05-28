@@ -40,7 +40,6 @@
 
 <section class="space-y-6">
   <div class="space-y-2">
-    <Badge variant="secondary">Settings / Common</Badge>
     <h2 class="text-3xl font-semibold tracking-tight">Common settings</h2>
     <p class="max-w-3xl text-muted-foreground">
       Configure External API authentication and inspect the dashboard live data connection.

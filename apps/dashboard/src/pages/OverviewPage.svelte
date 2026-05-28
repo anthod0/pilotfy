@@ -26,7 +26,6 @@
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
-      <Badge variant="secondary">Live External API</Badge>
       <h2 class="text-3xl font-semibold tracking-tight">Overview</h2>
       <p class="max-w-3xl text-muted-foreground">
         Summary data is loaded from External API responses and updated by the dashboard SSE stream.

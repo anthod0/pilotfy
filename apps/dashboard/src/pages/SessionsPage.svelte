@@ -194,7 +194,6 @@
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
-      <Badge variant="secondary">Advanced manual console</Badge>
       <h2 class="flex items-center gap-2 text-3xl font-semibold tracking-tight"><TerminalSquare class="size-7" /> Sessions</h2>
       <p class="max-w-3xl text-muted-foreground">Direct operator controls for creating, driving, interrupting, restarting, and terminating sessions. DAG Tasks remain the primary workflow.</p>
     </div>

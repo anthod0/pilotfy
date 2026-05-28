@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CircleAlert, MessageCircle, RefreshCw, TerminalSquare } from '@lucide/svelte'
+  import { CircleAlert, MessageCircle, TerminalSquare } from '@lucide/svelte'
   import { navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
@@ -48,13 +48,6 @@
   $: canSend = canSendSessionMessage(selectedSession, input) && !submitting
   $: errorMessage = actionError ?? $sessionDetailError ?? $sessionsError
 
-  async function refresh(): Promise<void> {
-    actionError = null
-    actionMessage = null
-    const loaded = await loadSessions()
-    if (!selectedSessionId) selectedSessionId = visibleChatSessions(loaded, filter)[0]?.session_id ?? visibleChatSessions(loaded, 'all')[0]?.session_id ?? ''
-    if (selectedSessionId) await loadSessionDetail(selectedSessionId)
-  }
 
   async function selectSession(sessionId: string): Promise<void> {
     selectedSessionId = sessionId
@@ -89,13 +82,11 @@
 <section class="flex h-[calc(100vh-5rem)] min-h-[42rem] flex-col gap-4">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
-      <Badge variant="secondary">Friendly session chat</Badge>
       <h2 class="flex items-center gap-2 text-3xl font-semibold tracking-tight"><MessageCircle class="size-7" /> Chat</h2>
       <p class="max-w-3xl text-muted-foreground">A focused conversation view for existing sessions. Advanced controls, events, artifacts, and debug payloads stay in Session Console.</p>
     </div>
     <div class="flex gap-2">
       <Button variant="outline" onclick={() => navigate('/sessions')}><TerminalSquare class="size-4" /> Session Console</Button>
-      <Button variant="outline" onclick={() => void refresh()}><RefreshCw class="size-4" /> Refresh</Button>
     </div>
   </div>
 

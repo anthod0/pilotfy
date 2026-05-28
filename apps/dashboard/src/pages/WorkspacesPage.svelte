@@ -149,7 +149,6 @@
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
-      <Badge variant="secondary">Configuration</Badge>
       <h2 class="text-3xl font-semibold tracking-tight">Workspaces</h2>
       <p class="max-w-3xl text-muted-foreground">Browse configured roots and register execution workspaces through the External API.</p>
     </div>
