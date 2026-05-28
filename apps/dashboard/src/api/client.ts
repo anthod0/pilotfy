@@ -11,6 +11,7 @@ import type {
   CreateSessionInput,
   CreateSessionResult,
   EventView,
+  DagProposalView,
   HumanSignalInput,
   InboxMessageView,
   RegisterWorkspaceInput,
@@ -154,6 +155,10 @@ export async function getTask(taskId: string): Promise<TaskView> {
 
 export async function listTaskEvents(taskId: string): Promise<TaskEventView[]> {
   return (await request<{ events: TaskEventView[] }>(`/tasks/${taskId}/events`)).events;
+}
+
+export async function listTaskProposals(taskId: string): Promise<DagProposalView[]> {
+  return (await request<{ proposals: DagProposalView[] }>(`/tasks/${taskId}/proposals`)).proposals;
 }
 
 export async function getTaskDag(taskId: string): Promise<TaskDagView> {

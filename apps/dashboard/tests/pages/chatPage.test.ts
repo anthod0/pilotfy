@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import ChatPage from '../../src/pages/ChatPage.svelte';
 import type { SessionConsoleDetail } from '../../src/stores/sessions';
-import type { AgentProfileView, CreateSessionResult, SessionView, TurnView, WorkspaceView } from '../../src/api/types';
+import type { AgentProfileView, CreateDagTaskResult, CreateSessionResult, SessionView, TurnView, WorkspaceView } from '../../src/api/types';
 
 const mocks = vi.hoisted(() => {
   function writableStore<T>(initial: T) {
@@ -34,6 +34,10 @@ const mocks = vi.hoisted(() => {
   const agentProfiles = writableStore<AgentProfileView[]>([]);
   const agentProfilesLoading = writableStore(false);
   const agentProfilesError = writableStore<string | null>(null);
+  const taskProposals = writableStore<unknown[]>([]);
+  const taskProposalsLoading = writableStore(false);
+  const taskProposalsError = writableStore<string | null>(null);
+  const dashboardEventListeners = new Set<(event: unknown) => void>();
 
   return {
     sessions,
@@ -48,11 +52,17 @@ const mocks = vi.hoisted(() => {
     agentProfiles,
     agentProfilesLoading,
     agentProfilesError,
+    taskProposals,
+    taskProposalsLoading,
+    taskProposalsError,
+    dashboardEventListeners,
     loadedSessions: [] as SessionView[],
     loadSessions: vi.fn(async () => mocks.loadedSessions),
     loadSessionDetail: vi.fn(async () => null),
     submitInboxMessage: vi.fn(),
     createSession: vi.fn(),
+    createDagTask: vi.fn(),
+    loadTaskProposals: vi.fn(async () => []),
     loadWorkspaces: vi.fn(async () => undefined),
     loadAgentProfiles: vi.fn(async () => undefined),
     navigate: vi.fn(),
@@ -78,6 +88,21 @@ vi.mock('../../src/stores/workspaces', () => ({
   workspacesLoading: mocks.workspacesLoading,
   workspacesError: mocks.workspacesError,
   loadWorkspaces: mocks.loadWorkspaces,
+}));
+
+vi.mock('../../src/stores/tasks', () => ({
+  createDagTask: mocks.createDagTask,
+  taskProposals: mocks.taskProposals,
+  taskProposalsLoading: mocks.taskProposalsLoading,
+  taskProposalsError: mocks.taskProposalsError,
+  loadTaskProposals: mocks.loadTaskProposals,
+}));
+
+vi.mock('../../src/services/eventStream', () => ({
+  subscribeDashboardEvents: (listener: (event: unknown) => void) => {
+    mocks.dashboardEventListeners.add(listener);
+    return () => mocks.dashboardEventListeners.delete(listener);
+  },
 }));
 
 vi.mock('../../src/stores/agentProfiles', async (importOriginal) => {
@@ -182,8 +207,26 @@ beforeEach(() => {
   mocks.agentProfiles.set([profile()]);
   mocks.agentProfilesLoading.set(false);
   mocks.agentProfilesError.set(null);
+  mocks.taskProposals.set([]);
+  mocks.taskProposalsLoading.set(false);
+  mocks.taskProposalsError.set(null);
+  mocks.dashboardEventListeners.clear();
   mocks.pathParams = {};
   mocks.createSession.mockResolvedValue({ session: activeSession, initial_turn: null } satisfies CreateSessionResult);
+  mocks.createDagTask.mockResolvedValue({
+    task: {
+      task_id: 'task-new',
+      input: 'Manual task',
+      state: 'queued',
+      routing_state: 'unassigned',
+      workspace_id: 'workspace-1',
+      session_id: null,
+      created_at: '2026-05-14T00:00:00Z',
+      updated_at: '2026-05-14T00:00:00Z',
+      metadata: {},
+    },
+    planning_turn: { task_id: 'task-new', session_id: 'session-planner', turn_id: 'turn-planner', profile_id: 'planner' },
+  } satisfies CreateDagTaskResult);
   vi.clearAllMocks();
 });
 
@@ -213,6 +256,38 @@ test('places new chat selectors above the prompt input', async () => {
   expect(workspaceSelector.compareDocumentPosition(promptInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(profileSelector.compareDocumentPosition(promptInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(clientSelector.compareDocumentPosition(promptInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('places task mode toggle at the left edge of the prompt toolbar', async () => {
+  render(ChatPage);
+
+  await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
+  const taskToggle = screen.getByRole('button', { name: /task mode off/i });
+  const submit = screen.getByRole('button', { name: /start chat/i });
+  const toolbar = taskToggle.parentElement;
+
+  expect(toolbar).toHaveClass('justify-between');
+  expect(taskToggle.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('creates a manual DAG task from task mode and opens the planner session chat', async () => {
+  const user = userEvent.setup();
+  render(ChatPage);
+
+  await user.type(screen.getByPlaceholderText('Ask the agent to implement, inspect, or explain something…'), 'Plan this as a DAG task');
+  await fireEvent.click(screen.getByRole('button', { name: /task mode off/i }));
+  expect(screen.getByRole('button', { name: /task mode on/i })).toBeInTheDocument();
+  await fireEvent.click(screen.getByRole('button', { name: /create task/i }));
+
+  await waitFor(() => expect(mocks.createDagTask).toHaveBeenCalledWith({
+    input: 'Plan this as a DAG task',
+    workspace: '/repo/llmparty',
+    client_type: 'pi',
+    metadata: { source: 'dashboard_chat', action: 'manual_task' },
+  }));
+  expect(mocks.createSession).not.toHaveBeenCalled();
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-planner');
+  expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-planner');
 });
 
 test('creates a session with initial prompt, workspace, and client then opens its chat', async () => {
@@ -268,4 +343,116 @@ test('loads and renders an existing chat session with session metadata in the pa
   expect(screen.getByText('Workspace: workspace-1')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /new chat/i }).querySelector('svg')).toHaveClass('lucide-square-pen');
   expect(screen.queryByRole('heading', { name: /new chat/i })).not.toBeInTheDocument();
+});
+
+test('loads planner task proposals from session metadata and renders the draft DAG', async () => {
+  const planner = session({
+    session_id: 'session-planner',
+    execution_profile_id: 'planner',
+    metadata: { dag_managed: true, dag_planning_role: 'planner', task_id: 'task-new' },
+  });
+  window.history.pushState({}, '', '/dashboard/chat/session-planner');
+  mocks.pathParams = { sessionId: 'session-planner' };
+  mocks.loadedSessions = [planner];
+  mocks.sessions.set([planner]);
+  mocks.sessionDetail.set({ session: planner, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.taskProposals.set([
+    {
+      proposal_id: 'proposal-1',
+      task_id: 'task-new',
+      mode: 'initial_dag',
+      state: 'proposed',
+      summary: 'Implement in two steps',
+      proposal_json: {
+        mode: 'initial_dag',
+        summary: 'Implement in two steps',
+        work_items: [
+          { temp_id: 'draft-a', title: 'Design UI', description: 'Sketch chat planner UI', kind: 'implementation', action: 'Edit dashboard', execution_profile_id: 'coder', priority: 0, optional: false, parallelizable: true, acceptance_criteria: [] },
+          { temp_id: 'draft-b', title: 'Wire events', description: 'Use SSE to navigate', kind: 'implementation', action: 'Subscribe to events', execution_profile_id: 'coder', priority: 1, optional: false, parallelizable: false, acceptance_criteria: [] },
+        ],
+        edges: [{ from_work_item_id: 'draft-a', to_work_item_id: 'draft-b', edge_type: 'depends_on' }],
+      },
+      validation_json: {},
+      created_by_session_id: 'session-planner',
+      revision: 1,
+      supersedes_proposal_id: null,
+      created_at: '2026-05-14T00:00:00Z',
+      updated_at: '2026-05-14T00:00:00Z',
+    },
+  ]);
+
+  render(ChatPage);
+
+  await waitFor(() => expect(mocks.loadTaskProposals).toHaveBeenCalledWith('task-new'));
+  expect(await screen.findByRole('heading', { name: /planner draft dag/i })).toBeInTheDocument();
+  expect(screen.getByText('Implement in two steps')).toBeInTheDocument();
+  expect(screen.getByText('Design UI')).toBeInTheDocument();
+  expect(screen.getByText('Wire events')).toBeInTheDocument();
+  expect(screen.getByText(/draft-a → draft-b/)).toBeInTheDocument();
+});
+
+test('navigates from planner chat to the task DAG when SSE reports approval', async () => {
+  const planner = session({
+    session_id: 'session-planner',
+    execution_profile_id: 'planner',
+    metadata: { dag_managed: true, dag_planning_role: 'planner', task_id: 'task-new' },
+  });
+  window.history.pushState({}, '', '/dashboard/chat/session-planner');
+  mocks.pathParams = { sessionId: 'session-planner' };
+  mocks.loadedSessions = [planner];
+  mocks.sessions.set([planner]);
+  mocks.sessionDetail.set({ session: planner, turns: [], inboxMessages: [], events: [], artifacts: [] });
+
+  render(ChatPage);
+
+  await waitFor(() => expect(mocks.dashboardEventListeners.size).toBe(1));
+  for (const listener of mocks.dashboardEventListeners) {
+    listener({
+      kind: 'task_event',
+      id: 'evt-1',
+      occurred_at: '2026-05-14T00:00:00Z',
+      event: {
+        event_id: 'evt-1',
+        task_id: 'task-new',
+        event_type: 'dag.approved',
+        payload: { proposal_id: 'proposal-1' },
+        created_at: '2026-05-14T00:00:00Z',
+      },
+    });
+  }
+
+  expect(mocks.navigate).toHaveBeenCalledWith('/tasks/task-new/dag');
+});
+
+test('opens the task DAG immediately when the planner proposal was already applied', async () => {
+  const planner = session({
+    session_id: 'session-planner',
+    execution_profile_id: 'planner',
+    metadata: { dag_managed: true, dag_planning_role: 'planner', task_id: 'task-new' },
+  });
+  window.history.pushState({}, '', '/dashboard/chat/session-planner');
+  mocks.pathParams = { sessionId: 'session-planner' };
+  mocks.loadedSessions = [planner];
+  mocks.sessions.set([planner]);
+  mocks.sessionDetail.set({ session: planner, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.taskProposals.set([
+    {
+      proposal_id: 'proposal-1',
+      task_id: 'task-new',
+      mode: 'initial_dag',
+      state: 'applied',
+      summary: 'Applied plan',
+      proposal_json: { mode: 'initial_dag', summary: 'Applied plan', work_items: [], edges: [] },
+      validation_json: {},
+      created_by_session_id: 'session-planner',
+      revision: 1,
+      supersedes_proposal_id: null,
+      created_at: '2026-05-14T00:00:00Z',
+      updated_at: '2026-05-14T00:00:00Z',
+    },
+  ]);
+
+  render(ChatPage);
+
+  await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/tasks/task-new/dag'));
 });

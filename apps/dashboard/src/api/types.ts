@@ -146,6 +146,21 @@ export interface TaskEventView {
   created_at: string;
 }
 
+export interface DagProposalView {
+  proposal_id: string;
+  task_id: string;
+  mode: string;
+  state: string;
+  summary: string;
+  proposal_json: JsonObject;
+  validation_json: JsonObject;
+  created_by_session_id: string | null;
+  revision: number;
+  supersedes_proposal_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface WorkItemRuntimeView {
   current_run_id: string | null;
   current_state: string;

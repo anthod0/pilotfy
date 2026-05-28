@@ -16,6 +16,14 @@ import { createDashboardRefreshScheduler } from './dashboardRefreshScheduler';
 
 const API_BASE = '/external/v1';
 
+type DashboardEventListener = (event: DashboardStreamEvent) => void;
+const dashboardEventListeners = new Set<DashboardEventListener>();
+
+export function subscribeDashboardEvents(listener: DashboardEventListener): () => void {
+  dashboardEventListeners.add(listener);
+  return () => dashboardEventListeners.delete(listener);
+}
+
 const refreshScheduler = createDashboardRefreshScheduler({
   getSelectedTaskId: () => get(selectedTaskId),
   getSelectedSessionId: () => get(sessionDetail)?.session.session_id ?? null,
@@ -143,4 +151,5 @@ function parseFrame(frame: string, onEvent: (event: DashboardStreamEvent, id: st
 function handleDashboardEvent(streamEvent: DashboardStreamEvent, cursor: string | null): void {
   if (cursor) dashboardStreamCursor.set(cursor);
   refreshScheduler.handleEvent(streamEvent);
+  for (const listener of dashboardEventListeners) listener(streamEvent);
 }

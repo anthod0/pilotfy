@@ -7,6 +7,7 @@ import {
   getTaskDag,
   interruptTask as apiInterruptTask,
   listTaskEvents,
+  listTaskProposals as apiListTaskProposals,
   pauseTask as apiPauseTask,
   listTasks,
   resumeTask as apiResumeTask,
@@ -14,6 +15,7 @@ import {
 import type {
   CreateDagTaskInput,
   CreateDagTaskResult,
+  DagProposalView,
   HumanSignalInput,
   TaskDagView,
   TaskEventView,
@@ -28,6 +30,9 @@ export const selectedTaskId = writable<string | null>(null);
 export const task = writable<TaskView | null>(null);
 export const taskEvents = writable<TaskEventView[]>([]);
 export const taskDag = writable<TaskDagView | null>(null);
+export const taskProposals = writable<DagProposalView[]>([]);
+export const taskProposalsLoading = writable(false);
+export const taskProposalsError = writable<string | null>(null);
 export const taskLoading = writable(false);
 export const taskError = writable<string | null>(null);
 
@@ -73,6 +78,22 @@ export async function createDagTask(input: CreateDagTaskInput): Promise<CreateDa
   taskEvents.set(events);
   taskDag.set(dag);
   return result;
+}
+
+export async function loadTaskProposals(taskId: string): Promise<DagProposalView[]> {
+  taskProposalsLoading.set(true);
+  taskProposalsError.set(null);
+  try {
+    const proposals = await apiListTaskProposals(taskId);
+    taskProposals.set(proposals);
+    return proposals;
+  } catch (error) {
+    taskProposals.set([]);
+    taskProposalsError.set(error instanceof Error ? error.message : String(error));
+    return [];
+  } finally {
+    taskProposalsLoading.set(false);
+  }
 }
 
 export async function pauseTask(taskId: string): Promise<TaskView> {

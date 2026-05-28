@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { CircleAlert, MessageCircle, SquarePen, TerminalSquare } from '@lucide/svelte'
+  import { onDestroy, onMount } from 'svelte'
+  import { CircleAlert, GitBranch, MessageCircle, SquarePen, TerminalSquare } from '@lucide/svelte'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -10,7 +10,7 @@
   import * as Select from '$lib/components/ui/select/index.js'
   import SessionConversation from '$lib/components/session-chat/SessionConversation.svelte'
   import SessionMessageComposer from '$lib/components/session-chat/SessionMessageComposer.svelte'
-  import type { AgentProfileView, SessionView, WorkspaceView } from '../api/types'
+  import type { AgentProfileView, DagProposalView, DashboardStreamEvent, JsonObject, SessionView, WorkspaceView } from '../api/types'
   import {
     canSendSessionMessage,
     sessionChatTitle,
@@ -42,24 +42,41 @@
     sessionsError,
     submitInboxMessage,
   } from '../stores/sessions'
+  import {
+    createDagTask,
+    loadTaskProposals,
+    taskProposals,
+    taskProposalsError,
+    taskProposalsLoading,
+  } from '../stores/tasks'
+  import { subscribeDashboardEvents } from '../services/eventStream'
 
   let selectedSessionId = ''
   let prompt = ''
   let createWorkspaceId = ''
   let createProfileId = ''
   let createClientType = 'pi'
+  let taskMode = false
   let creating = false
 
   let input = ''
   let submitting = false
   let actionError: string | null = null
   let actionMessage: string | null = null
+  let loadedProposalTaskId = ''
+  let appliedRedirectTaskId = ''
+  let unsubscribeDashboardEvents: (() => void) | null = null
 
   onMount(async () => {
     selectedSessionId = requestedSessionIdFromLocation()
     await Promise.all([loadSessions(), loadWorkspaces(), loadAgentProfiles()])
     if (!createWorkspaceId && $workspaces.length) createWorkspaceId = $workspaces[0].workspace_id
     if (selectedSessionId) await loadSessionDetail(selectedSessionId)
+    unsubscribeDashboardEvents = subscribeDashboardEvents(handleDashboardEvent)
+  })
+
+  onDestroy(() => {
+    unsubscribeDashboardEvents?.()
   })
 
   $: selectedSession = selectedSessionId ? ($sessions.find((session) => session.session_id === selectedSessionId) ?? $sessionDetail?.session ?? null) : null
@@ -71,7 +88,15 @@
   $: if (!createWorkspaceId && $workspaces.length) createWorkspaceId = $workspaces[0].workspace_id
   $: canCreate = Boolean(prompt.trim() && createWorkspaceId && createClientType.trim() && !creating)
   $: canSend = canSendSessionMessage(selectedSession, input) && !submitting
-  $: errorMessage = actionError ?? $sessionDetailError ?? $sessionsError ?? $workspacesError ?? $agentProfilesError
+  $: plannerTaskId = plannerTaskIdForSession(selectedSession)
+  $: plannerTaskProposals = plannerTaskId ? $taskProposals.filter((proposal) => proposal.task_id === plannerTaskId) : []
+  $: draftPlannerProposal = plannerTaskProposals.find((proposal) => proposal.mode === 'initial_dag' && proposal.state === 'proposed') ?? null
+  $: if (plannerTaskId && plannerTaskId !== loadedProposalTaskId) {
+    loadedProposalTaskId = plannerTaskId
+    void loadTaskProposals(plannerTaskId)
+  }
+  $: if (plannerTaskId && plannerTaskProposals.some((proposal) => proposal.state === 'applied')) navigateToTaskDag(plannerTaskId)
+  $: errorMessage = actionError ?? $sessionDetailError ?? $sessionsError ?? $workspacesError ?? $agentProfilesError ?? $taskProposalsError
 
   function requestedSessionIdFromLocation(): string {
     return getPathParams().sessionId ?? new URLSearchParams(window.location.search).get('session') ?? ''
@@ -96,6 +121,46 @@
 
   function sessionWorkspaceTitle(session: SessionView): string {
     return session.workspace_id ?? session.workspace ?? 'No workspace'
+  }
+
+  function plannerTaskIdForSession(session: SessionView | null): string | null {
+    if (!session?.metadata) return null
+    const metadata = session.metadata
+    const taskId = typeof metadata.task_id === 'string' ? metadata.task_id : null
+    const role = typeof metadata.dag_planning_role === 'string' ? metadata.dag_planning_role : null
+    return metadata.dag_managed === true && role === 'planner' && taskId ? taskId : null
+  }
+
+  function proposalWorkItems(proposal: DagProposalView | null): JsonObject[] {
+    const workItems = proposal?.proposal_json.work_items
+    return Array.isArray(workItems) ? workItems.filter(isJsonObject) : []
+  }
+
+  function proposalEdges(proposal: DagProposalView | null): JsonObject[] {
+    const edges = proposal?.proposal_json.edges
+    return Array.isArray(edges) ? edges.filter(isJsonObject) : []
+  }
+
+  function isJsonObject(value: unknown): value is JsonObject {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+  }
+
+  function stringField(value: JsonObject, key: string, fallback = '—'): string {
+    const field = value[key]
+    return typeof field === 'string' && field.trim() ? field : fallback
+  }
+
+  function navigateToTaskDag(taskId: string): void {
+    if (appliedRedirectTaskId === taskId) return
+    appliedRedirectTaskId = taskId
+    navigate(`/tasks/${taskId}/dag`)
+  }
+
+  function handleDashboardEvent(streamEvent: DashboardStreamEvent): void {
+    if (!plannerTaskId || streamEvent.kind !== 'task_event') return
+    if (streamEvent.event.task_id === plannerTaskId && streamEvent.event.event_type === 'dag.approved') {
+      navigateToTaskDag(plannerTaskId)
+    }
   }
 
   function openSessionConsole(): void {
@@ -130,6 +195,21 @@
     actionError = null
     actionMessage = null
     try {
+      if (taskMode) {
+        const result = await createDagTask({
+          input: prompt.trim(),
+          workspace: selectedWorkspace?.canonical_path ?? selectedWorkspace?.display_path ?? createWorkspaceId,
+          client_type: createClientType.trim() || 'pi',
+          metadata: { source: 'dashboard_chat', action: 'manual_task' },
+        })
+        selectedSessionId = result.planning_turn.session_id
+        prompt = ''
+        actionMessage = 'DAG task created. Planner session opened.'
+        navigate(`/chat/${result.planning_turn.session_id}`)
+        await loadSessionDetail(result.planning_turn.session_id)
+        return
+      }
+
       const result = await createSession({
         client_type: createClientType.trim(),
         workspace_id: createWorkspaceId,
@@ -267,8 +347,19 @@
           />
         </PromptInput.Body>
 
-        <PromptInput.Toolbar class="justify-end pt-1">
-          <PromptInput.Submit disabled={!canCreate || creating} aria-label={creating ? 'Starting chat' : 'Start chat'} />
+        <PromptInput.Toolbar class="justify-between gap-2 pt-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={taskMode ? 'default' : 'outline'}
+            class="rounded-full font-normal"
+            aria-pressed={taskMode}
+            aria-label={taskMode ? 'Task mode on' : 'Task mode off'}
+            onclick={() => (taskMode = !taskMode)}
+          >
+            <GitBranch class="size-4" /> Task
+          </Button>
+          <PromptInput.Submit disabled={!canCreate || creating} aria-label={creating ? (taskMode ? 'Creating task' : 'Starting chat') : (taskMode ? 'Create task' : 'Start chat')} />
         </PromptInput.Toolbar>
       </PromptInput.Root>
     </div>
@@ -286,6 +377,52 @@
             <Empty.Content><Button onclick={openNewChat}>Start a new chat</Button></Empty.Content>
           </Empty.Root>
         {:else}
+          {#if plannerTaskId}
+            <div class="border-b p-4">
+              <div class="rounded-xl border bg-card p-4 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-lg font-semibold">Planner draft DAG</h3>
+                    <p class="text-sm text-muted-foreground">Task {plannerTaskId}</p>
+                  </div>
+                  {#if $taskProposalsLoading}
+                    <span class="text-sm text-muted-foreground">Loading proposal…</span>
+                  {:else if draftPlannerProposal}
+                    <span class="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">revision {draftPlannerProposal.revision} · {draftPlannerProposal.state}</span>
+                  {/if}
+                </div>
+
+                {#if draftPlannerProposal}
+                  {@const draftWorkItems = proposalWorkItems(draftPlannerProposal)}
+                  {@const draftEdges = proposalEdges(draftPlannerProposal)}
+                  <p class="mt-3 text-sm">{draftPlannerProposal.summary}</p>
+                  <div class="mt-4 grid gap-3 md:grid-cols-2">
+                    {#each draftWorkItems as item}
+                      <div class="rounded-lg border bg-background p-3">
+                        <div class="font-medium">{stringField(item, 'title')}</div>
+                        <div class="mt-1 text-sm text-muted-foreground">{stringField(item, 'description')}</div>
+                        <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{stringField(item, 'temp_id', stringField(item, 'work_item_id', 'draft'))}</span>
+                          <span>{stringField(item, 'kind')}</span>
+                          <span>profile {stringField(item, 'execution_profile_id')}</span>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                  {#if draftEdges.length}
+                    <div class="mt-4 space-y-1 text-sm text-muted-foreground">
+                      {#each draftEdges as edge}
+                        <div>{stringField(edge, 'from_work_item_id')} → {stringField(edge, 'to_work_item_id')} <span class="text-xs">{stringField(edge, 'edge_type', 'depends_on')}</span></div>
+                      {/each}
+                    </div>
+                  {/if}
+                {:else if !$taskProposalsLoading}
+                  <p class="mt-3 text-sm text-muted-foreground">Waiting for the planner to submit a draft DAG proposal.</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <SessionConversation {messages} loading={$sessionDetailLoading} />
 
           <div class="p-4">
