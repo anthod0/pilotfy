@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import AppSidebarHost from './components/layout/AppSidebarHost.svelte';
+import TopBarHost from './components/layout/TopBarHost.svelte';
 import SettingsPage from '../src/pages/SettingsPage.svelte';
 
 const mocks = vi.hoisted(() => ({
@@ -32,7 +33,7 @@ beforeEach(() => {
   });
 });
 
-test('sidebar shows workflow items and keeps settings in the footer', () => {
+test('sidebar shows workflow items and omits settings from navigation', () => {
   render(AppSidebarHost);
 
   expect(screen.queryByText('Workflow')).not.toBeInTheDocument();
@@ -40,9 +41,6 @@ test('sidebar shows workflow items and keeps settings in the footer', () => {
 
   const workflow = screen.getByText('Overview').closest('[data-slot="sidebar-group"]');
   expect(workflow).not.toBeNull();
-  const footer = screen.getByText('Settings').closest('[data-slot="sidebar-footer"]');
-  expect(footer).not.toBeNull();
-
   const workflowQueries = within(workflow as HTMLElement);
   expect(workflowQueries.getByText('Overview')).toBeInTheDocument();
   expect(workflowQueries.getByText('Tasks')).toBeInTheDocument();
@@ -51,9 +49,7 @@ test('sidebar shows workflow items and keeps settings in the footer', () => {
   expect(workflowQueries.queryByText('Session Console')).not.toBeInTheDocument();
   expect(workflowQueries.queryByText('Workspaces')).not.toBeInTheDocument();
   expect(workflowQueries.queryByText('Agent Profiles')).not.toBeInTheDocument();
-  expect(workflowQueries.queryByText('Settings')).not.toBeInTheDocument();
-
-  expect(within(footer as HTMLElement).getByText('Settings')).toBeInTheDocument();
+  expect(screen.queryByText('Settings')).not.toBeInTheDocument();
 });
 
 test('sidebar only marks the current route as active', () => {
@@ -64,17 +60,21 @@ test('sidebar only marks the current route as active', () => {
   const overview = screen.getByText('Overview').closest('button');
   const tasks = screen.getByText('Tasks').closest('button');
   const chat = screen.getByText('Chat').closest('button');
-  const settings = screen.getByText('Settings').closest('button');
 
   expect(overview).not.toBeNull();
   expect(tasks).not.toBeNull();
   expect(chat).not.toBeNull();
-  expect(settings).not.toBeNull();
 
   expect(chat).toHaveAttribute('data-active', 'true');
   expect(overview).not.toHaveAttribute('data-active');
   expect(tasks).not.toHaveAttribute('data-active');
-  expect(settings).not.toHaveAttribute('data-active');
+});
+
+test('top bar omits static dashboard title and description copy', () => {
+  render(TopBarHost);
+
+  expect(screen.queryByText('Dashboard v2')).not.toBeInTheDocument();
+  expect(screen.queryByText('DAG tasks, workspaces, profiles, and execution diagnostics')).not.toBeInTheDocument();
 });
 
 test('settings page exposes administration links moved out of the sidebar', () => {

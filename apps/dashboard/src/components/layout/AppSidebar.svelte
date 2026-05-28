@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { GitBranch, Home, MessageCircle, Settings } from '@lucide/svelte'
+  import { GitBranch, Home, MessageCircle } from '@lucide/svelte'
   import { navigate } from 'svelte-mini-router'
   import * as Sidebar from '$lib/components/ui/sidebar/index.js'
 
@@ -62,15 +62,5 @@
       </Sidebar.GroupContent>
     </Sidebar.Group>
   </Sidebar.Content>
-  <Sidebar.Footer>
-    <Sidebar.Menu>
-      <Sidebar.MenuItem>
-        <Sidebar.MenuButton isActive={isActive('/settings')} tooltipContent="Settings" onclick={() => go('/settings')}>
-          <Settings />
-          <span>Settings</span>
-        </Sidebar.MenuButton>
-      </Sidebar.MenuItem>
-    </Sidebar.Menu>
-  </Sidebar.Footer>
   <Sidebar.Rail />
 </Sidebar.Root>

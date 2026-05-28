@@ -21,10 +21,7 @@
     <PanelLeft />
     <span class="sr-only">Toggle sidebar</span>
   </Sidebar.Trigger>
-  <div class="min-w-0 flex-1">
-    <h1 class="truncate text-sm font-medium">Dashboard v2</h1>
-    <p class="hidden text-xs text-muted-foreground sm:block">DAG tasks, workspaces, profiles, and execution diagnostics</p>
-  </div>
+  <div class="min-w-0 flex-1"></div>
 
   {#if !$token.trim()}
     <Button variant="destructive" size="sm" class="hidden gap-2 sm:inline-flex" href="/dashboard/settings">
