@@ -28,6 +28,7 @@
 
   function isActive(path: string) {
     if (path === '/tasks') return currentPath === '/tasks' || currentPath.startsWith('/tasks/')
+    if (path === '/chat') return currentPath === '/chat' || currentPath.startsWith('/chat/')
     return currentPath === path
   }
 
@@ -37,8 +38,8 @@
   }
 
   function openSession(sessionId: string) {
-    navigate('/chat', { session: sessionId })
-    currentPath = '/chat'
+    navigate(`/chat/${sessionId}`)
+    currentPath = `/chat/${sessionId}`
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 </script>

@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
     loadSessionDetail: vi.fn(async () => null),
     submitInboxMessage: vi.fn(),
     navigate: vi.fn(),
+    pathParams: {} as Record<string, string>,
   };
 });
 
@@ -55,7 +56,7 @@ vi.mock('../../src/stores/sessions', () => ({
   submitInboxMessage: mocks.submitInboxMessage,
 }));
 
-vi.mock('svelte-mini-router', () => ({ navigate: mocks.navigate }));
+vi.mock('svelte-mini-router', () => ({ navigate: mocks.navigate, getPathParams: () => mocks.pathParams }));
 
 const session = (overrides: Partial<SessionView> = {}): SessionView => ({
   session_id: 'session-1',
@@ -100,6 +101,7 @@ beforeEach(() => {
   mocks.sessionDetail.set({ session: activeSession, turns: [], inboxMessages: [], events: [], artifacts: [] });
   mocks.sessionDetailLoading.set(false);
   mocks.sessionDetailError.set(null);
+  mocks.pathParams = {};
   vi.clearAllMocks();
 });
 
@@ -138,10 +140,11 @@ test('renders composer with border and white background while assistant messages
   expect(assistantMessage.closest('[class*="bg-card"]')).not.toBeInTheDocument();
 });
 
-test('loads the session selected by the chat query parameter', async () => {
+test('loads the session selected by the chat path parameter', async () => {
   const first = session({ session_id: 'session-1', handle: 'first' });
   const second = session({ session_id: 'session-2', handle: 'second' });
-  window.history.pushState({}, '', '/dashboard/chat?session=session-2');
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [first, second];
   mocks.sessions.set([first, second]);
   mocks.sessionDetail.set({ session: second, turns: [], inboxMessages: [], events: [], artifacts: [] });
@@ -151,7 +154,23 @@ test('loads the session selected by the chat query parameter', async () => {
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
 });
 
-test('updates the selected chat session when the query parameter changes on the mounted page', async () => {
+test('opens the selected session console from chat', async () => {
+  const selected = session({ session_id: 'session-2', handle: 'second' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+
+  render(ChatPage);
+  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
+
+  await screen.getByRole('button', { name: /session console/i }).click();
+
+  expect(mocks.navigate).toHaveBeenCalledWith('/sessions/session-2');
+});
+
+test('updates the selected chat session when the path parameter changes on the mounted page', async () => {
   const first = session({ session_id: 'session-1', handle: 'first' });
   const second = session({ session_id: 'session-2', handle: 'second' });
   mocks.loadedSessions = [first, second];
@@ -161,7 +180,8 @@ test('updates the selected chat session when the query parameter changes on the 
   render(ChatPage);
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-1'));
 
-  window.history.pushState({}, '', '/dashboard/chat?session=session-2');
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
   window.dispatchEvent(new PopStateEvent('popstate'));
 
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));

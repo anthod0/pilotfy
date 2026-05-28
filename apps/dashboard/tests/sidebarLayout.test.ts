@@ -130,11 +130,11 @@ test('sidebar shows recent active sessions and opens chat for the selected sessi
 
   await fireEvent.click(screen.getByText('main · coder'));
 
-  expect(mocks.navigate).toHaveBeenCalledWith('/chat', { session: 'session-active' });
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-active');
 });
 
 test('sidebar only marks the current route as active', () => {
-  window.history.pushState({}, '', '/dashboard/chat');
+  window.history.pushState({}, '', '/dashboard/chat/session-active');
 
   render(AppSidebarHost);
 
@@ -227,6 +227,8 @@ test('settings routes redirect hub and include section paths', () => {
 
   expect(settingsRoute).toBeDefined();
   expect(String(settingsRoute?.render)).toContain('SettingsRedirectPage');
+  expect(paths).toContain('/chat/{sessionId}');
+  expect(paths).toContain('/sessions/{sessionId}');
   expect(paths).toContain('/settings/common');
   expect(paths).toContain('/settings/workspaces');
   expect(paths).toContain('/settings/agent-profiles');

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CircleAlert, RefreshCw, Send, ShieldAlert, TerminalSquare } from '@lucide/svelte'
+  import { CircleAlert, MessageCircle, RefreshCw, Send, ShieldAlert, TerminalSquare } from '@lucide/svelte'
+  import { getPathParams, navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -61,10 +62,9 @@
   let submittingInbox = false
 
   onMount(async () => {
-    await Promise.all([loadSessions(), loadWorkspaces(), loadAgentProfiles()])
-    if (!selectedSessionId) selectedSessionId = visibleSessionsForFilter($sessions, 'active')[0]?.session_id ?? ''
+    const [loadedSessions] = await Promise.all([loadSessions(), loadWorkspaces(), loadAgentProfiles()])
+    await selectSessionFromLocation(loadedSessions)
     if (!createWorkspaceId && $workspaces.length) createWorkspaceId = $workspaces[0].workspace_id
-    if (selectedSessionId) await loadSessionDetail(selectedSessionId)
   })
 
   $: visibleSessions = visibleSessionsForFilter($sessions, sessionFilter)
@@ -102,20 +102,41 @@
     return null
   }
 
+  function requestedSessionIdFromLocation(): string {
+    return getPathParams().sessionId ?? new URLSearchParams(window.location.search).get('session') ?? ''
+  }
+
+  async function selectSessionFromLocation(availableSessions = $sessions): Promise<void> {
+    const requestedSessionId = requestedSessionIdFromLocation()
+    const requestedSession = availableSessions.find((session) => session.session_id === requestedSessionId)
+    const nextSessionId = requestedSession?.session_id ?? (requestedSessionId ? '' : visibleSessionsForFilter(availableSessions, 'active')[0]?.session_id ?? '')
+    if (!nextSessionId || nextSessionId === selectedSessionId) return
+
+    selectedSessionId = nextSessionId
+    actionError = null
+    actionMessage = null
+    await loadSessionDetail(nextSessionId)
+  }
+
   async function selectSession(sessionId: string): Promise<void> {
+    navigate(`/sessions/${sessionId}`)
     selectedSessionId = sessionId
     actionError = null
     actionMessage = null
     await loadSessionDetail(sessionId)
   }
 
+  function openSelectedSessionChat(): void {
+    if (selectedSessionId) navigate(`/chat/${selectedSessionId}`)
+    else navigate('/chat')
+  }
+
   async function refreshAll(): Promise<void> {
     actionError = null
     actionMessage = null
     const loaded = await loadSessions()
-    if (!selectedSessionId) selectedSessionId = visibleSessionsForFilter(loaded, 'active')[0]?.session_id ?? ''
     await Promise.all([loadWorkspaces(), loadAgentProfiles()])
-    if (selectedSessionId) await loadSessionDetail(selectedSessionId)
+    await selectSessionFromLocation(loaded)
   }
 
   function applyProfileDefaults(): void {
@@ -143,6 +164,7 @@
         metadata: { source: 'dashboard_session_console' },
       })
       selectedSessionId = result.session.session_id
+      navigate(`/sessions/${result.session.session_id}`)
       initialInput = ''
       actionMessage = result.initial_turn ? 'Session created and initial input was queued.' : 'Session created.'
     } catch (error) {
@@ -191,13 +213,18 @@
   }
 </script>
 
+<svelte:window onpopstate={() => void selectSessionFromLocation()} />
+
 <section class="space-y-6">
   <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div class="space-y-2">
       <h2 class="flex items-center gap-2 text-3xl font-semibold tracking-tight"><TerminalSquare class="size-7" /> Sessions</h2>
       <p class="max-w-3xl text-muted-foreground">Direct operator controls for creating, driving, interrupting, restarting, and terminating sessions. DAG Tasks remain the primary workflow.</p>
     </div>
-    <Button variant="outline" onclick={() => void refreshAll()}><RefreshCw class="size-4" /> Refresh</Button>
+    <div class="flex gap-2">
+      <Button variant="outline" onclick={openSelectedSessionChat}><MessageCircle class="size-4" /> Back to Chat</Button>
+      <Button variant="outline" onclick={() => void refreshAll()}><RefreshCw class="size-4" /> Refresh</Button>
+    </div>
   </div>
 
   <Alert.Root>

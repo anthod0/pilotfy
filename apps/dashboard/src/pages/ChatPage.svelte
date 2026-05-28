@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { CircleAlert, MessageCircle, TerminalSquare } from '@lucide/svelte'
-  import { navigate } from 'svelte-mini-router'
+  import { getPathParams, navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -43,8 +43,12 @@
   $: canSend = canSendSessionMessage(selectedSession, input) && !submitting
   $: errorMessage = actionError ?? $sessionDetailError ?? $sessionsError
 
+  function requestedSessionIdFromLocation(): string {
+    return getPathParams().sessionId ?? new URLSearchParams(window.location.search).get('session') ?? ''
+  }
+
   async function selectSessionFromLocation(availableSessions = $sessions): Promise<void> {
-    const requestedSessionId = new URLSearchParams(window.location.search).get('session') ?? ''
+    const requestedSessionId = requestedSessionIdFromLocation()
     const requestedSession = availableSessions.find((session) => session.session_id === requestedSessionId)
     const nextSessionId = requestedSession?.session_id ?? visibleChatSessions(availableSessions, 'active')[0]?.session_id ?? visibleChatSessions(availableSessions, 'all')[0]?.session_id ?? ''
     if (!nextSessionId || nextSessionId === selectedSessionId) return
@@ -54,6 +58,10 @@
     actionError = null
     actionMessage = null
     await loadSessionDetail(nextSessionId)
+  }
+
+  function openSessionConsole(): void {
+    navigate(selectedSessionId ? `/sessions/${selectedSessionId}` : '/sessions')
   }
 
   async function sendMessage(): Promise<void> {
@@ -87,7 +95,7 @@
       <p class="max-w-3xl text-muted-foreground">A focused conversation view for existing sessions. Advanced controls, events, artifacts, and debug payloads stay in Session Console.</p>
     </div>
     <div class="flex gap-2">
-      <Button variant="outline" onclick={() => navigate('/sessions')}><TerminalSquare class="size-4" /> Session Console</Button>
+      <Button variant="outline" onclick={openSessionConsole}><TerminalSquare class="size-4" /> Session Console</Button>
     </div>
   </div>
 

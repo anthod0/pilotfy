@@ -1,0 +1,138 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { beforeEach, expect, test, vi } from 'vitest';
+import SessionsPage from '../../src/pages/SessionsPage.svelte';
+import type { SessionConsoleDetail } from '../../src/stores/sessions';
+import type { SessionView } from '../../src/api/types';
+
+const mocks = vi.hoisted(() => {
+  function writableStore<T>(initial: T) {
+    let value = initial;
+    const subscribers = new Set<(value: T) => void>();
+    return {
+      subscribe(run: (value: T) => void) {
+        subscribers.add(run);
+        run(value);
+        return () => subscribers.delete(run);
+      },
+      set(next: T) {
+        value = next;
+        for (const run of subscribers) run(value);
+      },
+    };
+  }
+
+  const sessions = writableStore<SessionView[]>([]);
+  const sessionDetail = writableStore<SessionConsoleDetail | null>(null);
+
+  return {
+    navigate: vi.fn(),
+    pathParams: {} as Record<string, string>,
+    sessions,
+    sessionsLoading: writableStore(false),
+    sessionsError: writableStore<string | null>(null),
+    sessionDetail,
+    sessionDetailLoading: writableStore(false),
+    sessionDetailError: writableStore<string | null>(null),
+    loadedSessions: [] as SessionView[],
+    loadSessions: vi.fn(async () => mocks.loadedSessions),
+    loadSessionDetail: vi.fn(async (sessionId: string) => {
+      const selected = mocks.loadedSessions.find((session) => session.session_id === sessionId) ?? null;
+      if (selected) mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+      return null;
+    }),
+    createSession: vi.fn(),
+    discoverSessionArtifacts: vi.fn(),
+    interruptSession: vi.fn(),
+    restartSession: vi.fn(),
+    submitInboxMessage: vi.fn(),
+    terminateSession: vi.fn(),
+    workspaces: writableStore([]),
+    loadWorkspaces: vi.fn(async () => []),
+    agentProfiles: writableStore([]),
+    loadAgentProfiles: vi.fn(async () => []),
+  };
+});
+
+vi.mock('svelte-mini-router', () => ({ navigate: mocks.navigate, getPathParams: () => mocks.pathParams }));
+vi.mock('../../src/stores/sessions', () => ({
+  sessions: mocks.sessions,
+  sessionsLoading: mocks.sessionsLoading,
+  sessionsError: mocks.sessionsError,
+  sessionDetail: mocks.sessionDetail,
+  sessionDetailLoading: mocks.sessionDetailLoading,
+  sessionDetailError: mocks.sessionDetailError,
+  loadSessions: mocks.loadSessions,
+  loadSessionDetail: mocks.loadSessionDetail,
+  createSession: mocks.createSession,
+  discoverSessionArtifacts: mocks.discoverSessionArtifacts,
+  interruptSession: mocks.interruptSession,
+  restartSession: mocks.restartSession,
+  submitInboxMessage: mocks.submitInboxMessage,
+  terminateSession: mocks.terminateSession,
+}));
+vi.mock('../../src/stores/workspaces', () => ({ workspaces: mocks.workspaces, loadWorkspaces: mocks.loadWorkspaces }));
+vi.mock('../../src/stores/agentProfiles', () => ({
+  agentProfiles: mocks.agentProfiles,
+  loadAgentProfiles: mocks.loadAgentProfiles,
+  clientTypeOptionsForProfile: () => ['pi'],
+  defaultHandleForProfile: () => '',
+  sessionProfileFields: () => ({}),
+}));
+
+const session = (overrides: Partial<SessionView> = {}): SessionView => ({
+  session_id: 'session-1',
+  client_type: 'pi',
+  handle: 'main',
+  role: null,
+  description: null,
+  execution_profile_id: null,
+  execution_profile_version: null,
+  state: 'idle',
+  current_turn_id: null,
+  workspace_id: 'workspace-1',
+  workspace: null,
+  capabilities: {},
+  created_at: '2026-05-14T00:00:00Z',
+  updated_at: '2026-05-14T00:00:00Z',
+  metadata: {},
+  ...overrides,
+});
+
+beforeEach(() => {
+  window.history.pushState({}, '', '/dashboard/sessions');
+  const first = session({ session_id: 'session-1', handle: 'first' });
+  const second = session({ session_id: 'session-2', handle: 'second' });
+  mocks.pathParams = {};
+  mocks.loadedSessions = [first, second];
+  mocks.sessions.set([first, second]);
+  mocks.sessionDetail.set(null);
+  mocks.sessionsLoading.set(false);
+  mocks.sessionsError.set(null);
+  mocks.sessionDetailLoading.set(false);
+  mocks.sessionDetailError.set(null);
+  vi.clearAllMocks();
+});
+
+test('loads the session selected by the sessions path parameter', async () => {
+  window.history.pushState({}, '', '/dashboard/sessions/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+
+  render(SessionsPage);
+
+  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
+  expect(await screen.findByRole('button', { name: /back to chat/i })).toBeInTheDocument();
+});
+
+test('navigates between session console and chat canonical paths', async () => {
+  window.history.pushState({}, '', '/dashboard/sessions/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+
+  render(SessionsPage);
+  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
+
+  await fireEvent.click(screen.getByRole('button', { name: /back to chat/i }));
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-2');
+
+  await fireEvent.click(screen.getByRole('button', { name: /first/i }));
+  expect(mocks.navigate).toHaveBeenCalledWith('/sessions/session-1');
+});
