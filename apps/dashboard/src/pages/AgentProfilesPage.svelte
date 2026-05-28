@@ -46,17 +46,27 @@
   let mutationError: string | null = null
   let mutationSuccess: string | null = null
   let saving = false
+  let pageAbortController: AbortController | null = null
 
-  onMount(async () => {
-    await refreshProfiles()
-    if (!selectedProfileId && $agentProfiles.length) selectedProfileId = $agentProfiles[0].profile_id
+  onMount(() => {
+    pageAbortController = new AbortController()
+
+    void (async () => {
+      await refreshProfiles({ signal: pageAbortController?.signal })
+      if (!pageAbortController?.signal.aborted && !selectedProfileId && $agentProfiles.length) selectedProfileId = $agentProfiles[0].profile_id
+    })()
+
+    return () => {
+      pageAbortController?.abort()
+      pageAbortController = null
+    }
   })
 
   $: sortedProfiles = [...$agentProfiles].sort((a, b) => a.name.localeCompare(b.name))
   $: selectedProfile = sortedProfiles.find((profile) => profile.profile_id === selectedProfileId) ?? sortedProfiles[0] ?? null
   $: sortedVersions = [...versions].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   $: selectedVersionProfile = sortedVersions.find((profile) => profile.version === selectedVersion) ?? sortedVersions[0] ?? selectedProfile
-  $: if (selectedProfile && selectedProfile.profile_id !== versionsProfileId && !versionsLoading) void loadVersions(selectedProfile.profile_id)
+  $: if (selectedProfile && selectedProfile.profile_id !== versionsProfileId && !versionsLoading) void loadVersions(selectedProfile.profile_id, { signal: pageAbortController?.signal })
   $: profileRows = selectedVersionProfile ? [
     { label: 'Artifact contract', value: JSON.stringify(selectedVersionProfile.artifact_contract ?? {}, null, 2) },
     { label: 'Execution policy', value: JSON.stringify(selectedVersionProfile.default_execution_policy ?? {}, null, 2) },
@@ -66,8 +76,8 @@
   ] : []
   $: builtinSelected = Boolean(selectedVersionProfile?.metadata?.builtin)
 
-  async function refreshProfiles(): Promise<void> {
-    await loadAgentProfiles(includeArchivedProfiles)
+  async function refreshProfiles(options: { signal?: AbortSignal } = {}): Promise<void> {
+    await loadAgentProfiles(includeArchivedProfiles, options)
   }
 
   async function refreshAll(): Promise<void> {
@@ -75,14 +85,15 @@
     if (selectedProfileId) await loadVersions(selectedProfileId)
   }
 
-  async function loadVersions(profileId: string): Promise<void> {
+  async function loadVersions(profileId: string, options: { signal?: AbortSignal } = {}): Promise<void> {
     versionsLoading = true
     versionsError = null
     versionsProfileId = profileId
     try {
-      versions = await listAgentProfileVersions(profileId, includeArchivedVersions)
+      versions = await listAgentProfileVersions(profileId, includeArchivedVersions, options)
       selectedVersion = versions.find((profile) => profile.version === selectedVersion)?.version ?? versions[0]?.version ?? ''
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       versions = []
       versionsError = error instanceof Error ? error.message : String(error)
     } finally {

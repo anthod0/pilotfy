@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import AppSidebarHost from './components/layout/AppSidebarHost.svelte';
 import TopBarHost from './components/layout/TopBarHost.svelte';
@@ -104,6 +104,15 @@ test('settings shell renders a persistent vertical side switcher around page con
   expect(within(nav).getByRole('link', { name: /^workspaces$/i })).toHaveAttribute('aria-current', 'page');
   expect(within(nav).getByRole('link', { name: /^agent profiles$/i })).toHaveAttribute('href', '/dashboard/settings/agent-profiles');
   expect(screen.getByText('Current settings page content')).toBeInTheDocument();
+});
+
+test('settings shell section switcher uses router navigation instead of a document reload', async () => {
+  window.history.pushState({}, '', '/dashboard/settings/common');
+  render(SettingsShellHost);
+
+  await fireEvent.click(screen.getByRole('link', { name: /^agent profiles$/i }));
+
+  expect(mocks.navigate).toHaveBeenCalledWith('/settings/agent-profiles');
 });
 
 test('settings routes redirect hub and include section paths', () => {

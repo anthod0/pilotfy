@@ -30,11 +30,17 @@
   let registerEntry: WorkspaceDirectoryEntryView | null = null
   let registerWorkspaceName = ''
 
-  onMount(async () => {
-    await Promise.all([loadWorkspaces(), loadWorkspaceRoots().then((roots) => {
-      if (!rootId && roots.length) rootId = roots[0].root_id
-    })])
-    if (rootId) await openPath('')
+  onMount(() => {
+    const controller = new AbortController()
+
+    void (async () => {
+      await Promise.all([loadWorkspaces({ signal: controller.signal }), loadWorkspaceRoots({ signal: controller.signal }).then((roots) => {
+        if (!rootId && roots.length) rootId = roots[0].root_id
+      })])
+      if (!controller.signal.aborted && rootId) await openPath('', { signal: controller.signal })
+    })()
+
+    return () => controller.abort()
   })
 
   $: selectedRoot = $workspaceRoots.find((root) => root.root_id === rootId) ?? null
@@ -44,14 +50,15 @@
     if (rootId) await openPath(browsePath)
   }
 
-  async function openPath(path: string): Promise<void> {
+  async function openPath(path: string, options: { signal?: AbortSignal } = {}): Promise<void> {
     if (!rootId) return
     browserLoading = true
     browserError = null
     try {
-      listing = await browseWorkspaceRoot(rootId, path)
+      listing = await browseWorkspaceRoot(rootId, path, options)
       browsePath = listing.path
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       listing = null
       browserError = error instanceof Error ? error.message : String(error)
     } finally {

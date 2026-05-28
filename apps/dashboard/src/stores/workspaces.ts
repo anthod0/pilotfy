@@ -6,6 +6,7 @@ import {
   listWorkspaces,
   registerWorkspace as apiRegisterWorkspace,
   renameWorkspace as apiRenameWorkspace,
+  type ReadRequestOptions,
 } from '../api/client';
 import type {
   RegisterWorkspaceInput,
@@ -20,26 +21,30 @@ export const workspacesLoading = writable(false);
 export const workspacesError = writable<string | null>(null);
 export const workspaceRoots = writable<WorkspaceRootView[]>([]);
 
-export async function loadWorkspaces(): Promise<void> {
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+export async function loadWorkspaces(options: ReadRequestOptions = {}): Promise<void> {
   workspacesLoading.set(true);
   workspacesError.set(null);
   try {
-    workspaces.set(await listWorkspaces());
+    workspaces.set(await listWorkspaces(options));
   } catch (error) {
-    workspacesError.set(error instanceof Error ? error.message : String(error));
+    if (!isAbortError(error)) workspacesError.set(error instanceof Error ? error.message : String(error));
   } finally {
     workspacesLoading.set(false);
   }
 }
 
-export async function loadWorkspaceRoots(): Promise<WorkspaceRootView[]> {
-  const roots = await listWorkspaceRoots();
+export async function loadWorkspaceRoots(options: ReadRequestOptions = {}): Promise<WorkspaceRootView[]> {
+  const roots = await listWorkspaceRoots(options);
   workspaceRoots.set(roots);
   return roots;
 }
 
-export async function browseWorkspaceRoot(rootId: string, path = ''): Promise<WorkspaceDirectoryListingView> {
-  return listWorkspaceRootEntries(rootId, path);
+export async function browseWorkspaceRoot(rootId: string, path = '', options: ReadRequestOptions = {}): Promise<WorkspaceDirectoryListingView> {
+  return listWorkspaceRootEntries(rootId, path, options);
 }
 
 export async function registerWorkspace(input: RegisterWorkspaceInput): Promise<WorkspaceView> {

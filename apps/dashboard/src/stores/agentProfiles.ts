@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { listAgentProfiles } from '../api/client';
+import { listAgentProfiles, type ReadRequestOptions } from '../api/client';
 import type { AgentProfileView } from '../api/types';
 
 const FALLBACK_CLIENT_TYPES = ['pi', 'claude_code'];
@@ -8,13 +8,17 @@ export const agentProfiles = writable<AgentProfileView[]>([]);
 export const agentProfilesLoading = writable(false);
 export const agentProfilesError = writable<string | null>(null);
 
-export async function loadAgentProfiles(includeArchived = false): Promise<void> {
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+export async function loadAgentProfiles(includeArchived = false, options: ReadRequestOptions = {}): Promise<void> {
   agentProfilesLoading.set(true);
   agentProfilesError.set(null);
   try {
-    agentProfiles.set(await listAgentProfiles(includeArchived));
+    agentProfiles.set(await listAgentProfiles(includeArchived, options));
   } catch (error) {
-    agentProfilesError.set(error instanceof Error ? error.message : String(error));
+    if (!isAbortError(error)) agentProfilesError.set(error instanceof Error ? error.message : String(error));
   } finally {
     agentProfilesLoading.set(false);
   }

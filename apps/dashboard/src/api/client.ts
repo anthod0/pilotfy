@@ -31,6 +31,7 @@ import type {
 const API_BASE = '/external/v1';
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; mutating?: boolean };
+export type ReadRequestOptions = Pick<RequestOptions, 'signal'>;
 
 function idempotencyKey(): string {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -68,9 +69,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return envelope.data;
 }
 
-export async function listAgentProfiles(includeArchived = false): Promise<AgentProfileView[]> {
+export async function listAgentProfiles(includeArchived = false, options: ReadRequestOptions = {}): Promise<AgentProfileView[]> {
   const query = includeArchived ? '?include_archived=true' : '';
-  return (await request<{ agent_profiles: AgentProfileView[] }>(`/agent-profiles${query}`)).agent_profiles;
+  return (await request<{ agent_profiles: AgentProfileView[] }>(`/agent-profiles${query}`, options)).agent_profiles;
 }
 
 export async function getAgentProfile(profileId: string): Promise<AgentProfileView> {
@@ -85,9 +86,9 @@ export async function deleteAgentProfile(profileId: string): Promise<{ profile_i
   return request<{ profile_id: string; archived_versions: number }>(`/agent-profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE', mutating: true });
 }
 
-export async function listAgentProfileVersions(profileId: string, includeArchived = false): Promise<AgentProfileView[]> {
+export async function listAgentProfileVersions(profileId: string, includeArchived = false, options: ReadRequestOptions = {}): Promise<AgentProfileView[]> {
   const query = includeArchived ? '?include_archived=true' : '';
-  return (await request<{ agent_profile_versions: AgentProfileView[] }>(`/agent-profiles/${encodeURIComponent(profileId)}/versions${query}`)).agent_profile_versions;
+  return (await request<{ agent_profile_versions: AgentProfileView[] }>(`/agent-profiles/${encodeURIComponent(profileId)}/versions${query}`, options)).agent_profile_versions;
 }
 
 export async function createAgentProfileVersion(profileId: string, input: UpsertAgentProfileInput): Promise<AgentProfileView> {
@@ -110,8 +111,8 @@ export async function listSessions(): Promise<SessionView[]> {
   return (await request<{ sessions: SessionView[] }>('/sessions')).sessions;
 }
 
-export async function listWorkspaces(): Promise<WorkspaceView[]> {
-  return (await request<{ workspaces: WorkspaceView[] }>('/workspaces')).workspaces;
+export async function listWorkspaces(options: ReadRequestOptions = {}): Promise<WorkspaceView[]> {
+  return (await request<{ workspaces: WorkspaceView[] }>('/workspaces', options)).workspaces;
 }
 
 export async function getWorkspace(workspaceId: string): Promise<WorkspaceView> {
@@ -130,13 +131,13 @@ export async function deleteWorkspace(workspaceId: string): Promise<WorkspaceVie
   return (await request<{ workspace: WorkspaceView }>(`/workspaces/${encodeURIComponent(workspaceId)}`, { method: 'DELETE', mutating: true })).workspace;
 }
 
-export async function listWorkspaceRoots(): Promise<WorkspaceRootView[]> {
-  return (await request<{ roots: WorkspaceRootView[] }>('/workspace-roots')).roots;
+export async function listWorkspaceRoots(options: ReadRequestOptions = {}): Promise<WorkspaceRootView[]> {
+  return (await request<{ roots: WorkspaceRootView[] }>('/workspace-roots', options)).roots;
 }
 
-export async function listWorkspaceRootEntries(rootId: string, path = ''): Promise<WorkspaceDirectoryListingView> {
+export async function listWorkspaceRootEntries(rootId: string, path = '', options: ReadRequestOptions = {}): Promise<WorkspaceDirectoryListingView> {
   const query = path ? `?path=${encodeURIComponent(path)}` : '';
-  return request<WorkspaceDirectoryListingView>(`/workspace-roots/${encodeURIComponent(rootId)}/entries${query}`);
+  return request<WorkspaceDirectoryListingView>(`/workspace-roots/${encodeURIComponent(rootId)}/entries${query}`, options);
 }
 
 export async function listTasks(): Promise<TaskView[]> {

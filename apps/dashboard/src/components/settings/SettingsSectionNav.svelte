@@ -1,14 +1,17 @@
 <script lang="ts">
+  import { navigate } from 'svelte-mini-router'
+
   type Section = {
     label: string
     href: string
+    path: string
     match: string[]
   }
 
   const sections: Section[] = [
-    { label: 'Common', href: '/dashboard/settings/common', match: ['/dashboard/settings/common'] },
-    { label: 'Workspaces', href: '/dashboard/settings/workspaces', match: ['/dashboard/settings/workspaces', '/dashboard/workspaces'] },
-    { label: 'Agent Profiles', href: '/dashboard/settings/agent-profiles', match: ['/dashboard/settings/agent-profiles', '/dashboard/agent-profiles'] },
+    { label: 'Common', href: '/dashboard/settings/common', path: '/settings/common', match: ['/dashboard/settings/common'] },
+    { label: 'Workspaces', href: '/dashboard/settings/workspaces', path: '/settings/workspaces', match: ['/dashboard/settings/workspaces', '/dashboard/workspaces'] },
+    { label: 'Agent Profiles', href: '/dashboard/settings/agent-profiles', path: '/settings/agent-profiles', match: ['/dashboard/settings/agent-profiles', '/dashboard/agent-profiles'] },
   ]
 
   let currentPath = $state(window.location.pathname)
@@ -17,8 +20,10 @@
     return section.match.some((path) => currentPath === path)
   }
 
-  function activate(path: string): void {
-    currentPath = new URL(path, window.location.origin).pathname
+  function activate(event: MouseEvent, section: Section): void {
+    event.preventDefault()
+    currentPath = new URL(section.href, window.location.origin).pathname
+    navigate(section.path)
   }
 </script>
 
@@ -30,7 +35,7 @@
       <a
         href={section.href}
         aria-current={isActive(section) ? 'page' : undefined}
-        onclick={() => activate(section.href)}
+        onclick={(event) => activate(event, section)}
         class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
       >
         {section.label}

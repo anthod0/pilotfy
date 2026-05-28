@@ -117,7 +117,7 @@ test('renders a compact directory/action table and opens directories through the
   expect(within(table).queryByRole('columnheader', { name: 'Workspace' })).not.toBeInTheDocument();
 
   await user.click(screen.getByRole('button', { name: 'Open directory sandbox' }));
-  expect(mocks.browseWorkspaceRoot).toHaveBeenCalledWith('root-1', 'sandbox');
+  expect(mocks.browseWorkspaceRoot).toHaveBeenLastCalledWith('root-1', 'sandbox', {});
 });
 
 test('opens registration and rename dialogs from user actions', async () => {
@@ -135,4 +135,20 @@ test('opens registration and rename dialogs from user actions', async () => {
 
   expect(screen.getByRole('heading', { name: 'Confirm workspace rename' })).toBeInTheDocument();
   expect(screen.getByLabelText('Display name')).toHaveValue('llmparty');
+});
+
+test('aborts initial settings workspace requests when the page unmounts', async () => {
+  const { unmount } = render(WorkspacesPage);
+
+  await vi.waitFor(() => expect(mocks.loadWorkspaces).toHaveBeenCalled());
+  const workspaceOptions = mocks.loadWorkspaces.mock.calls[0][0] as { signal?: AbortSignal } | undefined;
+  const rootsOptions = mocks.loadWorkspaceRoots.mock.calls[0][0] as { signal?: AbortSignal } | undefined;
+
+  expect(workspaceOptions?.signal).toBeInstanceOf(AbortSignal);
+  expect(rootsOptions?.signal).toBe(workspaceOptions?.signal);
+  expect(workspaceOptions?.signal?.aborted).toBe(false);
+
+  unmount();
+
+  expect(workspaceOptions?.signal?.aborted).toBe(true);
 });
