@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import ChatPage from '../../src/pages/ChatPage.svelte';
 import type { SessionConsoleDetail } from '../../src/stores/sessions';
-import type { SessionView, TurnView } from '../../src/api/types';
+import type { AgentProfileView, CreateSessionResult, SessionView, TurnView, WorkspaceView } from '../../src/api/types';
 
 const mocks = vi.hoisted(() => {
   function writableStore<T>(initial: T) {
@@ -27,6 +28,12 @@ const mocks = vi.hoisted(() => {
   const sessionDetail = writableStore<SessionConsoleDetail | null>(null);
   const sessionDetailLoading = writableStore(false);
   const sessionDetailError = writableStore<string | null>(null);
+  const workspaces = writableStore<WorkspaceView[]>([]);
+  const workspacesLoading = writableStore(false);
+  const workspacesError = writableStore<string | null>(null);
+  const agentProfiles = writableStore<AgentProfileView[]>([]);
+  const agentProfilesLoading = writableStore(false);
+  const agentProfilesError = writableStore<string | null>(null);
 
   return {
     sessions,
@@ -35,10 +42,19 @@ const mocks = vi.hoisted(() => {
     sessionDetail,
     sessionDetailLoading,
     sessionDetailError,
+    workspaces,
+    workspacesLoading,
+    workspacesError,
+    agentProfiles,
+    agentProfilesLoading,
+    agentProfilesError,
     loadedSessions: [] as SessionView[],
     loadSessions: vi.fn(async () => mocks.loadedSessions),
     loadSessionDetail: vi.fn(async () => null),
     submitInboxMessage: vi.fn(),
+    createSession: vi.fn(),
+    loadWorkspaces: vi.fn(async () => undefined),
+    loadAgentProfiles: vi.fn(async () => undefined),
     navigate: vi.fn(),
     pathParams: {} as Record<string, string>,
   };
@@ -54,7 +70,26 @@ vi.mock('../../src/stores/sessions', () => ({
   loadSessions: mocks.loadSessions,
   loadSessionDetail: mocks.loadSessionDetail,
   submitInboxMessage: mocks.submitInboxMessage,
+  createSession: mocks.createSession,
 }));
+
+vi.mock('../../src/stores/workspaces', () => ({
+  workspaces: mocks.workspaces,
+  workspacesLoading: mocks.workspacesLoading,
+  workspacesError: mocks.workspacesError,
+  loadWorkspaces: mocks.loadWorkspaces,
+}));
+
+vi.mock('../../src/stores/agentProfiles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/stores/agentProfiles')>();
+  return {
+    ...actual,
+    agentProfiles: mocks.agentProfiles,
+    agentProfilesLoading: mocks.agentProfilesLoading,
+    agentProfilesError: mocks.agentProfilesError,
+    loadAgentProfiles: mocks.loadAgentProfiles,
+  };
+});
 
 vi.mock('svelte-mini-router', () => ({ navigate: mocks.navigate, getPathParams: () => mocks.pathParams }));
 
@@ -91,98 +126,113 @@ const turn = (overrides: Partial<TurnView> = {}): TurnView => ({
   ...overrides,
 });
 
+const workspace = (overrides: Partial<WorkspaceView> = {}): WorkspaceView => ({
+  workspace_id: 'workspace-1',
+  canonical_path: '/repo/llmparty',
+  display_path: '~/repo/llmparty',
+  name: 'llmparty',
+  state: 'active',
+  metadata: {},
+  created_at: '2026-05-14T00:00:00Z',
+  updated_at: '2026-05-14T00:00:00Z',
+  last_used_at: null,
+  ...overrides,
+});
+
+const profile = (overrides: Partial<AgentProfileView> = {}): AgentProfileView => ({
+  profile_id: 'coder',
+  version: '1',
+  name: 'Coder',
+  description: null,
+  supported_client_types: ['pi'],
+  agent_kind: 'executor',
+  system_prompt_template: null,
+  turn_prompt_template: null,
+  default_session_role: 'coder',
+  default_session_description: 'Coding session',
+  handle_prefix: 'coder',
+  expected_output_schema: null,
+  artifact_contract: {},
+  default_execution_policy: {},
+  default_review_policy: {},
+  metadata: {},
+  active: true,
+  archived_at: null,
+  archived_reason: null,
+  created_at: '2026-05-14T00:00:00Z',
+  updated_at: '2026-05-14T00:00:00Z',
+  ...overrides,
+});
+
 beforeEach(() => {
+  if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+  if (!Element.prototype.releasePointerCapture) Element.prototype.releasePointerCapture = () => undefined;
   window.history.pushState({}, '', '/dashboard/chat');
   const activeSession = session();
   mocks.loadedSessions = [activeSession];
   mocks.sessions.set([activeSession]);
   mocks.sessionsLoading.set(false);
   mocks.sessionsError.set(null);
-  mocks.sessionDetail.set({ session: activeSession, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.sessionDetail.set(null);
   mocks.sessionDetailLoading.set(false);
   mocks.sessionDetailError.set(null);
+  mocks.workspaces.set([workspace()]);
+  mocks.workspacesLoading.set(false);
+  mocks.workspacesError.set(null);
+  mocks.agentProfiles.set([profile()]);
+  mocks.agentProfilesLoading.set(false);
+  mocks.agentProfilesError.set(null);
   mocks.pathParams = {};
+  mocks.createSession.mockResolvedValue({ session: activeSession, initial_turn: null } satisfies CreateSessionResult);
   vi.clearAllMocks();
 });
 
-test('does not render a manual refresh button in the chat header', () => {
+test('renders a clean centered prompt input on the bare chat route instead of selecting an existing session', async () => {
   render(ChatPage);
 
-  expect(screen.getByRole('button', { name: /session console/i })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /refresh/i })).not.toBeInTheDocument();
+  const promptInput = await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
+  expect(promptInput).toHaveValue('');
+  expect(screen.queryByRole('heading', { name: /start a new chat/i })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Enter the first prompt/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^Prompt$/i)).not.toBeInTheDocument();
+  expect(screen.getByLabelText(/workspace/i)).toHaveTextContent('llmparty');
+  expect(screen.getByLabelText(/client/i)).toHaveTextContent('pi');
+  expect(screen.getByLabelText(/profile/i)).toHaveTextContent('Profile');
+  expect(mocks.loadSessionDetail).not.toHaveBeenCalled();
 });
 
-test('does not render the sessions list inside chat content', () => {
+test('creates a session with initial prompt, workspace, and client then opens its chat', async () => {
+  const user = userEvent.setup();
+  const created = session({ session_id: 'session-new' });
+  mocks.createSession.mockResolvedValue({ session: created, initial_turn: turn({ session_id: 'session-new' }) } satisfies CreateSessionResult);
   render(ChatPage);
 
-  expect(screen.queryByText('Pick an existing session to continue.')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /active/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /^all$/i })).not.toBeInTheDocument();
+  await user.type(screen.getByPlaceholderText('Ask the agent to implement, inspect, or explain something…'), 'Implement the dashboard chat flow');
+  await fireEvent.click(screen.getByRole('button', { name: /start chat/i }));
+
+  await waitFor(() => expect(mocks.createSession).toHaveBeenCalledWith({
+    client_type: 'pi',
+    workspace_id: 'workspace-1',
+    handle: null,
+    role: null,
+    description: null,
+    initial_task: { input: 'Implement the dashboard chat flow', metadata: { source: 'dashboard_chat' } },
+    metadata: { source: 'dashboard_chat' },
+  }));
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
 });
 
-test('renders chat surface without outer card border or opaque background', () => {
-  const { container } = render(ChatPage);
-
-  expect(container.querySelector('.rounded-xl.border.bg-card')).not.toBeInTheDocument();
-  expect(container.querySelector('.border-b.p-4')).not.toBeInTheDocument();
-  expect(container.querySelector('.border-t.p-4')).not.toBeInTheDocument();
-});
-
-test('renders composer with border and white background while assistant messages stay transparent', async () => {
-  const activeSession = session();
-  mocks.sessionDetail.set({ session: activeSession, turns: [turn()], inboxMessages: [], events: [], artifacts: [] });
-
-  const { container } = render(ChatPage);
-  const assistantMessage = await screen.findByText('hi there');
-
-  expect(container.querySelector('form.rounded-2xl.border.bg-background')).toBeInTheDocument();
-  expect(container.querySelector('.is-assistant .rounded-2xl.border.bg-card')).not.toBeInTheDocument();
-  expect(assistantMessage.closest('[class*="bg-card"]')).not.toBeInTheDocument();
-});
-
-test('loads the session selected by the chat path parameter', async () => {
-  const first = session({ session_id: 'session-1', handle: 'first' });
-  const second = session({ session_id: 'session-2', handle: 'second' });
-  window.history.pushState({}, '', '/dashboard/chat/session-2');
-  mocks.pathParams = { sessionId: 'session-2' };
-  mocks.loadedSessions = [first, second];
-  mocks.sessions.set([first, second]);
-  mocks.sessionDetail.set({ session: second, turns: [], inboxMessages: [], events: [], artifacts: [] });
-
-  render(ChatPage);
-
-  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
-});
-
-test('opens the selected session console from chat', async () => {
+test('loads and renders an existing chat session when the route has a session id', async () => {
   const selected = session({ session_id: 'session-2', handle: 'second' });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [selected];
   mocks.sessions.set([selected]);
-  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.sessionDetail.set({ session: selected, turns: [turn({ session_id: 'session-2' })], inboxMessages: [], events: [], artifacts: [] });
 
   render(ChatPage);
-  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
-
-  await screen.getByRole('button', { name: /session console/i }).click();
-
-  expect(mocks.navigate).toHaveBeenCalledWith('/sessions/session-2');
-});
-
-test('updates the selected chat session when the path parameter changes on the mounted page', async () => {
-  const first = session({ session_id: 'session-1', handle: 'first' });
-  const second = session({ session_id: 'session-2', handle: 'second' });
-  mocks.loadedSessions = [first, second];
-  mocks.sessions.set([first, second]);
-  mocks.sessionDetail.set({ session: first, turns: [], inboxMessages: [], events: [], artifacts: [] });
-
-  render(ChatPage);
-  await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-1'));
-
-  window.history.pushState({}, '', '/dashboard/chat/session-2');
-  mocks.pathParams = { sessionId: 'session-2' };
-  window.dispatchEvent(new PopStateEvent('popstate'));
 
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
+  expect(await screen.findByText('hi there')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /start a new chat/i })).not.toBeInTheDocument();
 });
