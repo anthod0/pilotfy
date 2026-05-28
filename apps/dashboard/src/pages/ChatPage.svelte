@@ -106,7 +106,7 @@
   {/if}
 
   <div class="min-h-0 flex-1">
-    <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
+    <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-transparent">
       {#if $sessionsLoading && !selectedSessionId}
         <div class="space-y-4 p-6"><Skeleton class="h-10 w-1/3" /><Skeleton class="h-80 w-full" /></div>
       {:else if !$sessions.length}
@@ -126,7 +126,7 @@
           </Empty.Header>
         </Empty.Root>
       {:else}
-        <div class="border-b p-4">
+        <div class="p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 class="text-lg font-semibold">{sessionChatTitle(selectedSession)}</h3>
@@ -138,7 +138,7 @@
 
         <SessionConversation {messages} loading={$sessionDetailLoading} />
 
-        <div class="border-t p-4">
+        <div class="p-4">
           <SessionMessageComposer
             bind:value={input}
             busy={submitting}

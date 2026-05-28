@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import ChatPage from '../../src/pages/ChatPage.svelte';
 import type { SessionConsoleDetail } from '../../src/stores/sessions';
-import type { SessionView } from '../../src/api/types';
+import type { SessionView, TurnView } from '../../src/api/types';
 
 const mocks = vi.hoisted(() => {
   function writableStore<T>(initial: T) {
@@ -76,6 +76,20 @@ const session = (overrides: Partial<SessionView> = {}): SessionView => ({
   ...overrides,
 });
 
+const turn = (overrides: Partial<TurnView> = {}): TurnView => ({
+  turn_id: 'turn-1',
+  session_id: 'session-1',
+  state: 'completed',
+  input: { summary: 'hello' },
+  output: { summary: 'hi there' },
+  failure: null,
+  created_at: '2026-05-14T00:00:00Z',
+  started_at: '2026-05-14T00:00:01Z',
+  completed_at: '2026-05-14T00:00:02Z',
+  metadata: {},
+  ...overrides,
+});
+
 beforeEach(() => {
   window.history.pushState({}, '', '/dashboard/chat');
   const activeSession = session();
@@ -102,6 +116,26 @@ test('does not render the sessions list inside chat content', () => {
   expect(screen.queryByText('Pick an existing session to continue.')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /active/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^all$/i })).not.toBeInTheDocument();
+});
+
+test('renders chat surface without outer card border or opaque background', () => {
+  const { container } = render(ChatPage);
+
+  expect(container.querySelector('.rounded-xl.border.bg-card')).not.toBeInTheDocument();
+  expect(container.querySelector('.border-b.p-4')).not.toBeInTheDocument();
+  expect(container.querySelector('.border-t.p-4')).not.toBeInTheDocument();
+});
+
+test('renders composer with border and white background while assistant messages stay transparent', async () => {
+  const activeSession = session();
+  mocks.sessionDetail.set({ session: activeSession, turns: [turn()], inboxMessages: [], events: [], artifacts: [] });
+
+  const { container } = render(ChatPage);
+  const assistantMessage = await screen.findByText('hi there');
+
+  expect(container.querySelector('form.rounded-2xl.border.bg-background')).toBeInTheDocument();
+  expect(container.querySelector('.is-assistant .rounded-2xl.border.bg-card')).not.toBeInTheDocument();
+  expect(assistantMessage.closest('[class*="bg-card"]')).not.toBeInTheDocument();
 });
 
 test('loads the session selected by the chat query parameter', async () => {
