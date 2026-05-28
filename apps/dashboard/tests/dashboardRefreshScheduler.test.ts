@@ -54,10 +54,10 @@ test('coalesces bursts of dashboard stream events into one refresh per affected 
   scheduler.handleEvent(sessionEvent());
   await scheduler.flushNow();
 
-  assert.deepEqual(calls.sort(), ['session:session-1', 'sessions', 'task:task-1', 'tasks'].sort());
+  assert.deepEqual(calls.sort(), ['session:session-1', 'task:task-1', 'tasks'].sort());
 });
 
-test('refreshes selected session detail when a session stream event arrives', async () => {
+test('refreshes selected session detail without reloading the whole session list when a session stream event arrives', async () => {
   const calls: string[] = [];
   const scheduler = createDashboardRefreshScheduler({
     delayMs: 0,
@@ -74,5 +74,5 @@ test('refreshes selected session detail when a session stream event arrives', as
   scheduler.handleEvent(sessionEvent());
   await scheduler.flushNow();
 
-  assert.deepEqual(calls.sort(), ['session:session-1', 'sessions'].sort());
+  assert.deepEqual(calls, ['session:session-1']);
 });

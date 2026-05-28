@@ -68,8 +68,13 @@ function taskSessionRefs(task: TaskView | null, dag: TaskDagView | null): Map<st
   return refs;
 }
 
-export async function loadSessions(): Promise<SessionView[]> {
-  sessionsLoading.set(true);
+type LoadOptions = {
+  showLoading?: boolean;
+};
+
+export async function loadSessions(options: LoadOptions = {}): Promise<SessionView[]> {
+  const showLoading = options.showLoading ?? true;
+  if (showLoading) sessionsLoading.set(true);
   sessionsError.set(null);
   try {
     const loaded = await listSessions();
@@ -80,16 +85,17 @@ export async function loadSessions(): Promise<SessionView[]> {
     sessionsError.set(error instanceof Error ? error.message : String(error));
     return [];
   } finally {
-    sessionsLoading.set(false);
+    if (showLoading) sessionsLoading.set(false);
   }
 }
 
-export async function loadSessionDetail(sessionId: string): Promise<SessionConsoleDetail | null> {
+export async function loadSessionDetail(sessionId: string, options: LoadOptions = {}): Promise<SessionConsoleDetail | null> {
   if (!sessionId) {
     sessionDetail.set(null);
     return null;
   }
-  sessionDetailLoading.set(true);
+  const showLoading = options.showLoading ?? true;
+  if (showLoading) sessionDetailLoading.set(true);
   sessionDetailError.set(null);
   try {
     const [session, turns, inboxMessages, events, artifacts] = await Promise.all([
@@ -104,11 +110,11 @@ export async function loadSessionDetail(sessionId: string): Promise<SessionConso
     sessions.update((items) => items.map((item) => item.session_id === session.session_id ? session : item));
     return detail;
   } catch (error) {
-    sessionDetail.set(null);
+    if (showLoading) sessionDetail.set(null);
     sessionDetailError.set(error instanceof Error ? error.message : String(error));
     return null;
   } finally {
-    sessionDetailLoading.set(false);
+    if (showLoading) sessionDetailLoading.set(false);
   }
 }
 

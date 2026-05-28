@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import { Bot, UserRound } from '@lucide/svelte'
   import * as Conversation from '$lib/components/ai-elements/conversation/index.js'
   import * as Message from '$lib/components/ai-elements/message/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
+  import { chatAutoScrollKey, scrollToBottom } from '../../session-chat/autoScroll'
   import type { SessionChatMessage } from '../../session-chat/sessionChat'
 
   interface Props {
@@ -12,6 +14,13 @@
   }
 
   let { messages, loading = false }: Props = $props()
+  let scrollContainer = $state<HTMLDivElement | null>(null)
+  const scrollKey = $derived(chatAutoScrollKey(messages))
+
+  $effect(() => {
+    scrollKey
+    void tick().then(() => scrollToBottom(scrollContainer))
+  })
 </script>
 
 <Conversation.Root class="min-h-0 flex-1">
@@ -26,7 +35,7 @@
       </Empty.Header>
     </Empty.Root>
   {:else}
-    <Conversation.Content>
+    <Conversation.Content bind:ref={scrollContainer}>
       {#each messages as chatMessage (chatMessage.id)}
         <Message.Root from={chatMessage.role}>
           <div class="mb-1 flex items-center gap-2 text-xs text-muted-foreground {chatMessage.role === 'user' ? 'justify-end' : 'justify-start'}">

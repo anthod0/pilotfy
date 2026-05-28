@@ -87,9 +87,12 @@ export function createDashboardRefreshScheduler(options: RefreshOptions) {
       const selected = options.getSelectedTaskId();
       if (selected && streamEvent.event.task_id === selected) pending.taskIds.add(selected);
     } else if (streamEvent.kind === 'session_event') {
-      pending.sessions = true;
       const selected = options.getSelectedSessionId();
-      if (selected && streamEvent.event.session_id === selected) pending.sessionIds.add(selected);
+      if (selected && streamEvent.event.session_id === selected) {
+        pending.sessionIds.add(selected);
+      } else {
+        pending.sessions = true;
+      }
     }
 
     schedule();

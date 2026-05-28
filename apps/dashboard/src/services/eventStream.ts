@@ -22,9 +22,9 @@ const refreshScheduler = createDashboardRefreshScheduler({
   loadTasks,
   loadWorkspaces,
   loadAgentProfiles,
-  loadSessions,
+  loadSessions: () => loadSessions({ showLoading: false }),
   refreshTask,
-  refreshSession: loadSessionDetail,
+  refreshSession: (sessionId) => loadSessionDetail(sessionId, { showLoading: false }),
 });
 
 let controller: AbortController | null = null;
