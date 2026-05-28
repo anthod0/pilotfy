@@ -24,6 +24,7 @@ async fn test_state() -> AppState {
         graph: Default::default(),
         workspace_browser: Default::default(),
         dashboard: llmparty::transport::http::dashboard::ResolvedDashboard::local_default(),
+        shutdown: Default::default(),
     }
 }
 

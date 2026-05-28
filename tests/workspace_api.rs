@@ -31,6 +31,7 @@ async fn test_state(roots: Vec<WorkspaceRootConfig>) -> AppState {
         graph: GraphRuntimeConfig::default(),
         workspace_browser: WorkspaceBrowserConfig { roots },
         dashboard: llmparty::transport::http::dashboard::ResolvedDashboard::local_default(),
+        shutdown: Default::default(),
     }
 }
 

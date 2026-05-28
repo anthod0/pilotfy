@@ -24,10 +24,14 @@ async fn main() -> llmparty::error::Result<()> {
     info!(addr = %bound_addr, "starting llmparty control plane");
     info!(url = %dashboard_url(bound_addr), "dashboard available");
 
+    let shutdown = state.shutdown.clone();
     http::serve_with_shutdown_timeout(
         listener,
         http::router(state),
-        shutdown_signal(),
+        async move {
+            shutdown_signal().await;
+            shutdown.notify();
+        },
         Duration::from_secs(5),
     )
     .await?;

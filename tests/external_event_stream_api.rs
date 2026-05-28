@@ -31,6 +31,7 @@ async fn test_state(name: &str) -> AppState {
         graph: Default::default(),
         workspace_browser: Default::default(),
         dashboard: llmparty::transport::http::dashboard::ResolvedDashboard::local_default(),
+        shutdown: Default::default(),
     }
 }
 
@@ -360,7 +361,7 @@ async fn event_stream_rejects_cursor_outside_requested_scope() {
 }
 
 #[tokio::test]
-async fn graceful_shutdown_returns_after_timeout_when_event_stream_client_stays_open() {
+async fn graceful_shutdown_closes_event_stream_without_waiting_for_timeout() {
     let state = test_state("shutdown_with_stream").await;
     seed_session_events(&state).await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -368,14 +369,16 @@ async fn graceful_shutdown_returns_after_timeout_when_event_stream_client_stays_
         .expect("bind listener");
     let addr = listener.local_addr().expect("local addr");
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let shutdown = state.shutdown.clone();
 
     let server = tokio::spawn(http::serve_with_shutdown_timeout(
         listener,
         http::router(state),
         async move {
             let _ = shutdown_rx.await;
+            shutdown.notify();
         },
-        Duration::from_millis(100),
+        Duration::from_secs(5),
     ));
 
     let mut stream = tokio::net::TcpStream::connect(addr)
@@ -405,9 +408,9 @@ async fn graceful_shutdown_returns_after_timeout_when_event_stream_client_stays_
     );
 
     shutdown_tx.send(()).expect("send shutdown");
-    tokio::time::timeout(Duration::from_secs(1), server)
+    tokio::time::timeout(Duration::from_millis(500), server)
         .await
-        .expect("server should stop after shutdown timeout")
+        .expect("server should stop promptly after closing the event stream")
         .expect("server task")
         .expect("server result");
 }

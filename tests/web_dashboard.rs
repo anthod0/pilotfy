@@ -30,6 +30,7 @@ async fn test_state_with_dashboard(dashboard: ResolvedDashboard) -> AppState {
         graph: Default::default(),
         workspace_browser: Default::default(),
         dashboard,
+        shutdown: Default::default(),
     }
 }
 

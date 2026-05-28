@@ -130,10 +130,15 @@ fn dashboard_sse_stream(
     let (sender, receiver) = mpsc::channel(32);
 
     tokio::spawn(async move {
+        let mut shutdown = state.shutdown.subscribe();
         let service = ExternalQueryService::new(state.db);
         let mut cursor = after_cursor;
 
         loop {
+            if *shutdown.borrow() {
+                break;
+            }
+
             let Ok(items) = service.list_dashboard_stream_items_after(cursor, 100).await else {
                 break;
             };
@@ -142,7 +147,10 @@ fn dashboard_sse_stream(
                 if stream_once {
                     break;
                 }
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+                    _ = shutdown.changed() => break,
+                }
                 continue;
             }
 
@@ -155,8 +163,13 @@ fn dashboard_sse_stream(
                 let Ok(event) = event else {
                     break;
                 };
-                if sender.send(Ok(event)).await.is_err() {
-                    return;
+                tokio::select! {
+                    result = sender.send(Ok(event)) => {
+                        if result.is_err() {
+                            return;
+                        }
+                    }
+                    _ = shutdown.changed() => return,
                 }
             }
         }
@@ -174,10 +187,15 @@ fn event_sse_stream(
     let (sender, receiver) = mpsc::channel(32);
 
     tokio::spawn(async move {
+        let mut shutdown = state.shutdown.subscribe();
         let service = ExternalQueryService::new(state.db);
         let mut cursor = after_rowid;
 
         loop {
+            if *shutdown.borrow() {
+                break;
+            }
+
             let result = match &target {
                 EventStreamTarget::Session { session_id } => {
                     service
@@ -213,7 +231,10 @@ fn event_sse_stream(
                 if stream_once {
                     break;
                 }
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+                    _ = shutdown.changed() => break,
+                }
                 continue;
             }
 
@@ -227,8 +248,13 @@ fn event_sse_stream(
                 let Ok(event) = event else {
                     break;
                 };
-                if sender.send(Ok(event)).await.is_err() {
-                    return;
+                tokio::select! {
+                    result = sender.send(Ok(event)) => {
+                        if result.is_err() {
+                            return;
+                        }
+                    }
+                    _ = shutdown.changed() => return,
                 }
             }
         }
