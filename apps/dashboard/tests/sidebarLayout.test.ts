@@ -16,6 +16,7 @@ vi.mock('../src/services/eventStream', () => ({
 }));
 
 beforeEach(() => {
+  window.history.pushState({}, '', '/dashboard/overview');
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -53,6 +54,27 @@ test('sidebar shows workflow items and keeps settings in the footer', () => {
   expect(workflowQueries.queryByText('Settings')).not.toBeInTheDocument();
 
   expect(within(footer as HTMLElement).getByText('Settings')).toBeInTheDocument();
+});
+
+test('sidebar only marks the current route as active', () => {
+  window.history.pushState({}, '', '/dashboard/chat');
+
+  render(AppSidebarHost);
+
+  const overview = screen.getByText('Overview').closest('button');
+  const tasks = screen.getByText('Tasks').closest('button');
+  const chat = screen.getByText('Chat').closest('button');
+  const settings = screen.getByText('Settings').closest('button');
+
+  expect(overview).not.toBeNull();
+  expect(tasks).not.toBeNull();
+  expect(chat).not.toBeNull();
+  expect(settings).not.toBeNull();
+
+  expect(chat).toHaveAttribute('data-active', 'true');
+  expect(overview).not.toHaveAttribute('data-active');
+  expect(tasks).not.toHaveAttribute('data-active');
+  expect(settings).not.toHaveAttribute('data-active');
 });
 
 test('settings page exposes administration links moved out of the sidebar', () => {
