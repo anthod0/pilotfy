@@ -209,6 +209,13 @@
     if (selectedSessionId) await loadSessionDetail(selectedSessionId)
   }
 
+  function handleNewChatKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void startChat()
+    }
+  }
+
   async function startChat(): Promise<void> {
     if (!canCreate) return
     creating = true
@@ -339,6 +346,18 @@
     <div class="flex min-h-0 flex-1 items-center justify-center">
       <div class="w-full max-w-4xl space-y-3">
         <div class="flex min-w-0 flex-wrap items-center gap-2 px-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={taskMode ? 'default' : 'outline'}
+            class="h-7 rounded-full px-3 text-sm font-normal"
+            aria-pressed={taskMode}
+            aria-label={taskMode ? 'Task mode on' : 'Task mode off'}
+            onclick={() => (taskMode = !taskMode)}
+          >
+            <GitBranch class="size-4" /> Task
+          </Button>
+
           <Select.Root type="single" bind:value={createWorkspaceId} disabled={$workspacesLoading}>
             <Select.Trigger class={`${newChatSelectorTriggerClass} max-w-56`} aria-label="Workspace" title={selectedWorkspace?.canonical_path ?? undefined}>
               <Folder class="size-4" aria-hidden="true" />
@@ -375,21 +394,12 @@
             id="chat-prompt"
             bind:value={prompt}
             placeholder="Ask the agent to implement, inspect, or explain something…"
+            onkeydown={handleNewChatKeydown}
           />
         </PromptInput.Body>
 
           <PromptInput.Toolbar class="justify-between gap-2 pt-1">
-            <Button
-              type="button"
-              size="sm"
-              variant={taskMode ? 'default' : 'outline'}
-              class="rounded-full font-normal"
-              aria-pressed={taskMode}
-              aria-label={taskMode ? 'Task mode on' : 'Task mode off'}
-              onclick={() => (taskMode = !taskMode)}
-            >
-              <GitBranch class="size-4" /> Task
-            </Button>
+            <p class="px-2 text-xs text-muted-foreground">Enter to send · Shift+Enter for newline</p>
             <PromptInput.Submit disabled={!canCreate || creating} aria-label={creating ? (taskMode ? 'Creating task' : 'Starting chat') : (taskMode ? 'Create task' : 'Start chat')} />
           </PromptInput.Toolbar>
         </PromptInput.Root>

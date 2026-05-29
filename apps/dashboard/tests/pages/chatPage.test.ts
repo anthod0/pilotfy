@@ -280,16 +280,41 @@ test('renders new chat selectors as compact metadata pills above the prompt inpu
   expect(clientSelector.querySelector('svg')).toHaveClass('lucide-terminal');
 });
 
-test('places task mode toggle at the left edge of the prompt toolbar', async () => {
+test('places task mode toggle with the metadata selectors above the prompt input', async () => {
   render(ChatPage);
 
-  await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
+  const promptInput = await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
   const taskToggle = screen.getByRole('button', { name: /task mode off/i });
+  const workspaceSelector = screen.getByLabelText(/workspace/i);
+  const clientSelector = screen.getByLabelText(/client/i);
   const submit = screen.getByRole('button', { name: /start chat/i });
-  const toolbar = taskToggle.parentElement;
 
-  expect(toolbar).toHaveClass('justify-between');
+  expect(taskToggle.parentElement).toBe(workspaceSelector.parentElement);
+  expect(workspaceSelector.parentElement).toBe(clientSelector.parentElement);
+  expect(taskToggle).toHaveClass('h-7');
+  expect(taskToggle).toHaveClass('rounded-full');
+  expect(taskToggle.compareDocumentPosition(workspaceSelector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(clientSelector.compareDocumentPosition(promptInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(taskToggle.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('shows new chat keyboard hint and submits with Enter while preserving Shift Enter for newlines', async () => {
+  const user = userEvent.setup();
+  const created = session({ session_id: 'session-enter' });
+  mocks.createSession.mockResolvedValue({ session: created, initial_turn: turn({ session_id: 'session-enter' }) } satisfies CreateSessionResult);
+  render(ChatPage);
+
+  const promptInput = await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
+  expect(screen.getByText('Enter to send · Shift+Enter for newline')).toBeInTheDocument();
+
+  await user.type(promptInput, 'Line one');
+  await fireEvent.keyDown(promptInput, { key: 'Enter', shiftKey: true });
+  expect(mocks.createSession).not.toHaveBeenCalled();
+
+  await fireEvent.keyDown(promptInput, { key: 'Enter' });
+  await waitFor(() => expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({
+    initial_task: { input: 'Line one', metadata: { source: 'dashboard_chat' } },
+  })));
 });
 
 test('creates a manual DAG task from task mode and opens the planner session chat', async () => {
