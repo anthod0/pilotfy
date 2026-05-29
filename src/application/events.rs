@@ -137,7 +137,8 @@ impl EventIngestService {
 
         if matches!(
             event.event_type,
-            EventType::TurnCompleted
+            EventType::SessionReady
+                | EventType::TurnCompleted
                 | EventType::TurnFailed
                 | EventType::TurnInterrupted
                 | EventType::TurnCancelled

@@ -130,9 +130,13 @@ async fn binding_metadata(state: &AppState, session_id: &str) -> Value {
 }
 
 async fn report_ready(state: AppState, session_id: &str) {
+    report_ready_with_event(state, session_id, &format!("evt_ready_{session_id}")).await;
+}
+
+async fn report_ready_with_event(state: AppState, session_id: &str, event_id: &str) {
     let metadata = binding_metadata(&state, session_id).await;
     let ready = json!({
-        "event_id": format!("evt_ready_{session_id}"),
+        "event_id": event_id,
         "session_id":session_id,
         "turn_id":null,
         "source":"agent_client",
@@ -262,6 +266,78 @@ async fn wait_for_file_contains(path: &Path, expected: &str) {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     panic!("{} did not contain {expected:?}", path.display());
+}
+
+#[tokio::test]
+async fn pi_resume_drains_message_submitted_before_ready() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let state = test_state("m0_pi_resume_drains_ready").await;
+    let (session_id, _) = create_pi_session(state.clone(), temp.path()).await;
+
+    let (terminate_status, terminate_body) = request_json(
+        state.clone(),
+        "DELETE",
+        &format!("/external/v1/sessions/{session_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(terminate_status, StatusCode::OK, "{terminate_body:?}");
+    assert_eq!(terminate_body["data"]["session"]["state"], "exited");
+
+    let (resume_status, resume_body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/resume"),
+        None,
+    )
+    .await;
+    assert_eq!(resume_status, StatusCode::OK, "{resume_body:?}");
+    assert_eq!(resume_body["data"]["session"]["state"], "starting");
+
+    let (queued_status, queued_body) = request_json(
+        state.clone(),
+        "POST",
+        &format!("/external/v1/sessions/{session_id}/inbox/messages"),
+        Some(json!({"input":"continue after resume"})),
+    )
+    .await;
+    assert_eq!(queued_status, StatusCode::CREATED, "{queued_body:?}");
+    let message_id = queued_body["data"]["inbox_message"]["message_id"]
+        .as_str()
+        .expect("message id")
+        .to_string();
+    assert_eq!(queued_body["data"]["inbox_message"]["state"], "pending");
+    assert_eq!(queued_body["data"]["inbox_message"]["turn_id"], Value::Null);
+
+    report_ready_with_event(state.clone(), &session_id, "evt_ready_after_resume").await;
+
+    let (message_status, message_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/inbox/messages/{message_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(message_status, StatusCode::OK, "{message_body:?}");
+    let message = &message_body["data"]["inbox_message"];
+    assert_eq!(message["state"], "dispatched");
+    let turn_id = message["turn_id"].as_str().expect("turn id");
+
+    let (turn_status, turn_body) = request_json(
+        state.clone(),
+        "GET",
+        &format!("/external/v1/sessions/{session_id}/turns/{turn_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(turn_status, StatusCode::OK, "{turn_body:?}");
+    assert_eq!(turn_body["data"]["turn"]["state"], "running");
+    assert_eq!(
+        turn_body["data"]["turn"]["input"]["summary"],
+        "continue after resume"
+    );
+
+    cleanup_session_runtime(&state, &session_id).await;
 }
 
 #[tokio::test]
