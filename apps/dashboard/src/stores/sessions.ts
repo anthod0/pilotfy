@@ -10,6 +10,7 @@ import {
   listSessions,
   listTurns,
   restartSession as apiRestartSession,
+  resumeSession as apiResumeSession,
   submitInboxMessage as apiSubmitInboxMessage,
   terminateSession as apiTerminateSession,
 } from '../api/client';
@@ -140,6 +141,12 @@ export async function interruptSession(sessionId: string): Promise<void> {
 
 export async function restartSession(sessionId: string): Promise<void> {
   await apiRestartSession(sessionId);
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+}
+
+export async function resumeSession(sessionId: string): Promise<void> {
+  await apiResumeSession(sessionId);
   await loadSessions();
   await loadSessionDetail(sessionId);
 }

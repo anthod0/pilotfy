@@ -249,6 +249,10 @@ export async function restartSession(sessionId: string): Promise<unknown> {
   return request(`/sessions/${sessionId}/restart`, { method: 'POST', mutating: true });
 }
 
+export async function resumeSession(sessionId: string): Promise<unknown> {
+  return request(`/sessions/${sessionId}/resume`, { method: 'POST', mutating: true });
+}
+
 export async function terminateSession(sessionId: string): Promise<unknown> {
   return request(`/sessions/${sessionId}`, { method: 'DELETE', mutating: true });
 }

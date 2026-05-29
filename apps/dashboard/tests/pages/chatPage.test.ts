@@ -60,6 +60,9 @@ const mocks = vi.hoisted(() => {
     loadSessions: vi.fn(async () => mocks.loadedSessions),
     loadSessionDetail: vi.fn(async () => null),
     submitInboxMessage: vi.fn(),
+    resumeSession: vi.fn(),
+    restartSession: vi.fn(),
+    terminateSession: vi.fn(),
     createSession: vi.fn(),
     createDagTask: vi.fn(),
     loadTaskProposals: vi.fn(async () => []),
@@ -80,6 +83,9 @@ vi.mock('../../src/stores/sessions', () => ({
   loadSessions: mocks.loadSessions,
   loadSessionDetail: mocks.loadSessionDetail,
   submitInboxMessage: mocks.submitInboxMessage,
+  resumeSession: mocks.resumeSession,
+  restartSession: mocks.restartSession,
+  terminateSession: mocks.terminateSession,
   createSession: mocks.createSession,
 }));
 
@@ -343,6 +349,26 @@ test('loads and renders an existing chat session with session metadata in the pa
   expect(screen.getByText('Workspace: workspace-1')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /new chat/i }).querySelector('svg')).toHaveClass('lucide-square-pen');
   expect(screen.queryByRole('heading', { name: /new chat/i })).not.toBeInTheDocument();
+});
+
+test('shows session lifecycle buttons on an existing chat and runs exit, resume, and restart actions', async () => {
+  const user = userEvent.setup();
+  const selected = session({ session_id: 'session-2', state: 'exited' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+
+  render(ChatPage);
+
+  await user.click(await screen.findByRole('button', { name: /resume session/i }));
+  await user.click(screen.getByRole('button', { name: /restart session/i }));
+  await user.click(screen.getByRole('button', { name: /exit session/i }));
+
+  expect(mocks.resumeSession).toHaveBeenCalledWith('session-2');
+  expect(mocks.restartSession).toHaveBeenCalledWith('session-2');
+  expect(mocks.terminateSession).toHaveBeenCalledWith('session-2');
 });
 
 test('loads planner task proposals from session metadata and renders the draft DAG', async () => {

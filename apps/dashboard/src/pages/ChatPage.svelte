@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { CircleAlert, GitBranch, MessageCircle, SquarePen, TerminalSquare } from '@lucide/svelte'
+  import { CircleAlert, GitBranch, LogOut, MessageCircle, Play, RotateCw, SquarePen, TerminalSquare } from '@lucide/svelte'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -35,12 +35,15 @@
     createSession,
     loadSessionDetail,
     loadSessions,
+    restartSession,
+    resumeSession,
     sessionDetail,
     sessionDetailError,
     sessionDetailLoading,
     sessions,
     sessionsError,
     submitInboxMessage,
+    terminateSession,
   } from '../stores/sessions'
   import {
     createDagTask,
@@ -61,6 +64,7 @@
 
   let input = ''
   let submitting = false
+  let actionBusy = false
   let actionError: string | null = null
   let actionMessage: string | null = null
   let loadedProposalTaskId = ''
@@ -231,6 +235,23 @@
     }
   }
 
+  async function runSessionLifecycle(action: 'exit' | 'resume' | 'restart'): Promise<void> {
+    if (!selectedSessionId) return
+    actionBusy = true
+    actionError = null
+    actionMessage = null
+    try {
+      if (action === 'exit') await terminateSession(selectedSessionId)
+      if (action === 'resume') await resumeSession(selectedSessionId)
+      if (action === 'restart') await restartSession(selectedSessionId)
+      actionMessage = `Session ${action} request accepted.`
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error)
+    } finally {
+      actionBusy = false
+    }
+  }
+
   async function sendMessage(): Promise<void> {
     if (!canSend || !selectedSessionId) return
     submitting = true
@@ -277,6 +298,11 @@
     <div class="flex gap-2">
       {#if selectedSessionId}
         <Button variant="outline" onclick={openNewChat}><SquarePen class="size-4" /> New chat</Button>
+      {/if}
+      {#if selectedSession}
+        <Button variant="outline" disabled={actionBusy} aria-label="Resume session" onclick={() => void runSessionLifecycle('resume')}><Play class="size-4" /> Resume</Button>
+        <Button variant="outline" disabled={actionBusy} aria-label="Restart session" onclick={() => void runSessionLifecycle('restart')}><RotateCw class="size-4" /> Restart</Button>
+        <Button variant="destructive" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
       {/if}
       <Button variant="outline" onclick={openSessionConsole}><TerminalSquare class="size-4" /> Session Console</Button>
     </div>
