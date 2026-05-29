@@ -80,9 +80,10 @@ test('renders failed and pending turns as assistant status messages', () => {
   expect(messages[3].content).toMatch(/Waiting/);
 });
 
-test('only allows sending non-empty messages to non-terminal sessions', () => {
+test('allows sending non-empty messages unless the session is missing or errored', () => {
   expect(canSendSessionMessage(session({ state: 'idle' }), 'hello')).toBe(true);
-  expect(canSendSessionMessage(session({ state: 'exited' }), 'hello')).toBe(false);
+  expect(canSendSessionMessage(session({ state: 'exited' }), 'hello')).toBe(true);
+  expect(canSendSessionMessage(session({ state: 'error' }), 'hello')).toBe(false);
   expect(canSendSessionMessage(session({ state: 'idle' }), '   ')).toBe(false);
   expect(canSendSessionMessage(null, 'hello')).toBe(false);
 });

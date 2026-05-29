@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => {
     loadTaskProposals: vi.fn(async () => []),
     loadWorkspaces: vi.fn(async () => undefined),
     loadAgentProfiles: vi.fn(async () => undefined),
+    toastError: vi.fn(),
     navigate: vi.fn(),
     pathParams: {} as Record<string, string>,
   };
@@ -123,6 +124,10 @@ vi.mock('../../src/stores/agentProfiles', async (importOriginal) => {
 });
 
 vi.mock('svelte-mini-router', () => ({ navigate: mocks.navigate, getPathParams: () => mocks.pathParams }));
+
+vi.mock('svelte-sonner', () => ({
+  toast: { error: mocks.toastError },
+}));
 
 const session = (overrides: Partial<SessionView> = {}): SessionView => ({
   session_id: 'session-1',
@@ -391,6 +396,43 @@ test('places session controls near the prompt input and keeps advanced controls 
 
   await user.click(exitButton);
   expect(mocks.terminateSession).toHaveBeenCalledWith('session-2');
+});
+
+test('queues follow-up messages without rendering inline success chrome', async () => {
+  const user = userEvent.setup();
+  const selected = session({ session_id: 'session-2', state: 'idle' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.submitInboxMessage.mockResolvedValue(undefined);
+
+  render(ChatPage);
+
+  await user.type(await screen.findByPlaceholderText('Send a follow-up message…'), 'continue this session');
+  await user.click(screen.getByRole('button', { name: /send/i }));
+
+  await waitFor(() => expect(mocks.submitInboxMessage).toHaveBeenCalled());
+  expect(screen.queryByText('Chat updated')).not.toBeInTheDocument();
+  expect(screen.queryByText('Message queued for the selected session.')).not.toBeInTheDocument();
+});
+
+test('does not render inline chat error alerts', async () => {
+  const selected = session({ session_id: 'session-2', state: 'idle' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.sessionDetailError.set('Could not load session detail');
+
+  render(ChatPage);
+
+  await screen.findByPlaceholderText('Send a follow-up message…');
+  await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('Chat error', { description: 'Could not load session detail' }));
+  expect(screen.queryByText('Chat error')).not.toBeInTheDocument();
+  expect(screen.queryByText('Could not load session detail')).not.toBeInTheDocument();
 });
 
 test('hides exit on exited sessions and automatically resumes before sending a message', async () => {

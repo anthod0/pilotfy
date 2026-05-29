@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { Router } from 'svelte-mini-router'
   import AppShell from './components/layout/AppShell.svelte'
+  import { Toaster } from './lib/components/ui/sonner/index.js'
   import { startEventStream, stopEventStream } from './services/eventStream'
   import { loadAgentProfiles } from './stores/agentProfiles'
   import { token } from './stores/auth'
@@ -27,6 +28,8 @@
     stopEventStream()
   })
 </script>
+
+<Toaster richColors />
 
 <AppShell>
   <Router {routerConf} />

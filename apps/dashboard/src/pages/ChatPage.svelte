@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { Activity, CircleAlert, GitBranch, LogOut, MoreHorizontal, RotateCw, TerminalSquare } from '@lucide/svelte'
+  import { Activity, GitBranch, LogOut, MoreHorizontal, RotateCw, TerminalSquare } from '@lucide/svelte'
+  import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
-  import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -67,7 +67,7 @@
   let submitting = false
   let actionBusy = false
   let actionError: string | null = null
-  let actionMessage: string | null = null
+  let lastToastedError: string | null = null
   let advancedControlsOpen = false
   let loadedProposalTaskId = ''
   let appliedRedirectTaskId = ''
@@ -103,6 +103,13 @@
   }
   $: if (plannerTaskId && plannerTaskProposals.some((proposal) => proposal.state === 'applied')) navigateToTaskDag(plannerTaskId)
   $: errorMessage = actionError ?? $sessionDetailError ?? $sessionsError ?? $workspacesError ?? $agentProfilesError ?? $taskProposalsError
+  $: {
+    if (errorMessage && errorMessage !== lastToastedError) {
+      toast.error('Chat error', { description: errorMessage })
+      lastToastedError = errorMessage
+    }
+    if (!errorMessage) lastToastedError = null
+  }
 
   function requestedSessionIdFromLocation(): string {
     return getPathParams().sessionId ?? new URLSearchParams(window.location.search).get('session') ?? ''
@@ -176,7 +183,6 @@
   function openNewChat(): void {
     selectedSessionId = ''
     actionError = null
-    actionMessage = null
     navigate('/chat')
   }
 
@@ -191,7 +197,6 @@
     selectedSessionId = nextSessionId
     input = ''
     actionError = null
-    actionMessage = null
     if (selectedSessionId) await loadSessionDetail(selectedSessionId)
   }
 
@@ -199,7 +204,6 @@
     if (!canCreate) return
     creating = true
     actionError = null
-    actionMessage = null
     try {
       if (taskMode) {
         const result = await createDagTask({
@@ -210,7 +214,6 @@
         })
         selectedSessionId = result.planning_turn.session_id
         prompt = ''
-        actionMessage = 'DAG task created. Planner session opened.'
         navigate(`/chat/${result.planning_turn.session_id}`)
         await loadSessionDetail(result.planning_turn.session_id)
         return
@@ -228,7 +231,6 @@
       })
       selectedSessionId = result.session.session_id
       prompt = ''
-      actionMessage = 'Session created and initial prompt queued.'
       navigate(`/chat/${result.session.session_id}`)
     } catch (error) {
       actionError = error instanceof Error ? error.message : String(error)
@@ -241,12 +243,10 @@
     if (!selectedSessionId) return
     actionBusy = true
     actionError = null
-    actionMessage = null
     try {
       if (action === 'exit') await terminateSession(selectedSessionId)
       if (action === 'resume') await resumeSession(selectedSessionId)
       if (action === 'restart') await restartSession(selectedSessionId)
-      actionMessage = `Session ${action} request accepted.`
     } catch (error) {
       actionError = error instanceof Error ? error.message : String(error)
     } finally {
@@ -258,7 +258,6 @@
     if (!canSend || !selectedSessionId) return
     submitting = true
     actionError = null
-    actionMessage = null
     const message = input.trim()
     try {
       if (selectedSession?.state === 'exited') await resumeSession(selectedSessionId)
@@ -268,7 +267,6 @@
         metadata: { source: 'dashboard_chat' },
       })
       input = ''
-      actionMessage = 'Message queued for the selected session.'
     } catch (error) {
       actionError = error instanceof Error ? error.message : String(error)
     } finally {
@@ -285,20 +283,6 @@
       <h2 class="text-3xl font-semibold tracking-tight">New Chat</h2>
       <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
     </div>
-  {/if}
-
-  {#if errorMessage}
-    <Alert.Root variant="destructive">
-      <CircleAlert class="size-4" />
-      <Alert.Title>Chat error</Alert.Title>
-      <Alert.Description>{errorMessage}</Alert.Description>
-    </Alert.Root>
-  {/if}
-  {#if actionMessage}
-    <Alert.Root>
-      <Alert.Title>Chat updated</Alert.Title>
-      <Alert.Description>{actionMessage}</Alert.Description>
-    </Alert.Root>
   {/if}
 
   {#if !selectedSessionId}
