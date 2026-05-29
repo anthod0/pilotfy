@@ -67,7 +67,7 @@ export function turnsToChatMessages(turns: TurnView[]): SessionChatMessage[] {
 }
 
 export function canSendSessionMessage(session: Pick<SessionView, 'state'> | null, input: string): boolean {
-  return Boolean(session && !terminalStates.has(session.state) && input.trim());
+  return Boolean(session && session.state !== 'error' && input.trim());
 }
 
 function assistantMessageForTurn(turn: TurnView): SessionChatMessage {

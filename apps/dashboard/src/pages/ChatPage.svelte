@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { Activity, CircleAlert, GitBranch, LogOut, MessageCircle, Play, RotateCw, TerminalSquare } from '@lucide/svelte'
+  import { Activity, CircleAlert, GitBranch, LogOut, MoreHorizontal, RotateCw, TerminalSquare } from '@lucide/svelte'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import * as Alert from '$lib/components/ui/alert/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
@@ -14,7 +14,7 @@
   import type { AgentProfileView, DagProposalView, DashboardStreamEvent, JsonObject, SessionView, WorkspaceView } from '../api/types'
   import {
     canSendSessionMessage,
-    sessionChatTitle,
+    isTerminalChatSession,
     turnsToChatMessages,
   } from '$lib/session-chat/sessionChat'
   import {
@@ -68,6 +68,7 @@
   let actionBusy = false
   let actionError: string | null = null
   let actionMessage: string | null = null
+  let advancedControlsOpen = false
   let loadedProposalTaskId = ''
   let appliedRedirectTaskId = ''
   let unsubscribeDashboardEvents: (() => void) | null = null
@@ -260,6 +261,7 @@
     actionMessage = null
     const message = input.trim()
     try {
+      if (selectedSession?.state === 'exited') await resumeSession(selectedSessionId)
       await submitInboxMessage(selectedSessionId, {
         input: message,
         delivery_policy: 'after_idle',
@@ -278,31 +280,12 @@
 <svelte:window onpopstate={() => void selectSessionFromLocation()} />
 
 <section class="flex h-[calc(100vh-5rem)] min-h-[42rem] flex-col gap-4">
-  <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+  {#if !selectedSessionId}
     <div class="space-y-2">
-      <h2 class="flex items-center gap-2 text-3xl font-semibold tracking-tight">
-        <MessageCircle class="size-7" /> {selectedSession ? sessionChatTitle(selectedSession) : 'New Chat'}
-      </h2>
-      {#if selectedSession}
-        <div class="flex max-w-5xl flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          <span>Client: {selectedSession.client_type}</span>
-          <span>Profile: {sessionProfileTitle(selectedSession)}</span>
-          <span>Handle: {selectedSession.handle ?? '—'}</span>
-          <span>Description: {selectedSession.description ?? '—'}</span>
-        </div>
-      {:else}
-        <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
-      {/if}
+      <h2 class="text-3xl font-semibold tracking-tight">New Chat</h2>
+      <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
     </div>
-    <div class="flex gap-2">
-      {#if selectedSession}
-        <Button variant="outline" disabled={actionBusy} aria-label="Resume session" onclick={() => void runSessionLifecycle('resume')}><Play class="size-4" /> Resume</Button>
-        <Button variant="outline" disabled={actionBusy} aria-label="Restart session" onclick={() => void runSessionLifecycle('restart')}><RotateCw class="size-4" /> Restart</Button>
-        <Button variant="destructive" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
-      {/if}
-      <Button variant="outline" onclick={openSessionConsole}><TerminalSquare class="size-4" /> Session Console</Button>
-    </div>
-  </div>
+  {/if}
 
   {#if errorMessage}
     <Alert.Root variant="destructive">
@@ -447,7 +430,7 @@
 
           <SessionConversation {messages} loading={$sessionDetailLoading} />
 
-          <div class="p-4">
+          <div class="shrink-0 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             <div class="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-2">
               <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
                 <Activity class="size-4" /> {selectedSession.state}
@@ -455,6 +438,54 @@
               <span class="min-w-0 truncate rounded-full border bg-background px-3 py-1 text-sm text-muted-foreground" title={sessionWorkspacePath(selectedSession)}>
                 {sessionWorkspacePath(selectedSession)}
               </span>
+              <span class="text-sm text-muted-foreground">Client: {selectedSession.client_type}</span>
+              <span class="text-sm text-muted-foreground">Profile: {sessionProfileTitle(selectedSession)}</span>
+              <span class="text-sm text-muted-foreground">Handle: {selectedSession.handle ?? '—'}</span>
+            </div>
+            <div class="mb-2 flex items-center justify-end gap-2 px-2">
+              {#if !isTerminalChatSession(selectedSession)}
+                <Button variant="destructive" size="sm" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
+              {/if}
+              <div class="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={actionBusy}
+                  aria-haspopup="menu"
+                  aria-expanded={advancedControlsOpen}
+                  aria-label="Advanced session controls"
+                  onclick={() => (advancedControlsOpen = !advancedControlsOpen)}
+                >
+                  <MoreHorizontal class="size-4" /> Advanced
+                </Button>
+                {#if advancedControlsOpen}
+                  <div role="menu" class="absolute right-0 z-10 mt-1 w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                      onclick={() => {
+                        advancedControlsOpen = false
+                        openSessionConsole()
+                      }}
+                    >
+                      <TerminalSquare class="size-4" /> Session Console
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                      disabled={actionBusy}
+                      onclick={() => {
+                        advancedControlsOpen = false
+                        void runSessionLifecycle('restart')
+                      }}
+                    >
+                      <RotateCw class="size-4" /> Restart session
+                    </button>
+                  </div>
+                {/if}
+              </div>
             </div>
             <SessionMessageComposer
               bind:value={input}
@@ -464,8 +495,10 @@
               onValueChange={(value) => (input = value)}
               onSubmit={() => void sendMessage()}
             />
-            {#if canSendSessionMessage(selectedSession, 'x') === false}
-              <p class="mt-2 text-xs text-muted-foreground">This session is closed; start a new chat to continue.</p>
+            {#if selectedSession.state === 'exited'}
+              <p class="mt-2 text-xs text-muted-foreground">Sending a message will resume this session automatically.</p>
+            {:else if canSendSessionMessage(selectedSession, 'x') === false}
+              <p class="mt-2 text-xs text-muted-foreground">This session cannot accept new messages.</p>
             {/if}
           </div>
         {/if}

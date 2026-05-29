@@ -317,7 +317,7 @@ test('creates a session with initial prompt, workspace, and client then opens it
   expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
 });
 
-test('loads and renders an existing chat session with metadata, state, and workspace path above the prompt input', async () => {
+test('loads and renders an existing chat session with metadata, state, and workspace path above the prompt input without a page header', async () => {
   const selected = session({
     session_id: 'session-2',
     client_type: 'claude-code',
@@ -326,7 +326,7 @@ test('loads and renders an existing chat session with metadata, state, and works
     description: 'Review dashboard changes',
     execution_profile_id: 'coder',
     execution_profile_version: '1',
-    state: 'running',
+    state: 'busy',
     workspace_id: 'workspace-1',
     workspace: '~/repo/llmparty',
   });
@@ -340,28 +340,30 @@ test('loads and renders an existing chat session with metadata, state, and works
 
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
   expect(await screen.findByText('hi there')).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: /second · reviewer/i })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /second · reviewer/i })).not.toBeInTheDocument();
+  expect(screen.queryByText('Description: Review dashboard changes')).not.toBeInTheDocument();
   expect(screen.getByText('Client: claude-code')).toBeInTheDocument();
   expect(screen.getByText('Profile: coder@1')).toBeInTheDocument();
   expect(screen.getByText('Handle: second')).toBeInTheDocument();
-  expect(screen.getByText('Description: Review dashboard changes')).toBeInTheDocument();
   expect(screen.queryByText('Workspace: workspace-1')).not.toBeInTheDocument();
-  const stateBadge = screen.getByText('running').closest('[data-slot="badge"]');
+  const stateBadge = screen.getByText('busy').closest('[data-slot="badge"]');
   const workspacePath = screen.getByText('~/repo/llmparty');
+  const clientDetail = screen.getByText('Client: claude-code');
   const followUpInput = screen.getByPlaceholderText('Send a follow-up message…');
-  expect(screen.queryByText('State: running')).not.toBeInTheDocument();
+  expect(screen.queryByText('State: busy')).not.toBeInTheDocument();
   expect(stateBadge).not.toBeNull();
   expect(stateBadge).toHaveClass('h-7');
   expect(stateBadge?.querySelector('svg')).toHaveClass('lucide-activity');
   expect(stateBadge?.compareDocumentPosition(workspacePath) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(workspacePath.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(workspacePath.compareDocumentPosition(clientDetail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(clientDetail.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole('button', { name: /new chat/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /new chat/i })).not.toBeInTheDocument();
 });
 
-test('shows session lifecycle buttons on an existing chat and runs exit, resume, and restart actions', async () => {
+test('places session controls near the prompt input and keeps advanced controls in a menu', async () => {
   const user = userEvent.setup();
-  const selected = session({ session_id: 'session-2', state: 'exited' });
+  const selected = session({ session_id: 'session-2', state: 'idle' });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [selected];
@@ -370,13 +372,54 @@ test('shows session lifecycle buttons on an existing chat and runs exit, resume,
 
   render(ChatPage);
 
-  await user.click(await screen.findByRole('button', { name: /resume session/i }));
-  await user.click(screen.getByRole('button', { name: /restart session/i }));
-  await user.click(screen.getByRole('button', { name: /exit session/i }));
+  const followUpInput = await screen.findByPlaceholderText('Send a follow-up message…');
+  const exitButton = screen.getByRole('button', { name: /exit session/i });
+  const advancedButton = screen.getByRole('button', { name: /advanced session controls/i });
+  expect(exitButton.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(advancedButton.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /resume session/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /restart session/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /session console/i })).not.toBeInTheDocument();
 
-  expect(mocks.resumeSession).toHaveBeenCalledWith('session-2');
+  await user.click(advancedButton);
+  await user.click(await screen.findByRole('menuitem', { name: /restart session/i }));
   expect(mocks.restartSession).toHaveBeenCalledWith('session-2');
+
+  await user.click(advancedButton);
+  await user.click(await screen.findByRole('menuitem', { name: /session console/i }));
+  expect(mocks.navigate).toHaveBeenCalledWith('/sessions/session-2');
+
+  await user.click(exitButton);
   expect(mocks.terminateSession).toHaveBeenCalledWith('session-2');
+});
+
+test('hides exit on exited sessions and automatically resumes before sending a message', async () => {
+  const user = userEvent.setup();
+  const selected = session({ session_id: 'session-2', state: 'exited' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.resumeSession.mockResolvedValue(undefined);
+  mocks.submitInboxMessage.mockResolvedValue(undefined);
+
+  render(ChatPage);
+
+  const followUpInput = await screen.findByPlaceholderText('Send a follow-up message…');
+  expect(followUpInput).not.toBeDisabled();
+  expect(screen.queryByRole('button', { name: /exit session/i })).not.toBeInTheDocument();
+
+  await user.type(followUpInput, 'continue this session');
+  await user.click(screen.getByRole('button', { name: /send/i }));
+
+  await waitFor(() => expect(mocks.resumeSession).toHaveBeenCalledWith('session-2'));
+  expect(mocks.submitInboxMessage).toHaveBeenCalledWith('session-2', {
+    input: 'continue this session',
+    delivery_policy: 'after_idle',
+    metadata: { source: 'dashboard_chat' },
+  });
+  expect(mocks.resumeSession.mock.invocationCallOrder[0]).toBeLessThan(mocks.submitInboxMessage.mock.invocationCallOrder[0]);
 });
 
 test('loads planner task proposals from session metadata and renders the draft DAG', async () => {
