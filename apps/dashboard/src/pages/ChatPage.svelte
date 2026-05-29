@@ -124,8 +124,8 @@
     return session.execution_profile_version ? `${session.execution_profile_id}@${session.execution_profile_version}` : session.execution_profile_id
   }
 
-  function sessionWorkspaceTitle(session: SessionView): string {
-    return session.workspace_id ?? session.workspace ?? 'No workspace'
+  function sessionWorkspacePath(session: SessionView): string {
+    return session.workspace ?? session.workspace_id ?? 'No workspace'
   }
 
   function plannerTaskIdForSession(session: SessionView | null): string | null {
@@ -289,7 +289,6 @@
           <span>Profile: {sessionProfileTitle(selectedSession)}</span>
           <span>Handle: {selectedSession.handle ?? '—'}</span>
           <span>Description: {selectedSession.description ?? '—'}</span>
-          <span>Workspace: {sessionWorkspaceTitle(selectedSession)}</span>
         </div>
       {:else}
         <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
@@ -449,10 +448,13 @@
           <SessionConversation {messages} loading={$sessionDetailLoading} />
 
           <div class="p-4">
-            <div class="mb-2 px-2">
+            <div class="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-2">
               <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
                 <Activity class="size-4" /> {selectedSession.state}
               </Badge>
+              <span class="min-w-0 truncate rounded-full border bg-background px-3 py-1 text-sm text-muted-foreground" title={sessionWorkspacePath(selectedSession)}>
+                {sessionWorkspacePath(selectedSession)}
+              </span>
             </div>
             <SessionMessageComposer
               bind:value={input}

@@ -317,7 +317,7 @@ test('creates a session with initial prompt, workspace, and client then opens it
   expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
 });
 
-test('loads and renders an existing chat session with session metadata and state above the prompt input', async () => {
+test('loads and renders an existing chat session with metadata, state, and workspace path above the prompt input', async () => {
   const selected = session({
     session_id: 'session-2',
     client_type: 'claude-code',
@@ -345,14 +345,16 @@ test('loads and renders an existing chat session with session metadata and state
   expect(screen.getByText('Profile: coder@1')).toBeInTheDocument();
   expect(screen.getByText('Handle: second')).toBeInTheDocument();
   expect(screen.getByText('Description: Review dashboard changes')).toBeInTheDocument();
-  expect(screen.getByText('Workspace: workspace-1')).toBeInTheDocument();
+  expect(screen.queryByText('Workspace: workspace-1')).not.toBeInTheDocument();
   const stateBadge = screen.getByText('running').closest('[data-slot="badge"]');
+  const workspacePath = screen.getByText('~/repo/llmparty');
   const followUpInput = screen.getByPlaceholderText('Send a follow-up message…');
   expect(screen.queryByText('State: running')).not.toBeInTheDocument();
   expect(stateBadge).not.toBeNull();
   expect(stateBadge).toHaveClass('h-7');
   expect(stateBadge?.querySelector('svg')).toHaveClass('lucide-activity');
-  expect(stateBadge?.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(stateBadge?.compareDocumentPosition(workspacePath) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(workspacePath.compareDocumentPosition(followUpInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole('button', { name: /new chat/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /new chat/i })).not.toBeInTheDocument();
 });
