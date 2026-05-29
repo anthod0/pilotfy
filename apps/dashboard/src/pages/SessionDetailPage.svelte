@@ -14,6 +14,7 @@
   import { formatDateTime, jsonPreview, shortId } from '../components/tasks/format'
   import type { InboxDeliveryPolicy, SessionView } from '../api/types'
   import { selectCurrentTurnOutput } from './sessions/currentTurnOutput'
+  import { sessionEventDetailRows, sessionEventSummary, sessionEventTurnLabel } from './sessions/sessionEvents'
   import { isTerminalSession, sessionDisplayTitle } from './sessions/sessionList'
   import {
     discoverSessionArtifacts,
@@ -328,15 +329,34 @@
     </div>
 
     <Card.Root>
-      <Card.Header><Card.Title>Session events</Card.Title><Card.Description>{$sessionDetail.events.length} events with payload previews.</Card.Description></Card.Header>
+      <Card.Header><Card.Title>Session events</Card.Title><Card.Description>{$sessionDetail.events.length} events shown as compact log lines. Expand a row for full details.</Card.Description></Card.Header>
       <Card.Content>
         {#if $sessionDetail.events.length}
-          <div class="space-y-3">
+          <div class="overflow-hidden rounded-lg border">
             {#each $sessionDetail.events.slice(0, 50) as event}
-              <div class="rounded-lg border p-3 text-sm">
-                <div class="flex flex-wrap items-center justify-between gap-2"><span class="font-medium">{event.type}</span><span class="text-xs text-muted-foreground">{formatDateTime(event.time)}</span></div>
-                <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">{JSON.stringify(event.payload, null, 2)}</pre>
-              </div>
+              <details class="group border-b last:border-b-0">
+                <summary class="grid cursor-pointer list-none gap-2 px-3 py-2 text-sm hover:bg-muted/50 md:grid-cols-[11rem_minmax(10rem,16rem)_7rem_7rem_minmax(0,1fr)] md:items-center">
+                  <span class="font-mono text-xs text-muted-foreground">{formatDateTime(event.time)}</span>
+                  <span class="min-w-0 truncate font-medium" title={event.type}>{event.type}</span>
+                  <span class="truncate text-xs text-muted-foreground" title={event.source}>{event.source}</span>
+                  <span class="font-mono text-xs text-muted-foreground">turn {sessionEventTurnLabel(event.turn_id)}</span>
+                  <span class="min-w-0 truncate text-muted-foreground" title={sessionEventSummary(event.payload)}>{sessionEventSummary(event.payload)}</span>
+                </summary>
+                <div class="space-y-3 border-t bg-muted/20 p-3 text-sm">
+                  <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {#each sessionEventDetailRows(event) as [label, value]}
+                      <div class="rounded-md border bg-background p-2">
+                        <div class="text-[0.7rem] uppercase tracking-wide text-muted-foreground">{label}</div>
+                        <div class="mt-1 break-words font-mono text-xs">{value}</div>
+                      </div>
+                    {/each}
+                  </div>
+                  <div>
+                    <div class="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Raw payload</div>
+                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-background p-2 text-xs">{JSON.stringify(event.payload, null, 2)}</pre>
+                  </div>
+                </div>
+              </details>
             {/each}
           </div>
         {:else}
