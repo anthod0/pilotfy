@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { Activity, GitBranch, LogOut, MoreHorizontal, RotateCw, TerminalSquare } from '@lucide/svelte'
+  import { Activity, AtSign, Bot, Folder, GitBranch, LogOut, MoreHorizontal, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
   import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import { Badge } from '$lib/components/ui/badge/index.js'
@@ -127,9 +127,14 @@
     return clientType || 'Client'
   }
 
-  function sessionProfileTitle(session: SessionView): string {
-    if (!session.execution_profile_id) return '—'
+  function sessionProfileTitle(session: SessionView): string | null {
+    if (!session.execution_profile_id) return null
     return session.execution_profile_version ? `${session.execution_profile_id}@${session.execution_profile_version}` : session.execution_profile_id
+  }
+
+  function sessionHandleTitle(session: SessionView): string | null {
+    const handle = session.handle?.trim()
+    return handle || null
   }
 
   function sessionWorkspacePath(session: SessionView): string {
@@ -415,60 +420,93 @@
           <SessionConversation {messages} loading={$sessionDetailLoading} />
 
           <div class="shrink-0 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            <div class="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-2">
-              <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
-                <Activity class="size-4" /> {selectedSession.state}
-              </Badge>
-              <span class="min-w-0 truncate rounded-full border bg-background px-3 py-1 text-sm text-muted-foreground" title={sessionWorkspacePath(selectedSession)}>
-                {sessionWorkspacePath(selectedSession)}
-              </span>
-              <span class="text-sm text-muted-foreground">Client: {selectedSession.client_type}</span>
-              <span class="text-sm text-muted-foreground">Profile: {sessionProfileTitle(selectedSession)}</span>
-              <span class="text-sm text-muted-foreground">Handle: {selectedSession.handle ?? '—'}</span>
-            </div>
-            <div class="mb-2 flex items-center justify-end gap-2 px-2">
-              {#if !isTerminalChatSession(selectedSession)}
-                <Button variant="destructive" size="sm" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
-              {/if}
-              <div class="relative">
-                <Button
+            <div role="group" aria-label="Session status and controls" class="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2 px-2">
+              <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
+                  <Activity class="size-4" /> {selectedSession.state}
+                </Badge>
+                <Badge
                   variant="outline"
-                  size="sm"
-                  disabled={actionBusy}
-                  aria-haspopup="menu"
-                  aria-expanded={advancedControlsOpen}
-                  aria-label="Advanced session controls"
-                  onclick={() => (advancedControlsOpen = !advancedControlsOpen)}
+                  class="h-7 max-w-full justify-start gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+                  title={`Workspace: ${sessionWorkspacePath(selectedSession)}`}
+                  aria-label={`Workspace: ${sessionWorkspacePath(selectedSession)}`}
                 >
-                  <MoreHorizontal class="size-4" /> Advanced
-                </Button>
-                {#if advancedControlsOpen}
-                  <div role="menu" class="absolute right-0 z-10 mt-1 w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                      onclick={() => {
-                        advancedControlsOpen = false
-                        openSessionConsole()
-                      }}
-                    >
-                      <TerminalSquare class="size-4" /> Session Console
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                      disabled={actionBusy}
-                      onclick={() => {
-                        advancedControlsOpen = false
-                        void runSessionLifecycle('restart')
-                      }}
-                    >
-                      <RotateCw class="size-4" /> Restart session
-                    </button>
-                  </div>
+                  <Folder class="size-4" aria-hidden="true" />
+                  <span class="min-w-0 truncate">{sessionWorkspacePath(selectedSession)}</span>
+                </Badge>
+                <Badge
+                  variant="outline"
+                  class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+                  title={`Client: ${selectedSession.client_type}`}
+                  aria-label={`Client: ${selectedSession.client_type}`}
+                >
+                  <Terminal class="size-4" aria-hidden="true" /> {selectedSession.client_type}
+                </Badge>
+                {#if sessionProfileTitle(selectedSession)}
+                  <Badge
+                    variant="outline"
+                    class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+                    title={`Profile: ${sessionProfileTitle(selectedSession)}`}
+                    aria-label={`Profile: ${sessionProfileTitle(selectedSession)}`}
+                  >
+                    <Bot class="size-4" aria-hidden="true" /> {sessionProfileTitle(selectedSession)}
+                  </Badge>
                 {/if}
+                {#if sessionHandleTitle(selectedSession)}
+                  <Badge
+                    variant="outline"
+                    class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+                    title={`Handle: ${sessionHandleTitle(selectedSession)}`}
+                    aria-label={`Handle: ${sessionHandleTitle(selectedSession)}`}
+                  >
+                    <AtSign class="size-4" aria-hidden="true" /> {sessionHandleTitle(selectedSession)}
+                  </Badge>
+                {/if}
+              </div>
+              <div class="flex shrink-0 items-center justify-end gap-2">
+                {#if !isTerminalChatSession(selectedSession)}
+                  <Button variant="destructive" size="sm" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
+                {/if}
+                <div class="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={actionBusy}
+                    aria-haspopup="menu"
+                    aria-expanded={advancedControlsOpen}
+                    aria-label="Advanced session controls"
+                    onclick={() => (advancedControlsOpen = !advancedControlsOpen)}
+                  >
+                    <MoreHorizontal class="size-4" /> Advanced
+                  </Button>
+                  {#if advancedControlsOpen}
+                    <div role="menu" class="absolute right-0 z-10 mt-1 w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                        onclick={() => {
+                          advancedControlsOpen = false
+                          openSessionConsole()
+                        }}
+                      >
+                        <TerminalSquare class="size-4" /> Session Console
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                        disabled={actionBusy}
+                        onclick={() => {
+                          advancedControlsOpen = false
+                          void runSessionLifecycle('restart')
+                        }}
+                      >
+                        <RotateCw class="size-4" /> Restart session
+                      </button>
+                    </div>
+                  {/if}
+                </div>
               </div>
             </div>
             <SessionMessageComposer
