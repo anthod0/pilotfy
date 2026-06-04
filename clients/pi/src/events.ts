@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { TurnContext } from "./context.js";
 import type { SessionContext } from "./session.js";
 
-export type InternalEventType = "session.ready" | "turn.output" | "turn.completed" | "turn.failed";
+export type InternalEventType = "session.ready" | "turn.started" | "turn.output" | "turn.completed" | "turn.failed";
 
 interface BaseInternalEvent {
   event_id: string;
@@ -23,7 +23,7 @@ export type InternalEvent =
   | (BaseInternalEvent & {
       turn_id: string;
       source: "agent_adapter";
-      type: "turn.output" | "turn.completed" | "turn.failed";
+      type: "turn.started" | "turn.output" | "turn.completed" | "turn.failed";
     });
 
 type TurnInternalEvent = Extract<InternalEvent, { source: "agent_adapter" }>;
@@ -38,6 +38,16 @@ function baseTurnEvent(context: TurnContext, type: TurnInternalEvent["type"]): O
     type,
     time: new Date().toISOString(),
     seq: null,
+  };
+}
+
+export function buildTurnStartedEvent(context: TurnContext): InternalEvent {
+  return {
+    ...baseTurnEvent(context, "turn.started"),
+    payload: {
+      runtime_instance_id: context.runtimeInstanceId,
+      input: context.input ? { summary: context.input } : {},
+    },
   };
 }
 

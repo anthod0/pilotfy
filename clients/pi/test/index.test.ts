@@ -143,7 +143,7 @@ describe("llmparty pi extension lifecycle", () => {
     expect(result).toEqual({ systemPrompt: "Base prompt" });
   });
 
-  test("reads context on agent_start and reports output then completed on agent_end", async () => {
+  test("reads context on agent_start and reports started, output, then completed", async () => {
     const { handlers, reported } = install();
 
     await handlers.agent_start({}, {});
@@ -151,8 +151,9 @@ describe("llmparty pi extension lifecycle", () => {
     await handlers.message_update({ assistantMessageEvent: { text_delta: "world" } }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.output", "turn.completed"]);
-    expect(reported[0].payload).toEqual({ output: { summary: "hello world" } });
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
+    expect(reported[0].payload).toEqual({ runtime_instance_id: "rtinst_1", input: {} });
+    expect(reported[1].payload).toEqual({ output: { summary: "hello world" } });
   });
 
   test("uses assistant message_end full text without TUI parsing", async () => {
@@ -162,8 +163,8 @@ describe("llmparty pi extension lifecycle", () => {
     await handlers.message_end({ message: { role: "assistant", content: [{ type: "text", text: "final answer" }] } }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.output", "turn.completed"]);
-    expect(reported[0].payload).toEqual({ output: { summary: "final answer" } });
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
+    expect(reported[1].payload).toEqual({ output: { summary: "final answer" } });
   });
 
   test("does not report completion when context is missing", async () => {
@@ -204,7 +205,7 @@ describe("llmparty pi extension lifecycle", () => {
     await handlers.agent_end({ messages: [] }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.output", "turn.completed"]);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
   });
 
   test("reports turn.failed for explicit agent_end error", async () => {
@@ -213,7 +214,7 @@ describe("llmparty pi extension lifecycle", () => {
     await handlers.agent_start({}, {});
     await handlers.agent_end({ error: new Error("model failed"), messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.failed"]);
-    expect(reported[0].payload).toEqual({ failure: { message: "model failed" } });
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.failed"]);
+    expect(reported[1].payload).toEqual({ failure: { message: "model failed" } });
   });
 });

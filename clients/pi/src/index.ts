@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { defaultHookLogFile, loadTurnContext, type EnvLike, type LoadTurnContextResult, type TurnContext } from "./context.js";
 import { appendDiagnostic, type DiagnosticEntry } from "./diagnostics.js";
-import { buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent, type InternalEvent } from "./events.js";
+import { buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, type InternalEvent } from "./events.js";
 import { EventReporter } from "./reporter.js";
 import { loadSessionContext } from "./session.js";
 import { buildLlmpartyTools } from "./tools.js";
@@ -215,13 +215,15 @@ export function createLlmpartyPiExtension(pi: ExtensionAPI, dependencies: Llmpar
         return;
       }
 
+      const reporter = makeReporter(loaded.logFile);
       activeTurn = {
         context: loaded.context,
         logFile: loaded.logFile,
-        reporter: makeReporter(loaded.logFile),
+        reporter,
         output: "",
         ended: false,
       };
+      await reporter.report(loaded.context, buildTurnStartedEvent(loaded.context));
     } catch (error) {
       activeTurn = undefined;
       const logFile = env.LLMPARTY_PI_HOOK_LOG ?? "pi-hook.log";

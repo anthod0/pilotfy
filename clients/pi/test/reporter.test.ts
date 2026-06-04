@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent } from "../src/events.js";
+import { buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent } from "../src/events.js";
 import { EventReporter } from "../src/reporter.js";
 import type { TurnContext } from "../src/context.js";
 
@@ -28,6 +28,22 @@ const context: TurnContext = {
 };
 
 describe("event builders", () => {
+  test("builds turn.started payload shape", () => {
+    const event = buildTurnStartedEvent(context);
+
+    expect(event.event_id).toMatch(/^evt_/);
+    expect(event).toMatchObject({
+      session_id: "sess_1",
+      turn_id: "turn_1",
+      source: "agent_adapter",
+      client_type: "pi",
+      type: "turn.started",
+      seq: null,
+      payload: { runtime_instance_id: "rtinst_1", input: {} },
+    });
+    expect(new Date(event.time).toISOString()).toBe(event.time);
+  });
+
   test("builds turn.output payload shape", () => {
     const event = buildTurnOutputEvent(context, "hello");
 
