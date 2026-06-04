@@ -54,7 +54,7 @@
   }
 </script>
 
-<Conversation.Root class="min-h-0 flex-1">
+<Conversation.Root class="h-auto min-h-0 flex-1 overflow-visible">
   {#if loading}
     <Conversation.EmptyState title="Loading conversation…" description="Fetching the latest session turns." />
   {:else if !messages.length}
@@ -66,7 +66,7 @@
       </Empty.Header>
     </Empty.Root>
   {:else}
-    <Conversation.Content bind:ref={scrollContainer}>
+    <Conversation.Content bind:ref={scrollContainer} class="overflow-visible">
       {#each messages as chatMessage (chatMessage.id)}
         <Message.Root from={chatMessage.role}>
           <div class="mb-1 flex items-center gap-2 text-xs text-muted-foreground {chatMessage.role === 'user' ? 'justify-end' : 'justify-start'}">

@@ -358,7 +358,7 @@ test('creates a session with initial prompt, workspace, and client then opens it
   expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
 });
 
-test('keeps an existing chat route constrained to viewport height so only the conversation scrolls', async () => {
+test('lets existing chat routes use document scroll with a fixed bottom composer', async () => {
   const selected = session({ session_id: 'session-2', state: 'idle' });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
@@ -370,10 +370,15 @@ test('keeps an existing chat route constrained to viewport height so only the co
 
   await screen.findByPlaceholderText('Send a follow-up message…');
   const pageSection = container.querySelector('section');
-  expect(pageSection).toHaveClass('h-full');
-  expect(pageSection).toHaveClass('min-h-0');
-  expect(pageSection).not.toHaveClass('h-[calc(100vh-5rem)]');
-  expect(pageSection).not.toHaveClass('min-h-[42rem]');
+  expect(pageSection).not.toHaveClass('h-full');
+  expect(pageSection).not.toHaveClass('min-h-0');
+  expect(pageSection).toHaveClass('pb-40');
+  const composerDock = container.querySelector('[data-chat-composer-dock="fixed"]');
+  expect(composerDock).not.toBeNull();
+  expect(composerDock).toHaveClass('fixed');
+  expect(composerDock).toHaveClass('bottom-0');
+  expect(composerDock?.firstElementChild).toHaveClass('mx-auto');
+  expect(composerDock?.firstElementChild).toHaveClass('max-w-7xl');
 });
 
 test('loads and renders an existing chat session with metadata, state, and workspace path above the prompt input without a page header', async () => {

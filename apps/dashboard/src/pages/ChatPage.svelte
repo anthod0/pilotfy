@@ -315,7 +315,7 @@
 
 <svelte:window onpopstate={() => void selectSessionFromLocation()} />
 
-<section class="flex h-full min-h-0 flex-col gap-4">
+<section class={selectedSessionId ? 'flex flex-col gap-4 pb-40' : 'flex h-full min-h-0 flex-col gap-4'}>
   {#if !selectedSessionId}
     <div class="space-y-2">
       <h2 class="text-3xl font-semibold tracking-tight">New Chat</h2>
@@ -387,8 +387,8 @@
       </div>
     </div>
   {:else}
-    <div class="min-h-0 flex-1">
-      <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-transparent">
+    <div class="flex-1">
+      <div class="flex flex-col rounded-xl bg-transparent">
         {#if $sessionDetailLoading && !selectedSession}
           <div class="space-y-4 p-6"><Skeleton class="h-10 w-1/3" /><Skeleton class="h-80 w-full" /></div>
         {:else if !selectedSession}
@@ -408,7 +408,8 @@
             draftPlannerProposalLoading={$taskProposalsLoading}
           />
 
-          <div class="shrink-0 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div data-chat-composer-dock="fixed" class="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-[var(--sidebar-width)] md:p-6">
+            <div class="mx-auto w-full max-w-7xl">
             <div role="group" aria-label="Session status and controls" class="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2 px-2">
               <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                 <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
@@ -511,6 +512,7 @@
             {:else if canSendSessionMessage(selectedSession, 'x') === false}
               <p class="mt-2 text-xs text-muted-foreground">This session cannot accept new messages.</p>
             {/if}
+            </div>
           </div>
         {/if}
       </div>

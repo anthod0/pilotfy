@@ -233,17 +233,18 @@ test('settings common page contains controls without owning the section switcher
   expect(screen.queryByRole('navigation', { name: /settings sections/i })).not.toBeInTheDocument();
 });
 
-test('chat app shell constrains content to the remaining viewport instead of adding page scroll', () => {
+test('chat app shell allows document scrolling for chat routes', () => {
   window.history.pushState({}, '', '/dashboard/chat/session-2');
 
   render(AppShellHost);
 
   const contentMain = screen.getByText('App shell page content').closest('main');
   expect(contentMain).not.toBeNull();
-  expect(contentMain).toHaveClass('min-h-0');
-  expect(contentMain).toHaveClass('overflow-hidden');
-  expect(contentMain?.firstElementChild).toHaveClass('h-full');
-  expect(contentMain?.firstElementChild).toHaveClass('min-h-0');
+  expect(contentMain).not.toHaveClass('min-h-0');
+  expect(contentMain).not.toHaveClass('overflow-hidden');
+  expect(contentMain).toHaveClass('pb-40');
+  expect(contentMain?.firstElementChild).not.toHaveClass('h-full');
+  expect(contentMain?.firstElementChild).not.toHaveClass('min-h-0');
 });
 
 test('settings app shell removes centered main chrome so the settings nav can align left', () => {
