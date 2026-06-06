@@ -74,6 +74,40 @@ async fn dashboard_serves_configured_local_entrypoint() {
 }
 
 #[tokio::test]
+async fn dashboard_serves_files_from_configured_dist_root() {
+    let (_dir, root) = build_local_dashboard("custom dashboard", "custom.js");
+    let logo_dir = root.join("logo");
+    std::fs::create_dir_all(&logo_dir).expect("logo dir");
+    std::fs::write(logo_dir.join("mark.png"), b"png-bytes").expect("logo file");
+
+    let response =
+        http::router(test_state_with_dashboard(ResolvedDashboard::available(root)).await)
+            .oneshot(
+                Request::builder()
+                    .uri("/dashboard/logo/mark.png")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .expect("content-type");
+    assert_eq!(content_type, "image/png");
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    assert_eq!(&body[..], b"png-bytes");
+}
+
+#[tokio::test]
 async fn dashboard_spa_fallback_serves_entrypoint_for_nested_routes() {
     let (_dir, root) = build_local_dashboard("custom dashboard", "custom.js");
 

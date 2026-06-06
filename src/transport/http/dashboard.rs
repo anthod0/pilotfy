@@ -327,21 +327,43 @@ pub async fn dashboard(State(state): State<AppState>) -> Response {
 }
 
 pub async fn dashboard_asset(State(state): State<AppState>, uri: Uri) -> Response {
-    let Some(root) = state.dashboard.root() else {
+    let Some(relative_path) = uri.path().strip_prefix("/dashboard/") else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Some(relative_path) = uri.path().strip_prefix("/dashboard/assets/") else {
+    dashboard_dist_file(state, relative_path).await
+}
+
+pub async fn dashboard_path(State(state): State<AppState>, uri: Uri) -> Response {
+    let Some(relative_path) = uri.path().strip_prefix("/dashboard/") else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(safe_path) = safe_asset_path(relative_path) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    match tokio::fs::read(root.join("assets").join(&safe_path)).await {
-        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(relative_path))], bytes).into_response(),
-        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    match try_dashboard_dist_file(&state, relative_path).await {
+        Some(response) => response,
+        None => dashboard(State(state)).await,
     }
+}
+
+async fn dashboard_dist_file(state: AppState, relative_path: &str) -> Response {
+    match try_dashboard_dist_file(&state, relative_path).await {
+        Some(response) => response,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn try_dashboard_dist_file(state: &AppState, relative_path: &str) -> Option<Response> {
+    let root = state.dashboard.root()?;
+    let safe_path = safe_asset_path(relative_path)?;
+    let path = root.join(&safe_path);
+    let metadata = tokio::fs::metadata(&path).await.ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+
+    tokio::fs::read(path)
+        .await
+        .ok()
+        .map(|bytes| ([(header::CONTENT_TYPE, content_type(relative_path))], bytes).into_response())
 }
 
 fn safe_asset_path(relative_path: &str) -> Option<PathBuf> {
@@ -363,6 +385,10 @@ fn content_type(path: &str) -> &'static str {
         "text/css; charset=utf-8"
     } else if path.ends_with(".svg") {
         "image/svg+xml"
+    } else if path.ends_with(".png") {
+        "image/png"
+    } else if path.ends_with(".ico") {
+        "image/x-icon"
     } else {
         "application/octet-stream"
     }

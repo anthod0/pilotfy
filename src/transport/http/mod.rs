@@ -61,7 +61,7 @@ pub fn router(state: AppState) -> Router {
         .route("/dashboard", get(dashboard::dashboard))
         .route("/dashboard/", get(dashboard::dashboard))
         .route("/dashboard/assets/{*path}", get(dashboard::dashboard_asset))
-        .route("/dashboard/{*path}", get(dashboard::dashboard))
+        .route("/dashboard/{*path}", get(dashboard::dashboard_path))
         .route("/internal/v1/events", post(internal::post_event))
         .route(
             "/internal/v1/agent-tools/{tool_name}",
