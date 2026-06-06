@@ -1,59 +1,99 @@
 # pilotfy
 
-`pilotfy` is an external control system for coding agents. It keeps agent sessions, turns, events, and artifacts outside the agent process, so long-running work can be observed, controlled, interrupted, and resumed.
+`pilotfy` is an experimental control plane for coding agents.
 
-It is built for multi-client agent control, Web Dashboard operation, automation via HTTP APIs, and future DAG-based long-term task orchestration.
+It uses real agent TUIs as the runtime, currently through tmux, instead of short-lived command subprocesses such as `claude -p`. This lets sessions stay alive for a long time while continuing to use vendor-supported clients and subscription flows.
 
-## Milestones
+The project is pre-release and changing quickly. The README describes the current product direction rather than a stable integration contract.
 
-`pilotfy` is being built in public. The current work focuses on the control plane foundation, then gradually moves toward long-running autonomous task execution.
+## What pilotfy is
 
-- **Control Plane Foundation**: maintain authoritative session / turn / event / artifact state outside the agent process, with HTTP APIs for external control.
-- **Multi-client Agent Control**: support different coding agent clients such as pi, Claude Code, and future runtimes through one shared model.
-- **Web Dashboard Operation**: provide a browser interface to create sessions, submit work, inspect progress, review outputs, browse artifacts, and intervene when needed.
-- **Operational Readiness**: improve deployment, diagnostics, API documentation, logging, metrics, CI, and compatibility checks.
-- **DAG-based Long-term Planning**: represent larger goals as task graphs with dependencies, checkpoints, retries, and agent assignments.
-- **Autonomous Agent Orchestration**: let the external control system decide what should run next, which agent should handle it, when to pause or retry, and how completed work feeds into later tasks.
+`pilotfy` is for developers who want coding agents to keep working beyond one terminal window.
 
-## Feature Overview
+It aims to provide:
 
-- Create, inspect, and manage agent sessions
-- Submit multi-turn tasks / prompts to a session
-- View event streams and turn output in real time
-- Browse file artifacts produced by a session
-- Interrupt, restart, and terminate sessions
-- Web Dashboard browser interface
-- HTTP External API for script and system integration
-- Local execution and result reporting for the pi client
+- **Real agent TUI runtime** — use real agent TUIs as runtimes instead of subprocesses such as `claude -p`, allowing sessions to stay alive for a long time while using vendor subscriptions compliantly.
+- **One long-lived session, control from anywhere** — start, continue, observe, or steer the same agent session from desktop, Web, mobile, or TUI surfaces.
+- **Observable long-running tasks** — let agents plan large tasks as DAGs, then expose each planning and implementation node so developers can understand, intervene, retry, and repair the work.
 
-## Prerequisites
+In short: `pilotfy` keeps official agent work alive, visible, controllable, and fixable.
 
-Install the following:
+## Core product ideas
+
+### Real agent TUI runtime
+
+Each vendor has its own TUI agent and subscription model. Since June 15, `claude -p` usage has also moved toward usage-based billing. It is reasonable to expect subscriptions to become more constrained over time and more strongly tied to official TUI clients.
+
+`pilotfy` therefore uses real agent TUIs as runtimes instead of subprocesses such as `claude -p`, allowing sessions to stay alive for a long time while using vendor subscriptions compliantly.
+
+Current state: uses pi to implement the control model.
+
+### One session, many control surfaces
+
+A coding-agent session should not belong to one terminal window.
+
+Start it from a desktop TUI, check it from a phone, continue it from the Web UI, or interrupt it from another device. The same session should stay alive, keep its context, and remain observable wherever the developer is.
+
+Current state: partially implemented with the Web Dashboard, tmux-backed runtimes, pi integrations.
+
+### Agent-planned WorkItem DAGs
+
+Long tasks should not be opaque prompts that run for hours with no structure.
+
+`pilotfy` models long-running work as a WorkItem DAG: an ordered dependency graph, similar to a structured todo list. A Planner creates the execution graph. Worker agents execute work items mechanically along that graph.
+
+The goal is to concentrate intelligence in planning and replanning, while keeping workers simple and predictable. Developers can inspect the DAG, understand what happened, and repair the task at the node level.
+
+Current state: early task, DAG, work-item, proposal, scheduler, and provenance models exist; the full long-running autonomous workflow is not complete.
+
+## Roadmap
+
+- [x] Control plane foundation: backend, SQLite state, events, sessions, turns, artifacts
+- [x] Real agent TUI runtime through tmux
+- [x] pi agent integrations
+- [x] Basic Web Dashboard
+- [x] TUI session creation, conversation, termination, and resume
+- [x] Basic DAG planning and execution
+- [ ] Bidirectional control from anywhere
+- [ ] Human approval / review gates
+- [ ] Artifact browsing and diff/review workflow
+- [ ] Long-running DAG task scheduler
+- [ ] API stability and versioned documentation
+- [ ] More agent client integrations
+- [ ] Ready-to-use builds: binaries and Docker images
+
+## Architecture principles
+
+`pilotfy` is designed around a simple split:
+
+- **Use real agent TUIs as runtimes**: pi, Claude Code, and future clients run as long-lived real TUI processes, currently hosted through tmux, rather than short-lived subprocess commands such as `claude -p`. This keeps sessions alive while preserving official client behavior and legitimate subscription-based usage.
+- **pilotfy owns the durable control state**: sessions, turns, tasks, DAG nodes, events, artifacts, and projections live outside the agent process.
+- **Every UI is a control surface**: desktop TUI, Web Dashboard, mobile Web, HTTP API, and future clients should attach to the same underlying session instead of creating separate worlds.
+- **Long-running tasks are WorkItem DAGs**: large tasks are represented as ordered dependency graphs. A Planner creates and repairs the graph, while Workers stay intentionally simple and execute work items mechanically. Failures, new information, or human interruptions should patch the DAG into a new execution path, with each node remaining inspectable, retryable, and repairable.
+
+## Local development quick start
+
+### Prerequisites
+
+Install:
 
 - Rust / Cargo
 - tmux
-- pnpm (for the Web Dashboard)
-- pi CLI (if you want to use `client_type = "pi"`)
+- pnpm
+- pi CLI and/or Claude Code if you want to run those clients locally
 
-## Quick Start
-
-### 1. Configure pilotfy
-
-pilotfy can be configured with a TOML file. By default it looks for:
-
-```text
-~/.config/pilotfy/config.toml
-```
-
-You can also pass an explicit path:
+### Build the dashboard
 
 ```bash
-cargo run -- --config /path/to/config.toml
-# or
-PILOTFY_CONFIG=/path/to/config.toml cargo run
+pnpm --dir=apps/dashboard install
+pnpm --dir=apps/dashboard run build
 ```
 
-Example:
+### Configure pilotfy
+
+`pilotfy` can read configuration from `~/.config/pilotfy/config.toml`, from an explicit `--config` path, or from environment variables.
+
+Minimal example:
 
 ```toml
 bind_addr = "127.0.0.1:8080"
@@ -62,7 +102,6 @@ external_api_token = "dev-token"
 run_migrations = true
 
 [dashboard]
-# Local Vite dist directory, or a remote .zip/.tar.gz/.tgz archive containing exactly one index.html.
 source = "apps/dashboard/dist"
 cache_dir = "~/.cache/pilotfy/dashboard"
 
@@ -78,235 +117,24 @@ roots = [
 ]
 ```
 
-Environment variables and `.env` still work and take precedence over TOML values:
+Environment variables and `.env` are also supported. See [`.env.example`](.env.example) if present in your checkout.
 
-```bash
-cp .env.example .env
-```
-
-The default configuration listens on `127.0.0.1:8080`.
-
-Dashboard `source` may be a local built dashboard directory or a remote archive URL. If `source` is missing, or a local source does not contain `index.html`, `/dashboard` returns a plain unavailable message instead of falling back. Remote archives are refreshed on startup into `cache_dir`; if refresh fails, pilotfy serves the previous cache when one exists. The archive must contain exactly one `index.html` entry, whose parent directory is treated as the dashboard root.
-
-### 2. Install dependencies and build the Dashboard
-
-```bash
-pnpm --dir=apps/dashboard install
-pnpm --dir=apps/dashboard run build
-```
-
-### 3. Start pilotfy
+### Run the server
 
 ```bash
 cargo run
 ```
 
-After the service starts, check its health status:
+Check health:
 
 ```bash
 curl http://127.0.0.1:8080/healthz
 ```
 
-Expected response:
-
-```json
-{ "status": "ok" }
-```
-
-### 4. Open the Dashboard
-
-Visit:
+Open the dashboard:
 
 ```text
 http://127.0.0.1:8080/dashboard
 ```
 
-Enter the token on the page, for example:
-
-```text
-dev-token
-```
-
-You can then create sessions, submit tasks, and view events and results.
-
-## Using the Dashboard
-
-The Dashboard is the recommended way to use pilotfy locally.
-
-Common workflow:
-
-1. Open `/dashboard`
-2. Enter the External API token
-3. Create a session
-4. Choose a client type:
-   - `claude_code`: for using Claude Code with the pilotfy Claude Code plugin
-   - `pi`: for using the real pi client
-5. Enter the workspace path
-6. Submit a task
-7. View the agent response in the event stream and output areas
-8. If needed, inspect artifacts, restart the session, or terminate it
-
-If a session is currently running a turn, the Dashboard temporarily disables new submissions until the current turn completes or fails.
-
-## Using the pi client
-
-Before using pi, make sure it can run directly on your machine:
-
-```bash
-pi
-```
-
-When starting pilotfy, it is recommended to explicitly configure the internal event reporting URL:
-
-```bash
-PILOTFY_EXTERNAL_API_TOKEN=dev-token \
-PILOTFY_INTERNAL_EVENT_URL=http://127.0.0.1:8080/internal/v1/events \
-cargo run
-```
-
-Then create a session with `client_type = "pi"` in the Dashboard.
-
-If you need pilotfy to use a specific pi command or local extension, set:
-
-```bash
-PILOTFY_PI_TUI_COMMAND='pi -e /absolute/path/to/pilotfy/clients/pi'
-```
-
-During a pi session, pilotfy stores its runtime state files under the global runtime directory:
-
-```text
-~/.local/share/pilotfy/runtimes/<session_id>/current-turn.json
-~/.local/share/pilotfy/runtimes/<session_id>/pi-hook.log
-```
-
-The workspace is used only as the runtime current working directory; pilotfy no longer creates an in-project `.pilotfy/` directory. If the Dashboard does not receive pi output or completion events, first check the corresponding `pi-hook.log` file in the runtime directory.
-
-## Using the HTTP API
-
-All external APIs are under `/external/v1/*` and require a Bearer token.
-
-The examples below assume the service is running at `127.0.0.1:8080` with token `dev-token`.
-
-### Workspace browser roots
-
-Restricted workspace browsing is configured with `PILOTFY_WORKSPACE_ROOTS`:
-
-```bash
-export PILOTFY_WORKSPACE_ROOTS='projects|Projects|/home/me/projects;tmp|Temporary|/tmp'
-```
-
-Each entry is `root_id|label|path`. `root_id` is only a configuration/API handle; it is not stored in the workspace database.
-
-```bash
-curl http://127.0.0.1:8080/external/v1/workspace-roots \
-  -H 'Authorization: Bearer dev-token'
-
-curl 'http://127.0.0.1:8080/external/v1/workspace-roots/projects/entries?path=pilotfy' \
-  -H 'Authorization: Bearer dev-token'
-
-curl -X POST http://127.0.0.1:8080/external/v1/workspaces \
-  -H 'Authorization: Bearer dev-token' \
-  -H 'Content-Type: application/json' \
-  -d '{"root_id":"projects","path":"pilotfy","name":"pilotfy"}'
-```
-
-### Create a session
-
-```bash
-curl -X POST http://127.0.0.1:8080/external/v1/sessions \
-  -H 'Authorization: Bearer dev-token' \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: demo-session-1' \
-  -d '{
-    "client_type":"claude_code",
-    "workspace":"/tmp/pilotfy-demo",
-    "initial_task":{"input":"Please introduce the current project"}
-  }'
-```
-
-Web UI callers can use a previously registered workspace ID instead of a raw path:
-
-```json
-{"client_type":"claude_code","workspace_id":"wks_example"}
-```
-
-### List sessions
-
-```bash
-curl http://127.0.0.1:8080/external/v1/sessions \
-  -H 'Authorization: Bearer dev-token'
-```
-
-### Submit the next message
-
-Replace `sess_example` with the actual returned session ID. Messages submitted to the session inbox are dispatched as turns when the session is ready.
-
-```bash
-curl -X POST http://127.0.0.1:8080/external/v1/sessions/sess_example/inbox/messages \
-  -H 'Authorization: Bearer dev-token' \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: demo-message-1' \
-  -d '{"input":"Continue with the next step"}'
-```
-
-### View events
-
-```bash
-curl http://127.0.0.1:8080/external/v1/sessions/sess_example/events \
-  -H 'Authorization: Bearer dev-token'
-```
-
-### Subscribe to the event stream in real time
-
-```bash
-curl -N http://127.0.0.1:8080/external/v1/sessions/sess_example/events/stream \
-  -H 'Authorization: Bearer dev-token'
-```
-
-### View artifacts
-
-```bash
-curl http://127.0.0.1:8080/external/v1/sessions/sess_example/artifacts \
-  -H 'Authorization: Bearer dev-token'
-```
-
-### Discover workspace artifacts
-
-```bash
-curl -X POST http://127.0.0.1:8080/external/v1/sessions/sess_example/artifacts/discover \
-  -H 'Authorization: Bearer dev-token'
-```
-
-### Terminate a session
-
-```bash
-curl -X DELETE http://127.0.0.1:8080/external/v1/sessions/sess_example \
-  -H 'Authorization: Bearer dev-token' \
-  -H 'Idempotency-Key: demo-terminate-1'
-```
-
-## Common Configuration
-
-| Variable                      | Default                                        | Description                                      |
-| ----------------------------- | ---------------------------------------------- | ------------------------------------------------ |
-| `PILOTFY_BIND_ADDR`          | `127.0.0.1:8080`                               | Service bind address                             |
-| `PILOTFY_DATABASE_URL`       | `sqlite://~/.local/share/pilotfy/pilotfy.db` | SQLite database URL                              |
-| `PILOTFY_EXTERNAL_API_TOKEN` | Not set                                        | Bearer token for the Dashboard and External API  |
-| `PILOTFY_RUN_MIGRATIONS`     | `true`                                         | Automatically run database migrations on startup |
-| `PILOTFY_INTERNAL_EVENT_URL`   | Auto-derived or manually set                   | URL used by agents / hooks to report events      |
-| `PILOTFY_DASHBOARD_SOURCE`     | Not set                                        | Local dashboard dist directory or remote archive |
-| `PILOTFY_DASHBOARD_CACHE_DIR`  | `~/.cache/pilotfy/dashboard`                  | Cache directory for remote dashboard archives    |
-| `PILOTFY_GRAPH_ENABLED`        | `true`                                         | Enable WorkItem DAG graph storage; default builds include the required `lbug` feature |
-| `PILOTFY_GRAPH_DB_DIR`         | Next to SQLite database under `graph/lbug`     | Ladybug graph database directory when graph storage is enabled |
-| `PILOTFY_PI_TUI_COMMAND`       | `pi`                                           | Startup command used for pi sessions             |
-
-## Development Commands
-
-```bash
-cargo build
-cargo test
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-pnpm --dir=apps/dashboard run check
-pnpm --dir=apps/dashboard run build
-```
+Enter the configured External API token, for example `dev-token`.
