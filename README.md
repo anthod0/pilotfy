@@ -1,10 +1,12 @@
 # pilotfy
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/anthod0/pilotfy/assets/assets/logo/dark/wordmark-transparent.png" alt="pilotfy" width="420">
+</p>
+
 `pilotfy` is an experimental control plane for coding agents.
 
-It uses real agent TUIs as the runtime, currently through tmux, instead of short-lived command subprocesses such as `claude -p`. This lets sessions stay alive for a long time while continuing to use vendor-supported clients and subscription flows.
-
-The project is pre-release and changing quickly. The README describes the current product direction rather than a stable integration contract.
+The project is in development, changes quickly, and is not stable yet. Breaking changes should be expected.
 
 ## What pilotfy is
 
