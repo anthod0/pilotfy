@@ -27,5 +27,5 @@ test('dashboard sidebar keeps the logo visible when collapsed', () => {
   expect(appSidebarSource).toContain('group-data-[collapsible=icon]:size-8');
   expect(appSidebarSource).toContain('group-data-[collapsible=icon]:p-0');
   expect(appSidebarSource).toContain('shrink-0');
-  expect(appSidebarSource).toContain('group-data-[collapsible=icon]:hidden">pilotfy Dashboard</span>');
+  expect(appSidebarSource).toContain('group-data-[collapsible=icon]:hidden">PILOTFY</span>');
 });
