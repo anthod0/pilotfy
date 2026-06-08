@@ -1,10 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Bot, UserRound } from '@lucide/svelte'
+  import { Bot, GitBranch, UserRound } from '@lucide/svelte'
   import * as Conversation from '$lib/components/ai-elements/conversation/index.js'
   import * as Message from '$lib/components/ai-elements/message/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
+  import * as Sheet from '$lib/components/ui/sheet/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
+  import { Button } from '$lib/components/ui/button/index.js'
   import { chatAutoScrollKey, scrollToBottom } from '../../session-chat/autoScroll'
   import DraftDagFlow from '../../../components/dag/DraftDagFlow.svelte'
   import type { DagProposalView, JsonObject } from '../../../api/types'
@@ -20,6 +22,7 @@
 
   let { messages, loading = false, plannerTaskId = null, draftPlannerProposal = null, draftPlannerProposalLoading = false }: Props = $props()
   let scrollContainer = $state<HTMLDivElement | null>(null)
+  let draftDagSheetOpen = $state(false)
   const scrollKey = $derived(chatAutoScrollKey(messages))
   const plannerDraftAnchorId = $derived(lastAssistantMessageId(messages))
 
@@ -47,6 +50,10 @@
 
   function isJsonObject(value: unknown): value is JsonObject {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+  }
+
+  function openDraftDagSheet(): void {
+    draftDagSheetOpen = true
   }
 
 </script>
@@ -77,40 +84,28 @@
         </Message.Root>
 
         {#if plannerTaskId && chatMessage.id === plannerDraftAnchorId}
-          <section class="mx-auto w-full max-w-4xl px-4 pb-5" aria-label="Planner draft DAG">
-            <div class="border-y bg-muted/20 py-4">
-              <div class="flex flex-wrap items-start justify-between gap-3 px-1">
-                <div>
-                  <h3 class="text-base font-semibold tracking-tight">Planner draft DAG</h3>
-                  <p class="text-xs text-muted-foreground">Task {plannerTaskId}</p>
-                </div>
-                {#if draftPlannerProposalLoading}
-                  <span class="text-sm text-muted-foreground">Loading proposal…</span>
-                {:else if draftPlannerProposal}
-                  <span class="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">revision {draftPlannerProposal.revision} · {draftPlannerProposal.state}</span>
-                {/if}
+          <section class="mx-auto w-full max-w-4xl px-4 pb-5" aria-label="Planner draft DAG action">
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Planner draft DAG</p>
+                <p class="truncate text-xs text-muted-foreground">Task {plannerTaskId}</p>
               </div>
-
-              {#if draftPlannerProposal}
+              {#if draftPlannerProposalLoading}
+                <span class="text-sm text-muted-foreground">Loading proposal…</span>
+              {:else if draftPlannerProposal}
                 {@const draftWorkItems = proposalWorkItems(draftPlannerProposal)}
-                {@const draftEdges = proposalEdges(draftPlannerProposal)}
-                <div class="mt-3 px-1">
-                  <p class="text-sm leading-6">{draftPlannerProposal.summary}</p>
-                  <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span class="rounded-full bg-background px-2.5 py-1">{draftWorkItems.length} work items</span>
-                    <span class="rounded-full bg-background px-2.5 py-1">{draftEdges.length} dependencies</span>
-                  </div>
-                </div>
-
-                {#if draftWorkItems.length}
-                  <div class="mt-4 px-1">
-                    <DraftDagFlow workItems={draftWorkItems} edges={draftEdges} />
-                  </div>
-                {:else}
-                  <p class="mt-3 px-1 text-sm text-muted-foreground">This draft proposal does not include work items.</p>
-                {/if}
-              {:else if !draftPlannerProposalLoading}
-                <p class="mt-3 px-1 text-sm text-muted-foreground">Waiting for the planner to submit a draft DAG proposal.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label={`View draft DAG for turn ${chatMessage.turnId}`}
+                  onclick={openDraftDagSheet}
+                >
+                  <GitBranch class="size-4" /> View draft DAG
+                  <Badge variant="secondary" class="ml-1">{draftWorkItems.length} items</Badge>
+                </Button>
+              {:else}
+                <span class="text-sm text-muted-foreground">Waiting for proposal…</span>
               {/if}
             </div>
           </section>
@@ -119,3 +114,36 @@
     </Conversation.Content>
   {/if}
 </Conversation.Root>
+
+<Sheet.Root bind:open={draftDagSheetOpen}>
+  {#if draftPlannerProposal}
+    {@const draftWorkItems = proposalWorkItems(draftPlannerProposal)}
+    {@const draftEdges = proposalEdges(draftPlannerProposal)}
+    <Sheet.Content class="w-[92vw] gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <Sheet.Header class="border-b px-6 py-4">
+        <div class="flex flex-wrap items-start justify-between gap-3 pr-10">
+          <div>
+            <Sheet.Title>Planner draft DAG</Sheet.Title>
+            <Sheet.Description>Task {plannerTaskId} · revision {draftPlannerProposal.revision} · {draftPlannerProposal.state}</Sheet.Description>
+          </div>
+          <Badge variant="secondary">{draftPlannerProposal.state}</Badge>
+        </div>
+      </Sheet.Header>
+      <div class="min-h-0 flex-1 overflow-auto px-6 py-4">
+        <p class="text-sm leading-6">{draftPlannerProposal.summary}</p>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span class="rounded-full bg-muted px-2.5 py-1">{draftWorkItems.length} work items</span>
+          <span class="rounded-full bg-muted px-2.5 py-1">{draftEdges.length} dependencies</span>
+        </div>
+
+        {#if draftWorkItems.length}
+          <div class="mt-4">
+            <DraftDagFlow workItems={draftWorkItems} edges={draftEdges} />
+          </div>
+        {:else}
+          <p class="mt-3 text-sm text-muted-foreground">This draft proposal does not include work items.</p>
+        {/if}
+      </div>
+    </Sheet.Content>
+  {/if}
+</Sheet.Root>

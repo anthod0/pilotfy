@@ -544,7 +544,8 @@ test('hides exit on exited sessions and waits for idle after automatic resume be
   expect(mocks.resumeSession.mock.invocationCallOrder[0]).toBeLessThan(mocks.submitInboxMessage.mock.invocationCallOrder[0]);
 });
 
-test('loads planner task proposals from session metadata and renders the draft DAG below the agent output', async () => {
+test('loads planner task proposals and opens the draft DAG in a side sheet from a turn button', async () => {
+  const user = userEvent.setup();
   const planner = session({
     session_id: 'session-planner',
     execution_profile_id: 'planner',
@@ -589,9 +590,17 @@ test('loads planner task proposals from session metadata and renders the draft D
   render(ChatPage);
 
   await waitFor(() => expect(mocks.loadTaskProposals).toHaveBeenCalledWith('task-new'));
-  const assistantOutput = await screen.findByText('I drafted a DAG below.');
-  const draftHeading = await screen.findByRole('heading', { name: /planner draft dag/i });
-  expect(assistantOutput.compareDocumentPosition(draftHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(await screen.findByText('I drafted a DAG below.')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /planner draft dag/i })).not.toBeInTheDocument();
+  expect(screen.queryByText('Implement in two steps')).not.toBeInTheDocument();
+  expect(screen.queryByText('Design UI')).not.toBeInTheDocument();
+
+  const openDraftDagButton = await screen.findByRole('button', { name: /view draft dag for turn/i });
+  expect(openDraftDagButton).toHaveTextContent('View draft DAG');
+  expect(openDraftDagButton).toHaveTextContent('2 items');
+  await user.click(openDraftDagButton);
+
+  expect(await screen.findByRole('heading', { name: /planner draft dag/i })).toBeInTheDocument();
   expect(screen.getByText('Implement in two steps')).toBeInTheDocument();
   expect(screen.getByText('2 work items')).toBeInTheDocument();
   expect(screen.getByText('1 dependencies')).toBeInTheDocument();
