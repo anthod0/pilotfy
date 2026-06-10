@@ -129,6 +129,11 @@ impl EventIngestService {
             .await?;
         }
 
+        crate::application::agent_bindings::register_agent_binding_for_ready_event_in_tx(
+            &mut tx, &event,
+        )
+        .await?;
+
         tx.commit().await?;
 
         DagRunResultService::new(self.pool.clone())

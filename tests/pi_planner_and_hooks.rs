@@ -148,7 +148,13 @@ async fn report_ready(state: AppState, session_id: &str) {
             "type": "session.ready",
             "time": "2026-05-08T12:00:00Z",
             "seq": 1,
-            "payload": {"runtime_instance_id": metadata["runtime_instance_id"]}
+            "payload": {
+                "runtime_instance_id": metadata["runtime_instance_id"],
+                "client_session_key": session_id,
+                "client_session_file": metadata["runtime_dir"].as_str().map(|dir| format!("{dir}/pi-session.jsonl")),
+                "client_session_dir": metadata["runtime_dir"],
+                "client_cwd": metadata["workspace"]
+            }
         })),
     )
     .await;

@@ -47,7 +47,7 @@ Expected `current-turn.json`:
 
 ## What the extension reports
 
-- On `session_start` with reason `startup`, it posts a one-time `session.ready` signal from `agent_client` with the current `runtime_instance_id`.
+- On `session_start` with reason `startup`, it posts a one-time `session.ready` signal from `agent_client` with the current `runtime_instance_id` plus the real pi session identity from `ctx.sessionManager.getSessionId()` as `client_session_key`.
 - On `agent_start`, it reads the current turn context.
 - On assistant message updates/end events, it collects assistant-visible text from pi lifecycle event payloads.
 - On `agent_end`, it posts `turn.output` when text was collected, then posts `turn.completed`.

@@ -101,6 +101,27 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
+function callSessionManagerString(sessionManager: unknown, method: string): string | undefined {
+  if (!sessionManager || typeof sessionManager !== "object") return undefined;
+  const fn = (sessionManager as Record<string, unknown>)[method];
+  if (typeof fn !== "function") return undefined;
+  try {
+    return optionalString(fn.call(sessionManager));
+  } catch {
+    return undefined;
+  }
+}
+
+function piSessionDetailsFromHookContext(ctx: unknown): Pick<import("./session.js").SessionContext, "clientSessionKey" | "clientSessionFile" | "clientSessionDir" | "clientCwd"> {
+  const sessionManager = ctx && typeof ctx === "object" ? (ctx as Record<string, unknown>).sessionManager : undefined;
+  return {
+    clientSessionKey: callSessionManagerString(sessionManager, "getSessionId"),
+    clientSessionFile: callSessionManagerString(sessionManager, "getSessionFile"),
+    clientSessionDir: callSessionManagerString(sessionManager, "getSessionDir"),
+    clientCwd: callSessionManagerString(sessionManager, "getCwd"),
+  };
+}
+
 function externalApiUrl(env: EnvLike): string | undefined {
   return optionalString(env.PILOTFY_EXTERNAL_API_URL)?.replace(/\/+$/, "");
 }
@@ -214,7 +235,7 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
     }
   });
 
-  pi.on("session_start", async (event) => {
+  pi.on("session_start", async (event, ctx) => {
     if (readyReported) return;
     const reason = (event as unknown as Record<string, unknown> | undefined)?.reason;
     if (reason !== "startup") return;
@@ -222,7 +243,17 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
     try {
       const loaded = await loadSessionContext(env);
       if (!loaded.ok) return;
-      readyReported = await makeReporter(loaded.logFile).report(loaded.context, buildSessionReadyEvent(loaded.context));
+      const sessionDetails = piSessionDetailsFromHookContext(ctx);
+      if (!sessionDetails.clientSessionKey) {
+        await logDiagnostic(loaded.logFile, {
+          level: "error",
+          code: "missing_pi_client_session_key",
+          message: "ctx.sessionManager.getSessionId() is required to report pilotfy ready signal",
+        });
+        return;
+      }
+      const context = { ...loaded.context, ...sessionDetails };
+      readyReported = await makeReporter(loaded.logFile).report(context, buildSessionReadyEvent(context));
     } catch (error) {
       const logFile = env.PILOTFY_PI_HOOK_LOG ?? "pi-hook.log";
       await logDiagnostic(logFile, {

@@ -55,7 +55,14 @@ describe("pilotfy pi extension lifecycle", () => {
       },
     });
 
-    await handlers.session_start({ reason: "startup" }, {});
+    await handlers.session_start({ reason: "startup" }, {
+      sessionManager: {
+        getSessionId: () => "pi_session_1",
+        getSessionFile: () => "/tmp/pi/session.jsonl",
+        getSessionDir: () => "/tmp/pi",
+        getCwd: () => "/workspace",
+      },
+    });
 
     expect(reported.map((event) => event.type)).toEqual(["session.ready"]);
     expect(reported[0]).toMatchObject({
@@ -63,7 +70,13 @@ describe("pilotfy pi extension lifecycle", () => {
       turn_id: null,
       source: "agent_client",
       client_type: "pi",
-      payload: { runtime_instance_id: "rtinst_1" },
+      payload: {
+        runtime_instance_id: "rtinst_1",
+        client_session_key: "pi_session_1",
+        client_session_file: "/tmp/pi/session.jsonl",
+        client_session_dir: "/tmp/pi",
+        client_cwd: "/workspace",
+      },
     });
   });
 

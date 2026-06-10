@@ -8,6 +8,10 @@ export interface SessionContext {
   clientType: "pi";
   internalEventUrl: string;
   runtimeInstanceId: string;
+  clientSessionKey?: string;
+  clientSessionFile?: string;
+  clientSessionDir?: string;
+  clientCwd?: string;
 }
 
 export type LoadSessionContextResult =

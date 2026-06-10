@@ -126,6 +126,18 @@ impl InternalEventRequest {
                     "session.ready from agent_client requires payload.runtime_instance_id",
                 ));
             }
+            if self.client_type == "pi" {
+                let client_session_key = self
+                    .payload
+                    .get("client_session_key")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if client_session_key.trim().is_empty() {
+                    return Err(ApiError::invalid_request(
+                        "pi session.ready from agent_client requires payload.client_session_key",
+                    ));
+                }
+            }
         }
 
         let payload_size = serde_json::to_vec(&self.payload)

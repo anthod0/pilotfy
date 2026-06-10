@@ -51,6 +51,10 @@ pub fn new_message_id() -> ExternalId {
     prefixed_id("msg")
 }
 
+pub fn new_agent_binding_id() -> ExternalId {
+    prefixed_id("bind")
+}
+
 fn prefixed_id(prefix: &str) -> ExternalId {
     ExternalId(format!("{prefix}_{}", Uuid::now_v7()))
 }

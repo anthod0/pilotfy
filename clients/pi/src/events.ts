@@ -96,6 +96,14 @@ export function buildTurnFailedEvent(context: TurnContext, message: string): Int
 }
 
 export function buildSessionReadyEvent(context: SessionContext): InternalEvent {
+  const payload: Record<string, unknown> = {
+    runtime_instance_id: context.runtimeInstanceId,
+  };
+  if (context.clientSessionKey) payload.client_session_key = context.clientSessionKey;
+  if (context.clientSessionFile) payload.client_session_file = context.clientSessionFile;
+  if (context.clientSessionDir) payload.client_session_dir = context.clientSessionDir;
+  if (context.clientCwd) payload.client_cwd = context.clientCwd;
+
   return {
     event_id: `evt_${randomUUID()}`,
     session_id: context.sessionId,
@@ -105,6 +113,6 @@ export function buildSessionReadyEvent(context: SessionContext): InternalEvent {
     type: "session.ready",
     time: new Date().toISOString(),
     seq: null,
-    payload: { runtime_instance_id: context.runtimeInstanceId },
+    payload,
   };
 }
