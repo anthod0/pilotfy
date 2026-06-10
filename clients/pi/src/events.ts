@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { TurnContext } from "./context.js";
 import type { SessionContext } from "./session.js";
 
-export type InternalEventType = "session.ready" | "turn.created" | "turn.started" | "turn.output" | "turn.completed" | "turn.failed";
+export type InternalEventType = "session.ready" | "session.message_updated" | "turn.created" | "turn.started" | "turn.output" | "turn.completed" | "turn.failed";
+
+export type SessionMessageUpdatedReason = "append" | "update" | "final";
 
 interface BaseInternalEvent {
   event_id: string;
@@ -19,6 +21,11 @@ export type InternalEvent =
       turn_id: null;
       source: "agent_client";
       type: "session.ready";
+    })
+  | (BaseInternalEvent & {
+      turn_id: null;
+      source: "agent_client";
+      type: "session.message_updated";
     })
   | (BaseInternalEvent & {
       turn_id: string;
@@ -61,6 +68,20 @@ export function buildTurnCreatedEvent(context: TurnContext): InternalEvent {
       input: context.input ? { summary: context.input } : {},
       metadata: { source: "pi_tui" },
     },
+  };
+}
+
+export function buildSessionMessageUpdatedEvent(context: TurnContext, reason: SessionMessageUpdatedReason): InternalEvent {
+  return {
+    event_id: `evt_${randomUUID()}`,
+    session_id: context.sessionId,
+    turn_id: null,
+    source: "agent_client",
+    client_type: "pi",
+    type: "session.message_updated",
+    time: new Date().toISOString(),
+    seq: null,
+    payload: { reason },
   };
 }
 

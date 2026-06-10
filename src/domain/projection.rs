@@ -112,6 +112,7 @@ impl ProjectionState {
             EventType::SessionReady => self.apply_session(event, SessionState::Idle),
             EventType::SessionExited => self.apply_session(event, SessionState::Exited),
             EventType::SessionError => self.apply_session(event, SessionState::Error),
+            EventType::SessionMessageUpdated => Ok(()),
             EventType::TurnCreated | EventType::TurnQueued => {
                 self.apply_turn(event, TurnState::Queued)
             }

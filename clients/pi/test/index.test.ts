@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createPilotfyPiExtension } from "../src/index.js";
 import type { TurnContext } from "../src/context.js";
 import type { InternalEvent } from "../src/events.js";
@@ -27,6 +27,10 @@ const context: TurnContext = {
   clientType: "pi",
   internalEventUrl: "http://localhost/internal/v1/events",
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function install(overrides: Partial<Parameters<typeof createPilotfyPiExtension>[1]> = {}) {
   const { pi, handlers } = fakePi();
@@ -165,9 +169,10 @@ describe("pilotfy pi extension lifecycle", () => {
     await handlers.message_update({ assistantMessageEvent: { text_delta: "world" } }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed", "session.message_updated"]);
     expect(reported[0].payload).toEqual({ runtime_instance_id: "rtinst_1", input: {} });
     expect(reported[1].payload).toEqual({ output: { summary: "hello world" } });
+    expect(reported[3]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "final" } });
   });
 
   test("uses assistant message_end full text without TUI parsing", async () => {
@@ -177,8 +182,34 @@ describe("pilotfy pi extension lifecycle", () => {
     await handlers.message_end({ message: { role: "assistant", content: [{ type: "text", text: "final answer" }] } }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
-    expect(reported[1].payload).toEqual({ output: { summary: "final answer" } });
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "session.message_updated", "turn.output", "turn.completed", "session.message_updated"]);
+    expect(reported[1]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "append" } });
+    expect(reported[2].payload).toEqual({ output: { summary: "final answer" } });
+    expect(reported[4]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "final" } });
+  });
+
+  test("coalesces streaming message_update refresh hints and preserves terminal final update", async () => {
+    vi.useFakeTimers();
+    const { handlers, reported } = install();
+
+    await handlers.agent_start({}, {});
+    await handlers.message_update({ assistantMessageEvent: { text_delta: "hello " } }, {});
+    await handlers.message_update({ assistantMessageEvent: { text_delta: "world" } }, {});
+    expect(reported.map((event) => event.type)).toEqual(["turn.started"]);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "session.message_updated"]);
+    expect(reported[1]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "update" } });
+
+    await handlers.agent_end({ messages: [] }, {});
+    expect(reported.map((event) => event.type)).toEqual([
+      "turn.started",
+      "session.message_updated",
+      "turn.output",
+      "turn.completed",
+      "session.message_updated",
+    ]);
+    expect(reported[4]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "final" } });
   });
 
   test("creates a fresh pilotfy turn for a TUI prompt after the dispatched turn completed", async () => {
@@ -196,14 +227,16 @@ describe("pilotfy pi extension lifecycle", () => {
       "turn.started",
       "turn.output",
       "turn.completed",
+      "session.message_updated",
       "turn.created",
       "turn.started",
       "turn.output",
       "turn.completed",
+      "session.message_updated",
     ]);
-    expect(reported[3].turn_id).not.toBe("turn_1");
-    expect(reported[3]).toMatchObject({ source: "agent_client", payload: { input: { summary: "second from tui" } } });
-    expect(reported[4]).toMatchObject({ turn_id: reported[3].turn_id, payload: { runtime_instance_id: "rtinst_1", input: { summary: "second from tui" } } });
+    expect(reported[4].turn_id).not.toBe("turn_1");
+    expect(reported[4]).toMatchObject({ source: "agent_client", payload: { input: { summary: "second from tui" } } });
+    expect(reported[5]).toMatchObject({ turn_id: reported[4].turn_id, payload: { runtime_instance_id: "rtinst_1", input: { summary: "second from tui" } } });
   });
 
   test("does not report completion when context is missing", async () => {
@@ -244,7 +277,7 @@ describe("pilotfy pi extension lifecycle", () => {
     await handlers.agent_end({ messages: [] }, {});
     await handlers.agent_end({ messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed"]);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.output", "turn.completed", "session.message_updated"]);
   });
 
   test("reports turn.failed for explicit agent_end error", async () => {
@@ -253,7 +286,8 @@ describe("pilotfy pi extension lifecycle", () => {
     await handlers.agent_start({}, {});
     await handlers.agent_end({ error: new Error("model failed"), messages: [] }, {});
 
-    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.failed"]);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "turn.failed", "session.message_updated"]);
     expect(reported[1].payload).toEqual({ failure: { message: "model failed" } });
+    expect(reported[2]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "final" } });
   });
 });

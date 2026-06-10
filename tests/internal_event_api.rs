@@ -176,6 +176,48 @@ async fn internal_event_api_rejects_turn_event_without_turn_id() {
 }
 
 #[tokio::test]
+async fn internal_event_api_accepts_session_message_updated_without_changing_projection() {
+    let state = test_state().await;
+    let (created_status, _) = post_event(
+        state.clone(),
+        event_body(
+            "evt_m2_message_updated_created",
+            "session.created",
+            "sess_m2_message_updated",
+            None,
+            1,
+        ),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::OK);
+
+    let mut event = event_body(
+        "evt_m2_message_updated",
+        "session.message_updated",
+        "sess_m2_message_updated",
+        None,
+        2,
+    );
+    event["source"] = json!("agent_client");
+    event["payload"] = json!({"reason":"update"});
+
+    let (status, body) = post_event(state.clone(), event).await;
+
+    assert_eq!(status, StatusCode::OK, "{body:?}");
+    assert_eq!(body["accepted"], true);
+    assert_eq!(body["turn_id"], Value::Null);
+
+    let service = EventIngestService::new(state.db);
+    let session = service
+        .get_session("sess_m2_message_updated")
+        .await
+        .expect("session query")
+        .expect("session projection");
+    assert_eq!(session.state, SessionState::Created);
+    assert_eq!(session.state_version, 1);
+}
+
+#[tokio::test]
 async fn internal_event_api_accepts_agent_client_ready_with_runtime_instance_id_for_existing_session()
  {
     let state = test_state().await;

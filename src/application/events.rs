@@ -72,61 +72,63 @@ impl EventIngestService {
                 .fetch_one(&mut *tx)
                 .await?;
 
-        for session in projection.sessions() {
-            let metadata = serde_json::to_string(&session.metadata)?;
-            sqlx::query(
-                r#"INSERT INTO sessions
-                   (session_id, client_type, handle, role, description, execution_profile_id,
-                    execution_profile_version, state, current_turn_id, state_version, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(session_id) DO UPDATE SET
-                       client_type = excluded.client_type,
-                       handle = excluded.handle,
-                       role = excluded.role,
-                       description = excluded.description,
-                       execution_profile_id = excluded.execution_profile_id,
-                       execution_profile_version = excluded.execution_profile_version,
-                       state = excluded.state,
-                       current_turn_id = excluded.current_turn_id,
-                       state_version = excluded.state_version,
-                       metadata = excluded.metadata,
-                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
-            )
-            .bind(&session.session_id)
-            .bind(&session.client_type)
-            .bind(&session.handle)
-            .bind(&session.role)
-            .bind(&session.description)
-            .bind(&session.execution_profile_id)
-            .bind(&session.execution_profile_version)
-            .bind(session.state.to_string())
-            .bind(&session.current_turn_id)
-            .bind(state_version)
-            .bind(metadata)
-            .execute(&mut *tx)
-            .await?;
-        }
+        if event.event_type != EventType::SessionMessageUpdated {
+            for session in projection.sessions() {
+                let metadata = serde_json::to_string(&session.metadata)?;
+                sqlx::query(
+                    r#"INSERT INTO sessions
+                       (session_id, client_type, handle, role, description, execution_profile_id,
+                        execution_profile_version, state, current_turn_id, state_version, metadata)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(session_id) DO UPDATE SET
+                           client_type = excluded.client_type,
+                           handle = excluded.handle,
+                           role = excluded.role,
+                           description = excluded.description,
+                           execution_profile_id = excluded.execution_profile_id,
+                           execution_profile_version = excluded.execution_profile_version,
+                           state = excluded.state,
+                           current_turn_id = excluded.current_turn_id,
+                           state_version = excluded.state_version,
+                           metadata = excluded.metadata,
+                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
+                )
+                .bind(&session.session_id)
+                .bind(&session.client_type)
+                .bind(&session.handle)
+                .bind(&session.role)
+                .bind(&session.description)
+                .bind(&session.execution_profile_id)
+                .bind(&session.execution_profile_version)
+                .bind(session.state.to_string())
+                .bind(&session.current_turn_id)
+                .bind(state_version)
+                .bind(metadata)
+                .execute(&mut *tx)
+                .await?;
+            }
 
-        for turn in projection.turns() {
-            let metadata = serde_json::to_string(&turn.metadata)?;
-            sqlx::query(
-                r#"INSERT INTO turns
-                   (turn_id, session_id, state, state_version, metadata)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(turn_id) DO UPDATE SET
-                       session_id = excluded.session_id,
-                       state = excluded.state,
-                       state_version = excluded.state_version,
-                       metadata = excluded.metadata,
-                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
-            )
-            .bind(&turn.turn_id)
-            .bind(&turn.session_id)
-            .bind(turn.state.to_string())
-            .bind(turn.state_version)
-            .bind(metadata)
-            .execute(&mut *tx)
-            .await?;
+            for turn in projection.turns() {
+                let metadata = serde_json::to_string(&turn.metadata)?;
+                sqlx::query(
+                    r#"INSERT INTO turns
+                       (turn_id, session_id, state, state_version, metadata)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(turn_id) DO UPDATE SET
+                           session_id = excluded.session_id,
+                           state = excluded.state,
+                           state_version = excluded.state_version,
+                           metadata = excluded.metadata,
+                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
+                )
+                .bind(&turn.turn_id)
+                .bind(&turn.session_id)
+                .bind(turn.state.to_string())
+                .bind(turn.state_version)
+                .bind(metadata)
+                .execute(&mut *tx)
+                .await?;
+            }
         }
 
         crate::application::agent_bindings::register_agent_binding_for_ready_event_in_tx(

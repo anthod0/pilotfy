@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { defaultHookLogFile, loadTurnContext, type EnvLike, type LoadTurnContextResult, type TurnContext } from "./context.js";
 import { appendDiagnostic, type DiagnosticEntry } from "./diagnostics.js";
-import { buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnCreatedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, type InternalEvent } from "./events.js";
+import { buildSessionMessageUpdatedEvent, buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnCreatedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, type InternalEvent, type SessionMessageUpdatedReason } from "./events.js";
 import { EventReporter } from "./reporter.js";
 import { loadSessionContext } from "./session.js";
 import { buildPilotfyTools } from "./tools.js";
@@ -214,7 +214,35 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
   let activeTurn: ActiveTurnState | undefined;
   let readyReported = false;
   let pendingPrompt: string | undefined;
+  let pendingRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   const endedTurnIds = new Set<string>();
+
+  function clearPendingRefresh(): void {
+    if (!pendingRefreshTimer) return;
+    clearTimeout(pendingRefreshTimer);
+    pendingRefreshTimer = undefined;
+  }
+
+  async function scheduleMessageRefresh(reason: SessionMessageUpdatedReason): Promise<void> {
+    if (!activeTurn || activeTurn.ended) return;
+    if (reason !== "update") {
+      clearPendingRefresh();
+      await activeTurn.reporter.report(activeTurn.context, buildSessionMessageUpdatedEvent(activeTurn.context, reason));
+      return;
+    }
+    if (pendingRefreshTimer) return;
+    const state = activeTurn;
+    pendingRefreshTimer = setTimeout(() => {
+      pendingRefreshTimer = undefined;
+      if (activeTurn !== state || state.ended) return;
+      void state.reporter.report(state.context, buildSessionMessageUpdatedEvent(state.context, "update"));
+    }, 500);
+  }
+
+  async function reportFinalMessageRefresh(state: ActiveTurnState): Promise<void> {
+    clearPendingRefresh();
+    await state.reporter.report(state.context, buildSessionMessageUpdatedEvent(state.context, "final"));
+  }
 
   pi.on("before_agent_start", async (event) => {
     const eventRecord = event as unknown as Record<string, unknown>;
@@ -320,17 +348,22 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
     const fullText = assistantTextFromMessage((event as unknown as Record<string, unknown> | undefined)?.message);
     if (fullText) {
       activeTurn.output = fullText;
+      void scheduleMessageRefresh("update");
       return;
     }
 
     const delta = assistantDeltaFromEvent(event);
-    if (delta) activeTurn.output += delta;
+    if (delta) {
+      activeTurn.output += delta;
+      void scheduleMessageRefresh("update");
+    }
   });
 
   pi.on("message_end", async (event) => {
     if (!activeTurn || activeTurn.ended) return;
     const fullText = assistantTextFromMessage((event as unknown as Record<string, unknown> | undefined)?.message);
     if (fullText) activeTurn.output = fullText;
+    await scheduleMessageRefresh("append");
   });
 
   pi.on("agent_end", async (event) => {
@@ -342,6 +375,7 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
     const failureMessage = errorMessageFromAgentEnd(event);
     if (failureMessage) {
       await state.reporter.report(state.context, buildTurnFailedEvent(state.context, failureMessage));
+      await reportFinalMessageRefresh(state);
       return;
     }
 
@@ -357,6 +391,7 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
     }
 
     await state.reporter.report(state.context, buildTurnCompletedEvent(state.context));
+    await reportFinalMessageRefresh(state);
   });
 }
 
