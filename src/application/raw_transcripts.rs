@@ -627,7 +627,7 @@ fn timeline_item(
             .get("timestamp")
             .and_then(Value::as_str)
             .map(ToString::to_string),
-        content_preview: truncate_preview(&preview),
+        content_preview: timeline_content_preview(kind, preview),
         content_ref: encode_pi_content_ref(binding_id, start, end, block_index, kind),
     }
 }
@@ -675,6 +675,13 @@ fn model_change_title(entry: &Value) -> Option<String> {
         (Some(provider), Some(model)) => Some(format!("{provider}/{model}")),
         (None, Some(model)) => Some(model.to_string()),
         _ => None,
+    }
+}
+
+fn timeline_content_preview(kind: &str, text: String) -> String {
+    match kind {
+        "user" | "assistant" => text,
+        _ => truncate_preview(&text),
     }
 }
 

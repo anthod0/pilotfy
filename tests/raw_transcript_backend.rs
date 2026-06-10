@@ -121,6 +121,68 @@ fn pi_parser_returns_timeline_page_from_jsonl_with_cursor() {
 }
 
 #[test]
+fn pi_parser_keeps_user_and_assistant_previews_full_but_truncates_other_kinds() {
+    let temp = tempdir().unwrap();
+    let session_file = temp.path().join("session.jsonl");
+    let long_user = "u".repeat(260);
+    let long_assistant = "a".repeat(260);
+    let long_thinking = "t".repeat(260);
+    let lines = [
+        json!({
+            "type": "message",
+            "id": "u1",
+            "timestamp": "2026-06-09T00:00:01.000Z",
+            "message": {"role": "user", "content": long_user},
+        }),
+        json!({
+            "type": "message",
+            "id": "a1",
+            "timestamp": "2026-06-09T00:00:02.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": long_thinking},
+                    {"type": "text", "text": long_assistant},
+                ],
+            },
+        }),
+    ]
+    .into_iter()
+    .map(|line| line.to_string())
+    .collect::<Vec<_>>()
+    .join("\n");
+    fs::write(&session_file, format!("{lines}\n")).unwrap();
+
+    let source = pilotfy::application::ResolvedAgentBinding {
+        id: "bind_1".to_string(),
+        client_type: "pi".to_string(),
+        format: "pi-jsonl".to_string(),
+        path: session_file,
+        fingerprint: None,
+    };
+    let parser = PiJsonlParser::new();
+
+    let page = parser
+        .timeline_page(TimelinePageRequest {
+            session_id: "sess_1".to_string(),
+            source,
+            cursor: None,
+            limit: 10,
+        })
+        .unwrap();
+
+    assert_eq!(page.items[0].kind, "user");
+    assert_eq!(page.items[0].content_preview, "u".repeat(260));
+    assert_eq!(page.items[1].kind, "thinking");
+    assert_eq!(
+        page.items[1].content_preview,
+        format!("{}…", "t".repeat(240))
+    );
+    assert_eq!(page.items[2].kind, "assistant");
+    assert_eq!(page.items[2].content_preview, "a".repeat(260));
+}
+
+#[test]
 fn pi_parser_falls_back_to_raw_kind_for_unmapped_message_roles() {
     let temp = tempdir().unwrap();
     let session_file = temp.path().join("session.jsonl");
