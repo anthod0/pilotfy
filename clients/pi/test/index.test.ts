@@ -197,7 +197,10 @@ describe("pilotfy pi extension lifecycle", () => {
     await handlers.message_update({ assistantMessageEvent: { text_delta: "world" } }, {});
     expect(reported.map((event) => event.type)).toEqual(["turn.started"]);
 
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(reported.map((event) => event.type)).toEqual(["turn.started"]);
+
+    await vi.advanceTimersByTimeAsync(1);
     expect(reported.map((event) => event.type)).toEqual(["turn.started", "session.message_updated"]);
     expect(reported[1]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "update" } });
 
