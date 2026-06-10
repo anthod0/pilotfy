@@ -454,16 +454,119 @@ session.message_updated
 
 ## 实施顺序
 
+### 0. 先确认 pi `client_session_key` 来源
+
+开始实现前先确认 pi 的 `client_session_key` 稳定来源和写入时机。
+
+当前第一阶段可选规则包括：
+
+1. 使用 pilotfy runtime 启动 pi 时传入的 `--session-id <pilotfy_session_id>`，即 `client_session_key = session_id`。
+2. 如果 pi extension 能从 `session_start` event 中拿到真实 pi session identity，则使用 pi 自身 session identity。
+3. 由 runtime 显式 export `PILOTFY_CLIENT_SESSION_KEY`，pi extension 在 `session.ready` payload 中上报。
+
+未确认该规则前，不应开始实现 resolver/parser/API，因为 `agent_bindings` 无法可靠定位真实 raw transcript source。
+
+### Phase 1：后端 binding 基础设施
+
 1. 新增 `agent_bindings` migration。
-2. session/runtime/pi extension 链路注册 `agent_bindings`。
-3. 实现 agent binding resolver trait。
-4. 实现 pi resolver。
-5. 实现 raw transcript parser trait。
-6. 实现 pi JSONL parser。
+   - 新建新的 numbered migration，不修改历史 migration。
+   - 包含唯一约束 `UNIQUE(session_id, client_type, client_session_key)` 和建议索引。
+2. 实现 agent binding repository/service。
+   - 支持 upsert binding。
+   - 支持按 `session_id` 查询 primary binding。
+   - 重复 `session.ready` 或 Internal Event API retry 必须幂等。
+3. 在 `session.ready` ingest 链路中注册 `agent_bindings`。
+   - 后端校验 session 存在后，结合 runtime launch context 写入 `launch_cwd`。
+   - 如果实现允许，`session.ready` event insert/projection 与 `agent_bindings` upsert 尽量在同一事务内完成。
+   - 第一阶段先支持 `client_type = "pi"`。
+
+本阶段验收目标：POST `session.ready` 后，数据库中存在对应 `agent_bindings` row；重复 POST 不产生重复 binding。
+
+### Phase 2：Resolver + Parser 后端闭环
+
+4. 定义 agent binding resolver trait 与 raw transcript parser trait。
+   - DTO 先服务 External API，不急于过度泛化。
+   - client-specific 路径规则和 raw 格式处理只放在 resolver/parser 边界内。
+5. 实现 pi resolver。
+   - 输入 `launch_cwd + client_session_key`。
+   - 输出 pi JSONL raw source path。
+   - 找不到文件时返回明确 `source_unavailable` / degraded 结果，不猜测路径、不伪造数据。
+6. 实现 pi JSONL parser 第一版。
+   - timeline page 支持 cursor absent/null 从头扫描。
+   - cursor 第一版可使用 parser-specific opaque token，内部包含 byte offset、binding/source scope 等信息。
+   - 优先支持 user message、assistant text/thinking、tool call、tool result、model_change。
+   - detail 第一版支持普通 JSONL entry/block；`bashExecution.fullOutputPath` 可作为同阶段后续小步补齐。
+
+本阶段验收目标：后端内部可以从 `session_id` 查 binding、resolve raw source、解析出一页 normalized timeline items。
+
+### Phase 3：External API
+
 7. 新增 timeline API。
+   - `GET /external/v1/sessions/{session_id}/timeline?cursor=&limit=`。
+   - 返回 `items`、`next_cursor`、`tail_cursor`、`has_more`、`is_tail`、`source_id`。
 8. 新增 timeline detail API。
-9. 新增 `session.message_updated` event 类型与 runtime/plugin 上报链路。
-10. WebUI 改为消费 timeline/detail API，并维护 `TimelineState`。
+   - `GET /external/v1/sessions/{session_id}/timeline/detail?ref=`。
+   - `content_ref` 对 WebUI 保持 opaque。
+   - 第一阶段返回单个 item 完整内容，不做 detail 内部分页。
+9. 补齐 API 错误语义。
+   - binding 不存在：`not_ready` 或 `source_unavailable`。
+   - raw file 不存在：`source_unavailable`。
+   - cursor 无效：`cursor_invalid`。
+   - content ref 无效：`content_ref_invalid`。
+
+本阶段验收目标：通过 External API integration test 验证 timeline/detail 可以读取测试 pi JSONL fixture。
+
+### Phase 4：`session.message_updated` 刷新事件
+
+10. 新增 `session.message_updated` event 类型。
+    - `turn_id` 不必填。
+    - projection 必须忽略它，不改变 session/turn/task 状态。
+    - event payload 只携带 `binding_id` 和轻量 `reason`。
+11. 在 runtime/plugin 链路上报 `session.message_updated`。
+    - pi extension 在 `message_update`、`message_end`、tool result、agent end 等边界上报 refresh hint。
+    - `append` / `update` 可轻量合并，避免高频写入 event store。
+    - turn completed / failed / interrupted 时强制上报一次 `final`。
+12. 实现 debounce/coalesce 策略。
+    - streaming output busy 期间建议最多每 250ms~500ms 上报一次。
+    - terminal final update 不应被合并丢失。
+
+本阶段验收目标：WebUI/dashboard SSE 能收到 `session.message_updated` hint，但 transcript 内容仍只通过 timeline API 读取。
+
+### Phase 5：WebUI 接入
+
+13. 新增 WebUI timeline/detail API client。
+14. 实现前端 `TimelineState`。
+    - `items + nextCursor + tailCursor + sourceId + bindingId` 作为同一个状态单元一起生效、一起失效。
+    - session/source/binding 变化、cursor invalid、source unavailable、用户 refresh 时清空并从 `cursor = null` 重建。
+15. SSE 收到 `session.message_updated` 后增量读取。
+    - 有本地 `tailCursor` 时，用 `tailCursor` append 新 items。
+    - 没有本地 timeline state 时，用 `cursor = null` rebuild。
+    - payload binding 与本地 state 不匹配时，清空 state 后 rebuild。
+
+本阶段验收目标：WebUI 能初始重建 timeline，并在 agent message 更新时通过 SSE hint + timeline API 增量刷新。
+
+### 推荐最小 MVP 切片
+
+第一轮优先完成：
+
+```text
+migration
+-> session.ready upsert binding
+-> pi resolver
+-> pi parser timeline page
+-> GET timeline API
+-> 后端 integration test
+```
+
+再继续完成：
+
+```text
+timeline detail API
+-> session.message_updated
+-> WebUI TimelineState
+```
+
+这样可以先验证后端 raw transcript read model 闭环，避免一次性同时修改 DB、runtime、parser、API 和前端导致调试范围过大。
 
 ## 非目标
 
