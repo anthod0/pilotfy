@@ -25,7 +25,7 @@ function page(overrides: Partial<TimelinePage> = {}): TimelinePage {
     items: [
       {
         item_id: 'item-1',
-        kind: 'assistant_message',
+        kind: 'assistant',
         role: 'assistant',
         title: null,
         status: null,

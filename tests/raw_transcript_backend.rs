@@ -81,10 +81,13 @@ fn pi_parser_returns_timeline_page_from_jsonl_with_cursor() {
 
     assert_eq!(first_page.binding_id, "bind_1");
     assert_eq!(first_page.items.len(), 3);
-    assert_eq!(first_page.items[0].kind, "user_message");
+    assert_eq!(first_page.items[0].kind, "user");
+    assert_eq!(first_page.items[0].raw_kind.as_deref(), Some("user"));
     assert_eq!(first_page.items[0].content_preview, "hello world");
-    assert_eq!(first_page.items[1].kind, "assistant_thinking");
-    assert_eq!(first_page.items[2].kind, "assistant_message");
+    assert_eq!(first_page.items[1].kind, "thinking");
+    assert_eq!(first_page.items[1].raw_kind.as_deref(), Some("thinking"));
+    assert_eq!(first_page.items[2].kind, "assistant");
+    assert_eq!(first_page.items[2].raw_kind.as_deref(), Some("text"));
     assert!(first_page.has_more);
     assert!(!first_page.is_tail);
     let cursor = first_page.next_cursor.clone().unwrap();
@@ -104,8 +107,51 @@ fn pi_parser_returns_timeline_page_from_jsonl_with_cursor() {
         .map(|item| item.kind.as_str())
         .collect();
     assert_eq!(kinds, vec!["tool_call", "tool_result", "model_change"]);
+    let raw_kinds: Vec<_> = second_page
+        .items
+        .iter()
+        .map(|item| item.raw_kind.as_deref())
+        .collect();
+    assert_eq!(
+        raw_kinds,
+        vec![Some("toolCall"), Some("toolResult"), Some("model_change")]
+    );
     assert!(!second_page.has_more);
     assert!(second_page.is_tail);
+}
+
+#[test]
+fn pi_parser_falls_back_to_raw_kind_for_unmapped_message_roles() {
+    let temp = tempdir().unwrap();
+    let session_file = temp.path().join("session.jsonl");
+    fs::write(
+        &session_file,
+        "{\"type\":\"message\",\"id\":\"x1\",\"timestamp\":\"2026-06-09T00:00:01.000Z\",\"message\":{\"role\":\"vendorSpecial\",\"content\":\"raw payload\"}}\n",
+    )
+    .unwrap();
+
+    let source = pilotfy::application::ResolvedAgentBinding {
+        id: "bind_1".to_string(),
+        client_type: "pi".to_string(),
+        format: "pi-jsonl".to_string(),
+        path: session_file,
+        fingerprint: None,
+    };
+    let parser = PiJsonlParser::new();
+
+    let page = parser
+        .timeline_page(TimelinePageRequest {
+            session_id: "sess_1".to_string(),
+            source,
+            cursor: None,
+            limit: 10,
+        })
+        .unwrap();
+
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].kind, "vendorSpecial");
+    assert_eq!(page.items[0].raw_kind.as_deref(), Some("vendorSpecial"));
+    assert_eq!(page.items[0].content_preview, "raw payload");
 }
 
 #[tokio::test]
@@ -142,5 +188,5 @@ async fn service_can_resolve_and_parse_primary_binding_for_session() {
     .unwrap();
 
     assert_eq!(page.items.len(), 1);
-    assert_eq!(page.items[0].kind, "user_message");
+    assert_eq!(page.items[0].kind, "user");
 }

@@ -308,6 +308,7 @@ export interface EventView {
 export interface TimelineItem {
   item_id: string;
   kind: string;
+  raw_kind?: string | null;
   role: string | null;
   title: string | null;
   status: string | null;

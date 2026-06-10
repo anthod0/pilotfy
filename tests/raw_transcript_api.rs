@@ -132,7 +132,7 @@ async fn timeline_and_detail_external_api_read_pi_jsonl_fixture() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["session_id"], session_id);
     assert_eq!(body["data"]["items"].as_array().unwrap().len(), 1);
-    assert_eq!(body["data"]["items"][0]["kind"], "user_message");
+    assert_eq!(body["data"]["items"][0]["kind"], "user");
     assert_eq!(
         body["data"]["items"][0]["content_preview"],
         "hello timeline"

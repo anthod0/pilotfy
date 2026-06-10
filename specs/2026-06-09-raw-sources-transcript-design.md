@@ -231,7 +231,8 @@ GET /external/v1/sessions/{session_id}/timeline/detail?ref=
   "items": [
     {
       "item_id": "pi:entry:abc123:block:0",
-      "kind": "assistant_message",
+      "kind": "assistant",
+      "raw_kind": "text",
       "role": "assistant",
       "title": null,
       "status": null,
@@ -377,18 +378,15 @@ type TimelineState = {
 
 pi session JSONL 中的结构映射为统一 timeline item：
 
-| pi entry/message | timeline kind |
+| pi raw kind | normalized timeline kind |
 | --- | --- |
-| `message.role = user` | `user_message` |
-| `message.role = assistant` text block | `assistant_message` |
-| `message.role = assistant` thinking block | `assistant_thinking` |
-| `message.role = assistant` toolCall block | `tool_call` |
+| `message.role = user` | `user` |
+| `message.role = assistant` text block (`type = text`) | `assistant` |
+| `message.role = assistant` thinking block (`type = thinking`) | `thinking` |
+| `message.role = assistant` toolCall block (`type = toolCall`) | `tool_call` |
 | `message.role = toolResult` | `tool_result` |
-| `message.role = bashExecution` | `user_bash` |
-| `message.role = custom` | `custom_message` |
-| `message.role = branchSummary` | `branch_summary` |
-| `message.role = compactionSummary` | `compaction_summary` |
 | `type = model_change` | `model_change` |
+| other pi raw kinds, e.g. `bashExecution`, `custom`, `branchSummary`, `compactionSummary` | fallback to raw kind |
 
 pi timeline detail 读取规则：
 

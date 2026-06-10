@@ -43,6 +43,7 @@ pub struct TimelineItemDetailRequest {
 pub struct TimelineItem {
     pub item_id: String,
     pub kind: String,
+    pub raw_kind: Option<String>,
     pub role: String,
     pub title: Option<String>,
     pub status: Option<String>,
@@ -303,7 +304,7 @@ impl RawTranscriptParser for PiJsonlParser {
             .trim_end_matches(['\r', '\n']);
         let entry: Value = serde_json::from_str(line)?;
         let text = match detail_ref.kind.as_str() {
-            "assistant_message" | "assistant_thinking" | "tool_call" => entry
+            "assistant" | "thinking" | "tool_call" => entry
                 .get("message")
                 .and_then(|message| message.get("content"))
                 .and_then(|content| content.get(detail_ref.block_index))
@@ -418,7 +419,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "user_message",
+            "user",
             "user",
             None,
             None,
@@ -443,7 +444,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "tool_result",
+            "toolResult",
             "tool",
             message
                 .get("toolName")
@@ -464,7 +465,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "user_bash",
+            "bashExecution",
             "user",
             message
                 .get("command")
@@ -483,7 +484,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "custom_message",
+            "custom",
             "system",
             message
                 .get("customType")
@@ -498,7 +499,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "branch_summary",
+            "branchSummary",
             "system",
             None,
             None,
@@ -514,7 +515,7 @@ fn pi_message_entry_to_items(
             start,
             end,
             0,
-            "compaction_summary",
+            "compactionSummary",
             "system",
             None,
             None,
@@ -523,6 +524,18 @@ fn pi_message_entry_to_items(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
+        )],
+        Some(raw_kind) => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            raw_kind,
+            "system",
+            Some(raw_kind.to_string()),
+            None,
+            content_preview(message.get("content")),
         )],
         _ => Vec::new(),
     }
@@ -543,7 +556,7 @@ fn assistant_block_item(
             start,
             end,
             block_index,
-            "assistant_message",
+            "text",
             "assistant",
             None,
             None,
@@ -559,7 +572,7 @@ fn assistant_block_item(
             start,
             end,
             block_index,
-            "assistant_thinking",
+            "thinking",
             "assistant",
             None,
             None,
@@ -575,7 +588,7 @@ fn assistant_block_item(
             start,
             end,
             block_index,
-            "tool_call",
+            "toolCall",
             "tool",
             block
                 .get("name")
@@ -595,16 +608,18 @@ fn timeline_item(
     start: usize,
     end: usize,
     block_index: usize,
-    kind: &str,
+    raw_kind: &str,
     role: &str,
     title: Option<String>,
     status: Option<String>,
     preview: String,
 ) -> TimelineItem {
     let entry_id = entry.get("id").and_then(Value::as_str).unwrap_or("unknown");
+    let kind = normalize_pi_timeline_kind(raw_kind);
     TimelineItem {
         item_id: format!("pi:entry:{entry_id}:block:{block_index}"),
         kind: kind.to_string(),
+        raw_kind: Some(raw_kind.to_string()),
         role: role.to_string(),
         title,
         status,
@@ -614,6 +629,18 @@ fn timeline_item(
             .map(ToString::to_string),
         content_preview: truncate_preview(&preview),
         content_ref: encode_pi_content_ref(binding_id, start, end, block_index, kind),
+    }
+}
+
+fn normalize_pi_timeline_kind(raw_kind: &str) -> &str {
+    match raw_kind {
+        "user" => "user",
+        "text" => "assistant",
+        "thinking" => "thinking",
+        "toolCall" => "tool_call",
+        "toolResult" => "tool_result",
+        "model_change" => "model_change",
+        other => other,
     }
 }
 
