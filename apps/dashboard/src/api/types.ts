@@ -305,6 +305,37 @@ export interface EventView {
   payload: JsonObject;
 }
 
+export interface TimelineItem {
+  item_id: string;
+  kind: string;
+  role: string | null;
+  title: string | null;
+  status: string | null;
+  occurred_at: string | null;
+  content_preview: string | null;
+  content_ref: string;
+  turn_id?: string | null;
+}
+
+export interface TimelinePage {
+  session_id: string;
+  binding_id: string;
+  items: TimelineItem[];
+  next_cursor: string | null;
+  tail_cursor: string | null;
+  has_more: boolean;
+  is_tail: boolean;
+  source_id: string;
+}
+
+export interface TimelineItemDetail {
+  binding_id: string;
+  content_ref: string;
+  content_type: string;
+  text: string;
+  size_bytes: number;
+}
+
 export type DashboardStreamEvent =
   | { kind: 'session_event'; id: string; occurred_at: string; event: EventView }
   | { kind: 'task_event'; id: string; occurred_at: string; event: TaskEventView };

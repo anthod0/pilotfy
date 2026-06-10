@@ -47,6 +47,22 @@ const mocks = vi.hoisted(() => {
     restartSession: vi.fn(),
     submitInboxMessage: vi.fn(),
     terminateSession: vi.fn(),
+    loadSessionTimeline: vi.fn(async () => null),
+    resetTimelineState: vi.fn(),
+    timelineState: writableStore({
+      sessionId: '',
+      bindingId: null,
+      items: [],
+      nextCursor: null,
+      tailCursor: null,
+      sourceId: null,
+      hasMore: false,
+      isTail: true,
+      loading: false,
+      refreshing: false,
+      error: null,
+    }),
+    subscribeDashboardEvents: vi.fn(() => vi.fn()),
     workspaces: writableStore([]),
     loadWorkspaces: vi.fn(async () => []),
     agentProfiles: writableStore([]),
@@ -71,6 +87,13 @@ vi.mock('../../src/stores/sessions', () => ({
   submitInboxMessage: mocks.submitInboxMessage,
   terminateSession: mocks.terminateSession,
 }));
+vi.mock('../../src/stores/timeline', () => ({
+  timelineState: mocks.timelineState,
+  loadSessionTimeline: mocks.loadSessionTimeline,
+  resetTimelineState: mocks.resetTimelineState,
+  handleTimelineMessageUpdated: vi.fn(),
+}));
+vi.mock('../../src/services/eventStream', () => ({ subscribeDashboardEvents: mocks.subscribeDashboardEvents }));
 vi.mock('../../src/stores/workspaces', () => ({ workspaces: mocks.workspaces, loadWorkspaces: mocks.loadWorkspaces }));
 vi.mock('../../src/stores/agentProfiles', () => ({
   agentProfiles: mocks.agentProfiles,
@@ -111,6 +134,19 @@ beforeEach(() => {
   mocks.sessionsError.set(null);
   mocks.sessionDetailLoading.set(false);
   mocks.sessionDetailError.set(null);
+  mocks.timelineState.set({
+    sessionId: '',
+    bindingId: null,
+    items: [],
+    nextCursor: null,
+    tailCursor: null,
+    sourceId: null,
+    hasMore: false,
+    isTail: true,
+    loading: false,
+    refreshing: false,
+    error: null,
+  });
   vi.clearAllMocks();
 });
 
@@ -138,6 +174,7 @@ test('session detail page loads the selected session and has no embedded session
   render(SessionDetailPage);
 
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2'));
+  await waitFor(() => expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'rebuild' }));
   expect(await screen.findByRole('button', { name: /back to sessions/i })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /first/i })).not.toBeInTheDocument();
 });

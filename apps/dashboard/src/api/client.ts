@@ -18,6 +18,8 @@ import type {
   RenameWorkspaceInput,
   SessionView,
   SubmitInboxMessageInput,
+  TimelineItemDetail,
+  TimelinePage,
   UpsertAgentProfileInput,
   TaskDagView,
   TaskEventView,
@@ -227,6 +229,28 @@ export async function submitInboxMessage(sessionId: string, input: SubmitInboxMe
 
 export async function listEvents(sessionId: string): Promise<EventView[]> {
   return (await request<{ events: EventView[] }>(`/sessions/${sessionId}/events`)).events;
+}
+
+export async function getSessionTimeline(
+  sessionId: string,
+  options: { cursor?: string | null; limit?: number; signal?: AbortSignal } = {},
+): Promise<TimelinePage> {
+  const params = new URLSearchParams();
+  if (options.cursor) params.set('cursor', options.cursor);
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return request<TimelinePage>(`/sessions/${encodeURIComponent(sessionId)}/timeline${query}`, { signal: options.signal });
+}
+
+export async function getTimelineItemDetail(
+  sessionId: string,
+  contentRef: string,
+  options: ReadRequestOptions = {},
+): Promise<TimelineItemDetail> {
+  return request<TimelineItemDetail>(
+    `/sessions/${encodeURIComponent(sessionId)}/timeline/detail?ref=${encodeURIComponent(contentRef)}`,
+    options,
+  );
 }
 
 export async function listArtifacts(sessionId: string): Promise<ArtifactView[]> {
