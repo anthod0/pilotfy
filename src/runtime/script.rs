@@ -8,7 +8,7 @@ use crate::{
 use super::{
     RuntimeStartRequest, claude_code,
     config::{configured_external_api_token, configured_tui_command},
-    shell_quote,
+    utils::shell_quote,
 };
 
 pub(super) struct RuntimePaths<'a> {

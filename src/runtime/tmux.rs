@@ -8,7 +8,7 @@ use std::{
 
 use crate::error::{Error, Result};
 
-use super::{AgentInput, RuntimeStartRequest, shell_quote};
+use super::{AgentInput, RuntimeStartRequest, utils::shell_quote};
 
 pub(super) fn spawn_tmux_session(
     tmux_session: &str,

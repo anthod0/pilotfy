@@ -1,0 +1,134 @@
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
+
+use serde_json::json;
+use time::format_description::well_known::Rfc3339;
+
+use crate::{
+    adapters::AdapterCapabilities,
+    error::{Error, Result},
+    ids::new_runtime_instance_id,
+    time::utc_now,
+};
+
+use super::{
+    RuntimeStartRequest, RuntimeStartResult,
+    utils::{sanitize_identifier, short_session_id},
+};
+
+#[derive(Debug, Clone)]
+struct InProcessRuntimeState {
+    alive: bool,
+}
+
+pub(super) fn start_session(
+    request: RuntimeStartRequest,
+    capabilities: AdapterCapabilities,
+    restart_count: i64,
+) -> Result<RuntimeStartResult> {
+    let runtime_instance_id = new_runtime_instance_id().to_string();
+    let started_at = utc_now()
+        .format(&Rfc3339)
+        .map_err(|err| Error::Domain(format!("invalid runtime timestamp: {err}")))?;
+    let runtime_dir = std::env::temp_dir()
+        .join("pilotfy-test-runtimes")
+        .join(&request.session_id);
+    std::fs::create_dir_all(&runtime_dir)?;
+    let log_path = runtime_dir.join("runtime.log");
+    let adapter_event_log = runtime_dir.join("adapter-events.jsonl");
+    let current_turn_file = runtime_dir.join("current-turn.json");
+    std::fs::File::create(&log_path)?;
+    let runtime_dir = runtime_dir.display().to_string();
+    let log_path = log_path.display().to_string();
+    let adapter_event_log = adapter_event_log.display().to_string();
+    let current_turn_file = current_turn_file.display().to_string();
+    let runtime_ref = runtime_ref(&request);
+    registry()
+        .lock()
+        .expect("in-process runtime registry lock")
+        .insert(runtime_ref.clone(), InProcessRuntimeState { alive: true });
+    Ok(RuntimeStartResult {
+        runtime_kind: "in_process_test".to_string(),
+        runtime_ref,
+        capabilities: capabilities.into(),
+        metadata: json!({
+            "backend": "in_process_test",
+            "test_runtime": true,
+            "runtime_dir": runtime_dir,
+            "runtime_log": log_path,
+            "log_path": log_path,
+            "adapter_event_log": adapter_event_log,
+            "current_turn_file": current_turn_file,
+            "internal_event_url": "in-process://internal-events",
+            "handle": request.handle,
+            "role": request.role,
+            "started_at": started_at,
+            "restart_count": restart_count,
+            "runtime_instance_id": runtime_instance_id,
+        }),
+    })
+}
+
+pub(super) fn terminate_session(runtime_ref: &str) -> bool {
+    if let Some(runtime) = registry()
+        .lock()
+        .expect("in-process runtime registry lock")
+        .get_mut(runtime_ref)
+    {
+        runtime.alive = false;
+        return true;
+    }
+    false
+}
+
+pub(super) fn is_alive(runtime_ref: &str) -> Option<bool> {
+    registry()
+        .lock()
+        .expect("in-process runtime registry lock")
+        .get(runtime_ref)
+        .map(|runtime| runtime.alive)
+}
+
+pub(super) fn reset_registry() {
+    registry()
+        .lock()
+        .expect("in-process runtime registry lock")
+        .clear();
+}
+
+fn registry() -> &'static Mutex<HashMap<String, InProcessRuntimeState>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<String, InProcessRuntimeState>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn runtime_ref(request: &RuntimeStartRequest) -> String {
+    let handle = request
+        .handle
+        .as_deref()
+        .map(|value| value.trim_start_matches('@'))
+        .filter(|value| !value.is_empty())
+        .map(sanitize_identifier);
+    let role = request
+        .role
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(sanitize_identifier);
+    let Some(handle) = handle else {
+        return format!("generic:{}", request.session_id);
+    };
+    let Some(role) = role else {
+        return format!(
+            "generic:{}:{}",
+            handle,
+            short_session_id(&request.session_id)
+        );
+    };
+    format!(
+        "generic:{}:{}:{}",
+        handle,
+        role,
+        short_session_id(&request.session_id)
+    )
+}
