@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Bot, GitBranch, UserRound } from '@lucide/svelte'
+  import { Bot, GitBranch } from '@lucide/svelte'
   import * as Conversation from '$lib/components/ai-elements/conversation/index.js'
   import * as Message from '$lib/components/ai-elements/message/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -74,11 +74,6 @@
     <Conversation.Content bind:ref={scrollContainer} class="overflow-visible">
       {#each messages as chatMessage (chatMessage.id)}
         <Message.Root from={chatMessage.role}>
-          <div class="mb-1 flex items-center gap-2 text-xs text-muted-foreground {chatMessage.role === 'user' ? 'justify-end' : 'justify-start'}">
-            {#if chatMessage.role === 'assistant'}<Bot class="size-3.5" />{:else}<UserRound class="size-3.5" />{/if}
-            <span>{chatMessage.role === 'assistant' ? 'AI' : 'You'}</span>
-            {#if chatMessage.status !== 'sent'}<Badge variant="secondary">{chatMessage.status}</Badge>{/if}
-          </div>
           <Message.Content class={chatMessage.status === 'failed' ? 'border-destructive/40 text-destructive' : ''}>
             {#if chatMessage.role === 'assistant' && (chatMessage.thoughtSteps?.length || chatMessage.status === 'pending')}
               <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps ?? []} active={chatMessage.status === 'pending'} />
