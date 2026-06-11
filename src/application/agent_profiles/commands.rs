@@ -1,0 +1,300 @@
+use super::validation::{ensure_not_builtin, is_unique_constraint, validate_request};
+use super::*;
+
+impl AgentProfileService {
+    pub async fn create_profile(
+        &self,
+        request: UpsertExecutionProfileRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        if let Some(key) = idempotency_key
+            && let Some(response) = self
+                .idempotency_response("create_agent_profile", key)
+                .await?
+        {
+            return Ok(AgentProfileCommandOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+        if self.profile_exists(&request.profile_id).await? {
+            return Err(Error::StateConflict(format!(
+                "execution profile {} already exists; create a new version instead",
+                request.profile_id
+            )));
+        }
+        self.create_version("create_agent_profile", request, idempotency_key)
+            .await
+    }
+
+    pub async fn create_profile_version(
+        &self,
+        profile_id: &str,
+        request: UpsertExecutionProfileRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        if profile_id != request.profile_id {
+            return Err(Error::Domain(format!(
+                "profile_id in path ({profile_id}) must match request profile_id ({})",
+                request.profile_id
+            )));
+        }
+        self.create_version(
+            &format!("create_agent_profile_version:{profile_id}"),
+            request,
+            idempotency_key,
+        )
+        .await
+    }
+
+    pub(super) async fn create_version(
+        &self,
+        operation: &str,
+        request: UpsertExecutionProfileRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        validate_request(&request)?;
+
+        if let Some(key) = idempotency_key
+            && let Some(response) = self.idempotency_response(operation, key).await?
+        {
+            return Ok(AgentProfileCommandOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+
+        let supported_client_types = serde_json::to_string(&request.supported_client_types)?;
+        let artifact_contract = serde_json::to_string(&request.artifact_contract)?;
+        let default_execution_policy = serde_json::to_string(&request.default_execution_policy)?;
+        let default_review_policy = serde_json::to_string(&request.default_review_policy)?;
+        let metadata = serde_json::to_string(&request.metadata)?;
+
+        let result = sqlx::query(
+            r#"INSERT INTO execution_profiles (
+                    profile_id, version, name, description, supported_client_types, agent_kind,
+                    system_prompt_template, turn_prompt_template, default_session_role,
+                    default_session_description, handle_prefix,
+                    expected_output_schema, artifact_contract, default_execution_policy,
+                    default_review_policy, metadata
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(&request.profile_id)
+        .bind(&request.version)
+        .bind(&request.name)
+        .bind(&request.description)
+        .bind(supported_client_types)
+        .bind(&request.agent_kind)
+        .bind(&request.system_prompt_template)
+        .bind(&request.turn_prompt_template)
+        .bind(&request.default_session_role)
+        .bind(&request.default_session_description)
+        .bind(&request.handle_prefix)
+        .bind(&request.expected_output_schema)
+        .bind(artifact_contract)
+        .bind(default_execution_policy)
+        .bind(default_review_policy)
+        .bind(metadata)
+        .execute(&self.pool)
+        .await;
+
+        if let Err(error) = result {
+            if is_unique_constraint(&error) {
+                return Err(Error::StateConflict(format!(
+                    "execution profile {} version {} already exists",
+                    request.profile_id, request.version
+                )));
+            }
+            return Err(error.into());
+        }
+
+        let profile = self
+            .get_version(&request.profile_id, &request.version)
+            .await?
+            .ok_or_else(|| Error::Domain("created execution profile missing".to_string()))?;
+        let data = json!({ "agent_profile": profile });
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response(operation, key, &data)
+                .await?;
+        }
+        Ok(AgentProfileCommandOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+
+    pub async fn update_version(
+        &self,
+        profile_id: &str,
+        version: &str,
+        request: UpsertExecutionProfileRequest,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        if profile_id != request.profile_id || version != request.version {
+            return Err(Error::Domain(
+                "profile_id and version in path must match request body".to_string(),
+            ));
+        }
+        validate_request(&request)?;
+        let operation = format!("update_agent_profile_version:{profile_id}:{version}");
+        if let Some(key) = idempotency_key
+            && let Some(response) = self.idempotency_response(&operation, key).await?
+        {
+            return Ok(AgentProfileCommandOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+        let current = self
+            .get_version(profile_id, version)
+            .await?
+            .ok_or_else(|| {
+                Error::NotFound(format!("agent profile {profile_id}@{version} not found"))
+            })?;
+        ensure_not_builtin(&current)?;
+
+        let supported_client_types = serde_json::to_string(&request.supported_client_types)?;
+        let artifact_contract = serde_json::to_string(&request.artifact_contract)?;
+        let default_execution_policy = serde_json::to_string(&request.default_execution_policy)?;
+        let default_review_policy = serde_json::to_string(&request.default_review_policy)?;
+        let metadata = serde_json::to_string(&request.metadata)?;
+
+        sqlx::query(
+            r#"UPDATE execution_profiles
+               SET name = ?, description = ?, supported_client_types = ?, agent_kind = ?,
+                   system_prompt_template = ?, turn_prompt_template = ?, default_session_role = ?,
+                   default_session_description = ?, handle_prefix = ?, expected_output_schema = ?,
+                   artifact_contract = ?, default_execution_policy = ?, default_review_policy = ?,
+                   metadata = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE profile_id = ? AND version = ?"#,
+        )
+        .bind(&request.name)
+        .bind(&request.description)
+        .bind(supported_client_types)
+        .bind(&request.agent_kind)
+        .bind(&request.system_prompt_template)
+        .bind(&request.turn_prompt_template)
+        .bind(&request.default_session_role)
+        .bind(&request.default_session_description)
+        .bind(&request.handle_prefix)
+        .bind(&request.expected_output_schema)
+        .bind(artifact_contract)
+        .bind(default_execution_policy)
+        .bind(default_review_policy)
+        .bind(metadata)
+        .bind(profile_id)
+        .bind(version)
+        .execute(&self.pool)
+        .await?;
+
+        let profile = self
+            .get_version(profile_id, version)
+            .await?
+            .ok_or_else(|| Error::Domain("updated execution profile missing".to_string()))?;
+        let data = json!({ "agent_profile": profile });
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response(&operation, key, &data)
+                .await?;
+        }
+        Ok(AgentProfileCommandOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+
+    pub async fn archive_version(
+        &self,
+        profile_id: &str,
+        version: &str,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        let operation = format!("archive_agent_profile_version:{profile_id}:{version}");
+        if let Some(key) = idempotency_key
+            && let Some(response) = self.idempotency_response(&operation, key).await?
+        {
+            return Ok(AgentProfileCommandOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+        let current = self
+            .get_version(profile_id, version)
+            .await?
+            .ok_or_else(|| {
+                Error::NotFound(format!("agent profile {profile_id}@{version} not found"))
+            })?;
+        ensure_not_builtin(&current)?;
+        if current.active {
+            sqlx::query(
+                r#"UPDATE execution_profiles
+                   SET active = 0,
+                       archived_at = COALESCE(archived_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                       archived_reason = COALESCE(archived_reason, 'deleted via External API'),
+                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                   WHERE profile_id = ? AND version = ?"#,
+            )
+            .bind(profile_id)
+            .bind(version)
+            .execute(&self.pool)
+            .await?;
+        }
+        let profile = self
+            .get_version(profile_id, version)
+            .await?
+            .ok_or_else(|| Error::Domain("archived execution profile missing".to_string()))?;
+        let data = json!({ "agent_profile": profile });
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response(&operation, key, &data)
+                .await?;
+        }
+        Ok(AgentProfileCommandOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+
+    pub async fn archive_profile(
+        &self,
+        profile_id: &str,
+        idempotency_key: Option<&str>,
+    ) -> Result<AgentProfileCommandOutcome> {
+        let operation = format!("archive_agent_profile:{profile_id}");
+        if let Some(key) = idempotency_key
+            && let Some(response) = self.idempotency_response(&operation, key).await?
+        {
+            return Ok(AgentProfileCommandOutcome {
+                data: response,
+                duplicate: true,
+            });
+        }
+        let versions = self.list_versions(profile_id, true).await?;
+        if versions.is_empty() {
+            return Err(Error::NotFound(format!(
+                "agent profile {profile_id} not found"
+            )));
+        }
+        for version in &versions {
+            ensure_not_builtin(version)?;
+        }
+        let result = sqlx::query(
+            r#"UPDATE execution_profiles
+               SET active = 0,
+                   archived_at = COALESCE(archived_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                   archived_reason = COALESCE(archived_reason, 'deleted via External API'),
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               WHERE profile_id = ? AND active = 1"#,
+        )
+        .bind(profile_id)
+        .execute(&self.pool)
+        .await?;
+        let data = json!({ "profile_id": profile_id, "archived_versions": result.rows_affected() });
+        if let Some(key) = idempotency_key {
+            self.store_idempotency_response(&operation, key, &data)
+                .await?;
+        }
+        Ok(AgentProfileCommandOutcome {
+            data,
+            duplicate: false,
+        })
+    }
+}
