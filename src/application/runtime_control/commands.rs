@@ -1,32 +1,7 @@
-use super::{sessions::pilotfy_agent_kind, *};
+use super::*;
 use crate::agent_clients::{ReadinessMode, get_client_spec};
 
-fn client_readiness_mode(client_type: &str) -> Result<ReadinessMode> {
-    get_client_spec(client_type)
-        .map(|spec| spec.readiness)
-        .ok_or_else(|| Error::Domain(format!("unsupported client_type: {client_type}")))
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ControlCommandOutcome {
-    pub data: Value,
-    pub duplicate: bool,
-}
-
-#[derive(Clone)]
-pub struct RuntimeControlService {
-    pool: SqlitePool,
-    runtime: GenericRuntimeManager,
-}
-
 impl RuntimeControlService {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self {
-            pool,
-            runtime: GenericRuntimeManager,
-        }
-    }
-
     pub async fn interrupt_current_turn(
         &self,
         session_id: &str,
@@ -405,85 +380,5 @@ impl RuntimeControlService {
             data,
             duplicate: false,
         })
-    }
-
-    async fn runtime_ref(&self, session_id: &str) -> Result<Option<String>> {
-        sqlx::query_scalar("SELECT runtime_ref FROM runtime_bindings WHERE session_id = ?")
-            .bind(session_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn restart_count(&self, session_id: &str) -> Result<Option<i64>> {
-        let metadata: Option<String> =
-            sqlx::query_scalar("SELECT metadata FROM runtime_bindings WHERE session_id = ?")
-                .bind(session_id)
-                .fetch_optional(&self.pool)
-                .await?;
-        metadata
-            .map(|metadata| {
-                serde_json::from_str::<Value>(&metadata)
-                    .map(|value| value["restart_count"].as_i64().unwrap_or(0))
-            })
-            .transpose()
-            .map_err(Into::into)
-    }
-
-    async fn idempotency_response(&self, operation: &str, key: &str) -> Result<Option<Value>> {
-        let response: Option<String> = sqlx::query_scalar(
-            "SELECT response FROM idempotency_keys WHERE operation = ? AND key = ?",
-        )
-        .bind(operation)
-        .bind(key)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        response
-            .map(|value| serde_json::from_str(&value))
-            .transpose()
-            .map_err(Into::into)
-    }
-
-    async fn store_idempotency_response(
-        &self,
-        operation: &str,
-        key: &str,
-        response: &Value,
-    ) -> Result<()> {
-        sqlx::query(
-            r#"INSERT INTO idempotency_keys (operation, key, response)
-               VALUES (?, ?, ?)
-               ON CONFLICT(operation, key) DO NOTHING"#,
-        )
-        .bind(operation)
-        .bind(key)
-        .bind(serde_json::to_string(response)?)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    async fn upsert_runtime_binding(
-        &self,
-        session_id: &str,
-        runtime: &RuntimeStartResult,
-    ) -> Result<()> {
-        sqlx::query(
-            r#"INSERT INTO runtime_bindings (session_id, runtime_kind, runtime_ref, metadata)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(session_id) DO UPDATE SET
-                   runtime_kind = excluded.runtime_kind,
-                   runtime_ref = excluded.runtime_ref,
-                   metadata = excluded.metadata,
-                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#,
-        )
-        .bind(session_id)
-        .bind(&runtime.runtime_kind)
-        .bind(&runtime.runtime_ref)
-        .bind(serde_json::to_string(&runtime.binding_metadata())?)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
     }
 }
