@@ -1,0 +1,321 @@
+use serde_json::Value;
+
+use super::super::super::TimelineItem;
+use super::refs::encode_pi_content_ref;
+
+pub(super) fn pi_entry_to_items(
+    entry: &Value,
+    binding_id: &str,
+    start: usize,
+    end: usize,
+) -> Vec<TimelineItem> {
+    match entry.get("type").and_then(Value::as_str) {
+        Some("message") => pi_message_entry_to_items(entry, binding_id, start, end),
+        Some("model_change") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "model_change",
+            "system",
+            model_change_title(entry),
+            None,
+            model_change_title(entry).unwrap_or_default(),
+        )],
+        _ => Vec::new(),
+    }
+}
+
+fn pi_message_entry_to_items(
+    entry: &Value,
+    binding_id: &str,
+    start: usize,
+    end: usize,
+) -> Vec<TimelineItem> {
+    let Some(message) = entry.get("message") else {
+        return Vec::new();
+    };
+    match message.get("role").and_then(Value::as_str) {
+        Some("user") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "user",
+            "user",
+            None,
+            None,
+            content_preview(message.get("content")),
+        )],
+        Some("assistant") => message
+            .get("content")
+            .and_then(Value::as_array)
+            .map(|blocks| {
+                blocks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(block_index, block)| {
+                        assistant_block_item(entry, binding_id, start, end, block_index, block)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        Some("toolResult") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "toolResult",
+            "tool",
+            message
+                .get("toolName")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            Some(
+                if message.get("isError").and_then(Value::as_bool) == Some(true) {
+                    "error".to_string()
+                } else {
+                    "completed".to_string()
+                },
+            ),
+            content_preview(message.get("content")),
+        )],
+        Some("bashExecution") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "bashExecution",
+            "user",
+            message
+                .get("command")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            None,
+            message
+                .get("output")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        )],
+        Some("custom") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "custom",
+            "system",
+            message
+                .get("customType")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            None,
+            content_preview(message.get("content")),
+        )],
+        Some("branchSummary") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "branchSummary",
+            "system",
+            None,
+            None,
+            message
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        )],
+        Some("compactionSummary") => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            "compactionSummary",
+            "system",
+            None,
+            None,
+            message
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        )],
+        Some(raw_kind) => vec![timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            0,
+            raw_kind,
+            "system",
+            Some(raw_kind.to_string()),
+            None,
+            content_preview(message.get("content")),
+        )],
+        _ => Vec::new(),
+    }
+}
+
+fn assistant_block_item(
+    entry: &Value,
+    binding_id: &str,
+    start: usize,
+    end: usize,
+    block_index: usize,
+    block: &Value,
+) -> Option<TimelineItem> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") => Some(timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            block_index,
+            "text",
+            "assistant",
+            None,
+            None,
+            block
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        )),
+        Some("thinking") => Some(timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            block_index,
+            "thinking",
+            "assistant",
+            None,
+            None,
+            block
+                .get("thinking")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        )),
+        Some("toolCall") => Some(timeline_item(
+            binding_id,
+            entry,
+            start,
+            end,
+            block_index,
+            "toolCall",
+            "tool",
+            block
+                .get("name")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            Some("started".to_string()),
+            tool_call_preview(block),
+        )),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn timeline_item(
+    binding_id: &str,
+    entry: &Value,
+    start: usize,
+    end: usize,
+    block_index: usize,
+    raw_kind: &str,
+    role: &str,
+    title: Option<String>,
+    status: Option<String>,
+    preview: String,
+) -> TimelineItem {
+    let entry_id = entry.get("id").and_then(Value::as_str).unwrap_or("unknown");
+    let kind = normalize_pi_timeline_kind(raw_kind);
+    TimelineItem {
+        item_id: format!("pi:entry:{entry_id}:block:{block_index}"),
+        kind: kind.to_string(),
+        raw_kind: Some(raw_kind.to_string()),
+        role: role.to_string(),
+        title,
+        status,
+        occurred_at: entry
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        content_preview: timeline_content_preview(kind, preview),
+        content_ref: encode_pi_content_ref(binding_id, start, end, block_index, kind),
+    }
+}
+
+fn normalize_pi_timeline_kind(raw_kind: &str) -> &str {
+    match raw_kind {
+        "user" => "user",
+        "text" => "assistant",
+        "thinking" => "thinking",
+        "toolCall" => "tool_call",
+        "toolResult" => "tool_result",
+        "model_change" => "model_change",
+        other => other,
+    }
+}
+
+fn content_preview(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(blocks)) => blocks
+            .iter()
+            .filter_map(|block| {
+                block
+                    .get("text")
+                    .or_else(|| block.get("thinking"))
+                    .and_then(Value::as_str)
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Some(other) => other.to_string(),
+        None => String::new(),
+    }
+}
+
+fn tool_call_preview(block: &Value) -> String {
+    let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
+    let args = block.get("arguments").cloned().unwrap_or(Value::Null);
+    format!("{name} {args}")
+}
+
+fn model_change_title(entry: &Value) -> Option<String> {
+    let provider = entry.get("provider").and_then(Value::as_str);
+    let model = entry.get("modelId").and_then(Value::as_str);
+    match (provider, model) {
+        (Some(provider), Some(model)) => Some(format!("{provider}/{model}")),
+        (None, Some(model)) => Some(model.to_string()),
+        _ => None,
+    }
+}
+
+fn timeline_content_preview(kind: &str, text: String) -> String {
+    match kind {
+        "user" | "assistant" => text,
+        _ => truncate_preview(&text),
+    }
+}
+
+fn truncate_preview(text: &str) -> String {
+    const MAX_CHARS: usize = 240;
+    let mut chars = text.chars();
+    let preview: String = chars.by_ref().take(MAX_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{preview}…")
+    } else {
+        preview
+    }
+}
