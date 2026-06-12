@@ -707,6 +707,30 @@ test('styles assistant markdown tables', async () => {
   ).toBe(true);
 });
 
+test('highlights fenced code blocks in assistant markdown', async () => {
+  const selected = session({ session_id: 'session-2', state: 'idle' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({
+    session: selected,
+    turns: [turn({
+      session_id: 'session-2',
+      output: { summary: '```ts\nconst answer: number = 42;\n```' },
+    })],
+    inboxMessages: [],
+    events: [],
+    artifacts: [],
+  });
+
+  const { container } = render(ChatPage);
+
+  expect(await screen.findByText(/answer/)).toBeInTheDocument();
+  expect(container.querySelector('code.hljs.language-ts')).toBeInTheDocument();
+  expect(container.querySelector('.hljs-keyword')?.textContent).toBe('const');
+});
+
 test('loads and renders an existing chat session with metadata, state, and workspace path above the prompt input without a page header', async () => {
   const selected = session({
     session_id: 'session-2',

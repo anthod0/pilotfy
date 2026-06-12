@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import Markdown from 'svelte-exmarkdown'
   import { gfmPlugin } from 'svelte-exmarkdown/gfm'
+  import rehypeHighlight from 'rehype-highlight'
   import { cn, type WithElementRef } from '$lib/utils.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -9,7 +10,10 @@
     markdown?: boolean
   }
 
-  const markdownPlugins = [gfmPlugin()]
+  const markdownPlugins = [
+    gfmPlugin(),
+    { rehypePlugin: rehypeHighlight },
+  ]
 </script>
 
 <script lang="ts">
