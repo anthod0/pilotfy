@@ -57,6 +57,8 @@ pub enum EventType {
     SessionExited,
     #[serde(rename = "session.error")]
     SessionError,
+    #[serde(rename = "session.title_updated")]
+    SessionTitleUpdated,
     #[serde(rename = "session.message_updated")]
     SessionMessageUpdated,
     #[serde(rename = "turn.created")]
@@ -116,6 +118,7 @@ impl std::fmt::Display for EventType {
             Self::SessionReady => "session.ready",
             Self::SessionExited => "session.exited",
             Self::SessionError => "session.error",
+            Self::SessionTitleUpdated => "session.title_updated",
             Self::SessionMessageUpdated => "session.message_updated",
             Self::TurnCreated => "turn.created",
             Self::TurnQueued => "turn.queued",
@@ -147,6 +150,7 @@ impl std::str::FromStr for EventType {
             "session.ready" => Ok(Self::SessionReady),
             "session.exited" => Ok(Self::SessionExited),
             "session.error" => Ok(Self::SessionError),
+            "session.title_updated" => Ok(Self::SessionTitleUpdated),
             "session.message_updated" => Ok(Self::SessionMessageUpdated),
             "turn.created" => Ok(Self::TurnCreated),
             "turn.queued" => Ok(Self::TurnQueued),

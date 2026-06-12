@@ -168,7 +168,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/external/v1/sessions/{session_id}",
-            get(external::get_session).delete(external::terminate_session),
+            get(external::get_session)
+                .patch(external::update_session)
+                .delete(external::terminate_session),
         )
         .route(
             "/external/v1/sessions/{session_id}/interrupt",

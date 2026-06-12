@@ -10,6 +10,7 @@ use crate::error::Error;
 pub struct SessionProjection {
     pub session_id: String,
     pub client_type: String,
+    pub title: Option<String>,
     pub handle: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,
@@ -99,6 +100,7 @@ impl ProjectionState {
             && session.state.is_terminal()
             && !(session.state == SessionState::Exited
                 && event.event_type == EventType::SessionResuming)
+            && event.event_type != EventType::SessionTitleUpdated
         {
             return Ok(());
         }
@@ -112,6 +114,13 @@ impl ProjectionState {
             EventType::SessionReady => self.apply_session(event, SessionState::Idle),
             EventType::SessionExited => self.apply_session(event, SessionState::Exited),
             EventType::SessionError => self.apply_session(event, SessionState::Error),
+            EventType::SessionTitleUpdated => self.apply_session(
+                event,
+                self.sessions
+                    .get(&event.session_id)
+                    .map(|session| session.state)
+                    .unwrap_or(SessionState::Created),
+            ),
             EventType::SessionMessageUpdated => Ok(()),
             EventType::TurnCreated | EventType::TurnQueued => {
                 self.apply_turn(event, TurnState::Queued)
@@ -142,6 +151,7 @@ impl ProjectionState {
             .or_insert_with(|| SessionProjection {
                 session_id: event.session_id.clone(),
                 client_type: event.client_type.clone(),
+                title: None,
                 handle: None,
                 role: None,
                 description: None,
@@ -155,6 +165,11 @@ impl ProjectionState {
 
         session.state = state;
         if event.event_type == EventType::SessionCreated {
+            session.title = event
+                .payload
+                .get("title")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
             session.handle = event
                 .payload
                 .get("handle")
@@ -183,6 +198,13 @@ impl ProjectionState {
             if let Some(metadata) = event.payload.get("metadata") {
                 session.metadata = metadata.clone();
             }
+        }
+        if event.event_type == EventType::SessionTitleUpdated {
+            session.title = event
+                .payload
+                .get("title")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
         }
         if state.is_terminal() {
             session.current_turn_id = None;
@@ -240,6 +262,7 @@ impl ProjectionState {
             .or_insert_with(|| SessionProjection {
                 session_id: event.session_id.clone(),
                 client_type: event.client_type.clone(),
+                title: None,
                 handle: None,
                 role: None,
                 description: None,

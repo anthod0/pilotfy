@@ -17,10 +17,12 @@ export function sortSessionsForConsole<T extends Pick<SessionView, 'state' | 'up
   });
 }
 
-export function sessionDisplayTitle(session: Pick<SessionView, 'session_id' | 'handle' | 'role'>): string {
+export function sessionDisplayTitle(session: Pick<SessionView, 'session_id' | 'title' | 'handle' | 'role'>): string {
+  const title = session.title?.trim();
   const handle = session.handle?.trim();
   const role = session.role?.trim();
   const short = shortSessionId(session.session_id);
+  if (title) return title;
   if (handle && role) return `${handle} · ${role}`;
   if (handle) return handle;
   if (role) return `${role} · ${short}`;

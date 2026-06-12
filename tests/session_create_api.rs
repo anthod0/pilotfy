@@ -94,6 +94,31 @@ async fn get(state: AppState, uri: &str) -> (StatusCode, Value) {
     (status, json)
 }
 
+async fn patch_json(state: AppState, uri: &str, body: Value) -> (StatusCode, Value) {
+    let response = http::router(state)
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(uri)
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    let status = response.status();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let json = serde_json::from_slice(&body).expect("json body");
+    (status, json)
+}
+
 #[tokio::test]
 async fn create_session_rejects_unauthenticated_requests() {
     let _scope = GenericClientTestScope::new().await;
@@ -224,6 +249,105 @@ async fn create_session_accepts_handle_and_exposes_it_on_session_views() {
     let (list_status, list_body) = get(state, "/external/v1/sessions").await;
     assert_eq!(list_status, StatusCode::OK);
     assert_eq!(list_body["data"]["sessions"][0]["handle"], "@reviewer");
+}
+
+#[tokio::test]
+async fn create_session_accepts_title_and_exposes_it_on_session_views() {
+    let _scope = GenericClientTestScope::new().await;
+    let state = test_state().await;
+
+    let (status, body) = post_json(
+        state.clone(),
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "title":"Inspect dashboard session titles"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    let session = &body["data"]["session"];
+    let session_id = session["session_id"].as_str().expect("session id");
+    assert_eq!(session["title"], "Inspect dashboard session titles");
+
+    let (get_status, get_body) = get(
+        state.clone(),
+        &format!("/external/v1/sessions/{session_id}"),
+    )
+    .await;
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(
+        get_body["data"]["session"]["title"],
+        "Inspect dashboard session titles"
+    );
+
+    let (list_status, list_body) = get(state, "/external/v1/sessions").await;
+    assert_eq!(list_status, StatusCode::OK);
+    assert_eq!(
+        list_body["data"]["sessions"][0]["title"],
+        "Inspect dashboard session titles"
+    );
+}
+
+#[tokio::test]
+async fn patch_session_updates_title_through_session_events() {
+    let _scope = GenericClientTestScope::new().await;
+    let state = test_state().await;
+
+    let (_, create_body) = post_json(
+        state.clone(),
+        "/external/v1/sessions",
+        Some(TOKEN),
+        None,
+        json!({
+            "client_type":"generic",
+            "workspace":"/tmp",
+            "title":"Original title"
+        }),
+    )
+    .await;
+    let session_id = create_body["data"]["session"]["session_id"]
+        .as_str()
+        .unwrap();
+
+    let (patch_status, patch_body) = patch_json(
+        state.clone(),
+        &format!("/external/v1/sessions/{session_id}"),
+        json!({"title":"Renamed from dashboard"}),
+    )
+    .await;
+
+    assert_eq!(patch_status, StatusCode::OK);
+    assert_eq!(
+        patch_body["data"]["session"]["title"],
+        "Renamed from dashboard"
+    );
+
+    let (events_status, events_body) = get(
+        state.clone(),
+        &format!("/external/v1/sessions/{session_id}/events"),
+    )
+    .await;
+    assert_eq!(events_status, StatusCode::OK);
+    assert_eq!(
+        events_body["data"]["events"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["type"],
+        "session.title_updated"
+    );
+
+    let (get_status, get_body) = get(state, &format!("/external/v1/sessions/{session_id}")).await;
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(
+        get_body["data"]["session"]["title"],
+        "Renamed from dashboard"
+    );
 }
 
 #[tokio::test]

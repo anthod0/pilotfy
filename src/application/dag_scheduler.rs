@@ -375,6 +375,7 @@ impl DagSchedulerService {
             .create_session(
                 CreateSessionRequest {
                     client_type,
+                    title: Some(work_item.title.clone()),
                     workspace: None,
                     workspace_id: task.workspace_id.clone(),
                     handle: None,

@@ -30,7 +30,7 @@ pub use inbox::{
 };
 pub use sessions::{
     create_session, get_session, interrupt_session, list_sessions, restart_session, resume_session,
-    terminate_session,
+    terminate_session, update_session,
 };
 pub use tasks::{
     cancel_task, create_human_signal, create_task, get_task, get_task_provenance, interrupt_task,

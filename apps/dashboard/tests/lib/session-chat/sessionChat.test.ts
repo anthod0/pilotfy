@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import {
   canSendSessionMessage,
   sessionChatTitle,
+  titleFromInitialPrompt,
   timelineItemsToChatMessages,
   turnsToChatMessages,
   visibleChatSessions,
@@ -15,6 +16,7 @@ const session = (overrides) => ({
   workspace: null,
   execution_profile_id: null,
   execution_profile_version: null,
+  title: null,
   handle: null,
   role: null,
   description: null,
@@ -54,9 +56,19 @@ const timelineItem = (overrides) => ({
   ...overrides,
 });
 
+test('uses explicit session title before identity metadata', () => {
+  expect(sessionChatTitle(session({ title: 'Fix dashboard title', handle: '@assistant', role: 'executor' }))).toBe('Fix dashboard title');
+});
+
 test('uses friendly chat title without exposing raw ids when metadata exists', () => {
   expect(sessionChatTitle(session({ handle: '@assistant', role: 'executor' }))).toBe('@assistant · executor');
   expect(sessionChatTitle(session({ handle: null, role: null, description: 'Website polish' }))).toBe('Website polish');
+});
+
+test('generates a compact title from the initial prompt', () => {
+  expect(titleFromInitialPrompt('  Implement automatic session titles\n\nDetails...')).toBe('Implement automatic session titles');
+  expect(titleFromInitialPrompt('```ts\nconst answer = 42\n```')).toBe('const answer = 42');
+  expect(titleFromInitialPrompt('')).toBeNull();
 });
 
 test('filters chat sessions to active sessions by default and sorts newest first', () => {

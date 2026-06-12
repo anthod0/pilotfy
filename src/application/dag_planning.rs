@@ -361,6 +361,7 @@ impl DagPlanningService {
             .create_session(
                 CreateSessionRequest {
                     client_type,
+                    title: Some(format!("Plan task {task_id}")),
                     workspace: None,
                     workspace_id: workspace_id.map(str::to_string),
                     handle: None,

@@ -95,6 +95,7 @@ pub use runtime_observation::{AdapterEventOutboxService, RuntimeObservationServi
 pub use runtime_readiness::RuntimeReadinessService;
 pub use sessions::{
     CreateSessionOutcome, CreateSessionRequest, InitialTaskRequest, SessionCommandService,
+    UpdateSessionRequest,
 };
 pub use state::{AppState, initialize};
 pub use tasks::{CreateDagTaskRequest, CreateTaskOutcome, HumanSignalRequest, TaskCommandService};

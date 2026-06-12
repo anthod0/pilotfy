@@ -76,6 +76,7 @@ impl SessionCommandService {
                 EventType::SessionCreated,
                 json!({
                     "workspace": runtime_workspace,
+                    "title": request.title,
                     "handle": request.handle,
                     "role": request.role,
                     "description": request.description,
@@ -210,5 +211,41 @@ impl SessionCommandService {
             data,
             duplicate: false,
         })
+    }
+
+    pub async fn update_session(
+        &self,
+        session_id: &str,
+        request: UpdateSessionRequest,
+    ) -> Result<Value> {
+        let query = ExternalQueryService::new(self.pool.clone());
+        let existing = query
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("session {session_id} not found")))?;
+        let title = request
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+
+        EventIngestService::new(self.pool.clone())
+            .ingest_event(DomainEvent::new(
+                new_event_id().to_string(),
+                session_id.to_string(),
+                None,
+                EventSource::ExternalApi,
+                existing.client_type,
+                EventType::SessionTitleUpdated,
+                json!({ "title": title }),
+            ))
+            .await?;
+
+        let session = query
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| Error::Domain("updated session missing".to_string()))?;
+        Ok(json!({ "session": session }))
     }
 }

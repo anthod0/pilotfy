@@ -6,6 +6,7 @@ pub(crate) fn row_to_session_view(row: sqlx::sqlite::SqliteRow) -> Result<Sessio
     Ok(SessionView {
         session_id: row.try_get("session_id")?,
         client_type: row.try_get("client_type")?,
+        title: row.try_get("title")?,
         handle: row.try_get("handle")?,
         role: row.try_get("role")?,
         description: row.try_get("description")?,
@@ -296,6 +297,7 @@ pub(crate) fn row_to_session(row: sqlx::sqlite::SqliteRow) -> Result<SessionProj
     Ok(SessionProjection {
         session_id: row.try_get("session_id")?,
         client_type: row.try_get("client_type")?,
+        title: row.try_get("title")?,
         handle: row.try_get("handle")?,
         role: row.try_get("role")?,
         description: row.try_get("description")?,

@@ -13,6 +13,7 @@ import {
   resumeSession as apiResumeSession,
   submitInboxMessage as apiSubmitInboxMessage,
   terminateSession as apiTerminateSession,
+  updateSession as apiUpdateSession,
 } from '../api/client';
 import type {
   ArtifactView,
@@ -124,6 +125,13 @@ export async function createSession(input: CreateSessionInput): Promise<CreateSe
   await loadSessions();
   await loadSessionDetail(result.session.session_id);
   return result;
+}
+
+export async function updateSessionTitle(sessionId: string, title: string | null): Promise<SessionView> {
+  const session = await apiUpdateSession(sessionId, { title });
+  await loadSessions();
+  await loadSessionDetail(sessionId);
+  return session;
 }
 
 export async function submitInboxMessage(sessionId: string, input: SubmitInboxMessageInput): Promise<InboxMessageView> {

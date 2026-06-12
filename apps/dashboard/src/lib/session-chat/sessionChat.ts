@@ -30,15 +30,30 @@ export function isTerminalChatSession(session: Pick<SessionView, 'state'>): bool
   return terminalStates.has(session.state);
 }
 
-export function sessionChatTitle(session: Pick<SessionView, 'session_id' | 'handle' | 'role' | 'description'>): string {
+export function sessionChatTitle(session: Pick<SessionView, 'session_id' | 'title' | 'handle' | 'role' | 'description'>): string {
+  const title = session.title?.trim();
   const handle = session.handle?.trim();
   const role = session.role?.trim();
   const description = session.description?.trim();
+  if (title) return title;
   if (handle && role) return `${handle} · ${role}`;
   if (handle) return handle;
   if (description) return description;
   if (role) return role;
   return shortId(session.session_id);
+}
+
+export function titleFromInitialPrompt(prompt: string, maxLength = 60): string | null {
+  const normalized = prompt
+    .replace(/^```[\w-]*\s*/i, '')
+    .replace(/```$/i, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return null;
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1).trimEnd()}…` : normalized;
 }
 
 export function visibleChatSessions<T extends Pick<SessionView, 'state' | 'updated_at'>>(

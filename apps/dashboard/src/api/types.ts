@@ -63,6 +63,7 @@ export interface UpsertAgentProfileInput {
 export interface SessionView {
   session_id: string;
   client_type: string;
+  title: string | null;
   handle: string | null;
   role: string | null;
   description: string | null;
@@ -383,6 +384,7 @@ export interface CreateSessionInput {
   client_type: string;
   workspace?: string | null;
   workspace_id?: string | null;
+  title?: string | null;
   handle?: string | null;
   role?: string | null;
   description?: string | null;
@@ -390,6 +392,10 @@ export interface CreateSessionInput {
   execution_profile_version?: string | null;
   metadata?: JsonObject;
   initial_task?: { input: string; metadata?: JsonObject } | null;
+}
+
+export interface UpdateSessionInput {
+  title?: string | null;
 }
 
 export interface CreateSessionResult {

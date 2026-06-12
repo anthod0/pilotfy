@@ -11,6 +11,7 @@ pub(crate) use validation::pilotfy_agent_kind;
 pub struct CreateSessionRequest {
     #[serde(default = "default_client_type")]
     pub client_type: String,
+    pub title: Option<String>,
     pub workspace: Option<String>,
     pub workspace_id: Option<String>,
     pub handle: Option<String>,
@@ -21,6 +22,11 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     pub metadata: Value,
     pub initial_task: Option<InitialTaskRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UpdateSessionRequest {
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

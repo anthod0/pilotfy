@@ -15,6 +15,7 @@ pub struct SessionCapabilities {
 pub struct SessionView {
     pub session_id: String,
     pub client_type: String,
+    pub title: Option<String>,
     pub handle: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,

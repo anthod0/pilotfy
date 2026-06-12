@@ -3,7 +3,7 @@ use super::*;
 impl ExternalQueryService {
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>> {
         let rows = sqlx::query(
-            r#"SELECT s.session_id, s.client_type, s.handle, s.role, s.description,
+            r#"SELECT s.session_id, s.client_type, s.title, s.handle, s.role, s.description,
                       s.execution_profile_id, s.execution_profile_version,
                       s.state, s.current_turn_id, s.workspace_id,
                       COALESCE(w.canonical_path, s.workspace_ref) AS workspace_ref,
@@ -27,7 +27,7 @@ impl ExternalQueryService {
 
     pub async fn get_session(&self, session_id: &str) -> Result<Option<SessionView>> {
         let row = sqlx::query(
-            r#"SELECT s.session_id, s.client_type, s.handle, s.role, s.description,
+            r#"SELECT s.session_id, s.client_type, s.title, s.handle, s.role, s.description,
                       s.execution_profile_id, s.execution_profile_version,
                       s.state, s.current_turn_id, s.workspace_id,
                       COALESCE(w.canonical_path, s.workspace_ref) AS workspace_ref,

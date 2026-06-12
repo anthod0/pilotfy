@@ -80,6 +80,7 @@ const mocks = vi.hoisted(() => {
     resumeSession: vi.fn(),
     restartSession: vi.fn(),
     terminateSession: vi.fn(),
+    updateSessionTitle: vi.fn(),
     createSession: vi.fn(),
     createDagTask: vi.fn(),
     loadTaskProposals: vi.fn(async () => []),
@@ -121,6 +122,7 @@ vi.mock('../../src/stores/sessions', () => ({
   resumeSession: mocks.resumeSession,
   restartSession: mocks.restartSession,
   terminateSession: mocks.terminateSession,
+  updateSessionTitle: mocks.updateSessionTitle,
   createSession: mocks.createSession,
 }));
 
@@ -173,6 +175,7 @@ vi.mock('svelte-sonner', () => ({
 const session = (overrides: Partial<SessionView> = {}): SessionView => ({
   session_id: 'session-1',
   client_type: 'pi',
+  title: null,
   handle: 'main',
   role: null,
   description: null,
@@ -466,11 +469,31 @@ test('creates a session with initial prompt, workspace, and client then opens it
     workspace_id: 'workspace-1',
     handle: null,
     role: null,
+    title: 'Implement the dashboard chat flow',
     description: null,
     initial_task: { input: 'Implement the dashboard chat flow', metadata: { source: 'dashboard_chat' } },
     metadata: { source: 'dashboard_chat' },
   }));
   expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
+});
+
+test('renames the selected chat session from advanced controls', async () => {
+  const selected = session({ session_id: 'session-2', title: 'Old title' });
+  const renamed = session({ session_id: 'session-2', title: 'New title' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+  mocks.updateSessionTitle.mockResolvedValue(renamed);
+  const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('New title');
+  render(ChatPage);
+
+  await fireEvent.click(await screen.findByRole('button', { name: /advanced session controls/i }));
+  await fireEvent.click(screen.getByRole('menuitem', { name: /rename session/i }));
+
+  await waitFor(() => expect(mocks.updateSessionTitle).toHaveBeenCalledWith('session-2', 'New title'));
+  promptSpy.mockRestore();
 });
 
 test('shows the initial prompt immediately after starting a chat while timeline is empty', async () => {

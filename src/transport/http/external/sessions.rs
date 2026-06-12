@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::application::{
     AppState, CreateSessionRequest, ExternalQueryService, RuntimeControlService,
-    SessionCommandService,
+    SessionCommandService, UpdateSessionRequest,
 };
 
 use super::common::{ApiResponse, ExternalApiError, authenticate, idempotency_key, ok};
@@ -38,6 +38,18 @@ pub async fn list_sessions(
     let service = ExternalQueryService::new(state.db);
     let sessions = service.list_sessions().await?;
     Ok(ok(json!({ "sessions": sessions })))
+}
+
+pub async fn update_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(request): Json<UpdateSessionRequest>,
+) -> Result<Json<ApiResponse<Value>>, ExternalApiError> {
+    authenticate(&state, &headers)?;
+    let service = SessionCommandService::new(state.db);
+    let data = service.update_session(&session_id, request).await?;
+    Ok(ok(data))
 }
 
 pub async fn get_session(

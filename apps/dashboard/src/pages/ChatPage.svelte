@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
   import { get } from 'svelte/store'
-  import { Activity, AtSign, Bot, Folder, GitBranch, LogOut, MoreHorizontal, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
+  import { Activity, AtSign, Bot, Folder, GitBranch, LogOut, MoreHorizontal, Pencil, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
   import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import { Badge } from '$lib/components/ui/badge/index.js'
@@ -17,6 +17,7 @@
     canSendSessionMessage,
     isTerminalChatSession,
     timelineItemsToChatMessages,
+    titleFromInitialPrompt,
   } from '$lib/session-chat/sessionChat'
   import {
     chatMessagesWithOptimistic,
@@ -51,6 +52,7 @@
     sessionsError,
     submitInboxMessage,
     terminateSession,
+    updateSessionTitle,
   } from '../stores/sessions'
   import {
     createDagTask,
@@ -150,6 +152,11 @@
     return session.execution_profile_version ? `${session.execution_profile_id}@${session.execution_profile_version}` : session.execution_profile_id
   }
 
+  function sessionTitle(session: SessionView): string | null {
+    const title = session.title?.trim()
+    return title || null
+  }
+
   function sessionHandleTitle(session: SessionView): string | null {
     const handle = session.handle?.trim()
     return handle || null
@@ -186,6 +193,21 @@
     if (!plannerTaskId || streamEvent.kind !== 'task_event') return
     if (streamEvent.event.task_id === plannerTaskId && streamEvent.event.event_type === 'dag.approved') {
       navigateToTaskDag(plannerTaskId)
+    }
+  }
+
+  async function renameSelectedSession(): Promise<void> {
+    if (!selectedSessionId || !selectedSession) return
+    const nextTitle = window.prompt('Rename session', selectedSession.title ?? '')
+    if (nextTitle === null) return
+    actionBusy = true
+    actionError = null
+    try {
+      await updateSessionTitle(selectedSessionId, nextTitle.trim() || null)
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error)
+    } finally {
+      actionBusy = false
     }
   }
 
@@ -257,6 +279,7 @@
         workspace_id: createWorkspaceId,
         handle: defaultHandleForProfile(selectedProfile) || null,
         role: selectedProfile?.default_session_role ?? null,
+        title: titleFromInitialPrompt(initialPrompt),
         description: selectedProfile?.default_session_description ?? null,
         ...sessionProfileFields(selectedProfile),
         initial_task: { input: initialPrompt, metadata: { source: 'dashboard_chat' } },
@@ -452,6 +475,17 @@
             <div class="mx-auto w-full max-w-7xl">
             <div role="group" aria-label="Session status and controls" class="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2 px-2">
               <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                {#if sessionTitle(selectedSession)}
+                  <Badge
+                    variant="outline"
+                    class="h-7 max-w-full justify-start gap-1.5 px-3 text-sm font-medium"
+                    title={`Session: ${sessionTitle(selectedSession)}`}
+                    aria-label={`Session: ${sessionTitle(selectedSession)}`}
+                  >
+                    <Pencil class="size-4" aria-hidden="true" />
+                    <span class="min-w-0 truncate">{sessionTitle(selectedSession)}</span>
+                  </Badge>
+                {/if}
                 <Badge variant="secondary" class="h-7 gap-1.5 px-3 text-sm">
                   <Activity class="size-4" /> {selectedSession.state}
                 </Badge>
@@ -521,6 +555,18 @@
                         }}
                       >
                         <TerminalSquare class="size-4" /> Session Console
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                        disabled={actionBusy}
+                        onclick={() => {
+                          advancedControlsOpen = false
+                          void renameSelectedSession()
+                        }}
+                      >
+                        <Pencil class="size-4" /> Rename session
                       </button>
                       <button
                         type="button"

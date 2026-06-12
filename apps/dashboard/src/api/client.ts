@@ -26,6 +26,7 @@ import type {
   TaskView,
   DagSignalView,
   TurnView,
+  UpdateSessionInput,
   WorkspaceDirectoryListingView,
   WorkspaceRootView,
   WorkspaceView,
@@ -209,6 +210,10 @@ export async function cancelTask(taskId: string): Promise<TaskView> {
 
 export async function createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
   return request<CreateSessionResult>('/sessions', { method: 'POST', body: input, mutating: true });
+}
+
+export async function updateSession(sessionId: string, input: UpdateSessionInput): Promise<SessionView> {
+  return (await request<{ session: SessionView }>(`/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: input, mutating: true })).session;
 }
 
 export async function getSession(sessionId: string): Promise<SessionView> {
