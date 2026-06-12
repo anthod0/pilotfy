@@ -79,6 +79,7 @@ const mocks = vi.hoisted(() => {
     submitInboxMessage: vi.fn(),
     resumeSession: vi.fn(),
     restartSession: vi.fn(),
+    interruptSession: vi.fn(),
     terminateSession: vi.fn(),
     updateSessionTitle: vi.fn(),
     createSession: vi.fn(),
@@ -121,6 +122,7 @@ vi.mock('../../src/stores/sessions', () => ({
   submitInboxMessage: mocks.submitInboxMessage,
   resumeSession: mocks.resumeSession,
   restartSession: mocks.restartSession,
+  interruptSession: mocks.interruptSession,
   terminateSession: mocks.terminateSession,
   updateSessionTitle: mocks.updateSessionTitle,
   createSession: mocks.createSession,
@@ -527,6 +529,21 @@ test('creates a session with initial prompt, workspace, and client then opens it
     metadata: { source: 'dashboard_chat' },
   }));
   expect(mocks.navigate).toHaveBeenCalledWith('/chat/session-new');
+});
+
+test('interrupts a busy interrupt-capable session from the agent working placeholder', async () => {
+  const busySession = session({ state: 'busy', current_turn_id: 'turn-1', capabilities: { interrupt: true } });
+  mocks.loadedSessions = [busySession];
+  mocks.sessions.set([busySession]);
+  mocks.sessionDetail.set({ session: busySession, turns: [turn({ state: 'running', output: null, completed_at: null })], inboxMessages: [], events: [], artifacts: [] });
+  mocks.pathParams = { sessionId: 'session-1' };
+  window.history.pushState({}, '', '/dashboard/chat/session-1');
+
+  render(ChatPage);
+
+  await fireEvent.click(await screen.findByRole('button', { name: /interrupt agent/i }));
+
+  expect(mocks.interruptSession).toHaveBeenCalledWith('session-1');
 });
 
 test('renames the selected chat session from advanced controls', async () => {

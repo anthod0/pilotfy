@@ -47,15 +47,20 @@
     return state !== 'exited' && state !== 'error'
   }
 
+  function notifyRouteChanged() {
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
   function go(path: string) {
     navigate(path)
     currentPath = normalizePath(path)
+    notifyRouteChanged()
   }
 
   function openSession(sessionId: string) {
     navigate(`/chat/${sessionId}`)
     currentPath = `/chat/${sessionId}`
-    window.dispatchEvent(new PopStateEvent('popstate'))
+    notifyRouteChanged()
   }
 
   async function renameSession(event: MouseEvent, session: SessionView) {

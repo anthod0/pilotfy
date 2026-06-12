@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Bot, GitBranch } from '@lucide/svelte'
+  import { Bot, CircleStop, GitBranch } from '@lucide/svelte'
   import * as Conversation from '$lib/components/ai-elements/conversation/index.js'
   import * as Message from '$lib/components/ai-elements/message/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -20,9 +20,22 @@
     plannerTaskId?: string | null
     draftPlannerProposal?: DagProposalView | null
     draftPlannerProposalLoading?: boolean
+    interruptEnabled?: boolean
+    interruptBusy?: boolean
+    onInterrupt?: () => void
   }
 
-  let { messages, sessionState = null, loading = false, plannerTaskId = null, draftPlannerProposal = null, draftPlannerProposalLoading = false }: Props = $props()
+  let {
+    messages,
+    sessionState = null,
+    loading = false,
+    plannerTaskId = null,
+    draftPlannerProposal = null,
+    draftPlannerProposalLoading = false,
+    interruptEnabled = false,
+    interruptBusy = false,
+    onInterrupt,
+  }: Props = $props()
   let scrollContainer = $state<HTMLDivElement | null>(null)
   let draftDagSheetOpen = $state(false)
   const loadingPlaceholder = $derived(assistantLoadingPlaceholder(sessionState))
@@ -104,9 +117,16 @@
               <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps} active={(sessionState ? sessionState === 'busy' : true) && chatMessage.status === 'pending'} />
             {/if}
             {#if chatMessage.role === 'assistant' && loadingPlaceholder && !chatMessage.content.trim()}
-              <div class="max-w-md space-y-1 text-muted-foreground" aria-live="polite">
-                <p class="text-sm font-medium text-foreground">{loadingPlaceholder.title}</p>
-                <p class="text-xs leading-5">{loadingPlaceholder.description}</p>
+              <div class="max-w-md space-y-2 text-muted-foreground" aria-live="polite">
+                <div class="space-y-1">
+                  <p class="text-sm font-medium text-foreground">{loadingPlaceholder.title}</p>
+                  <p class="text-xs leading-5">{loadingPlaceholder.description}</p>
+                </div>
+                {#if loadingPlaceholder.title === 'Agent working' && interruptEnabled}
+                  <Button type="button" variant="outline" size="sm" class="gap-2" disabled={interruptBusy} aria-label="Interrupt agent" onclick={onInterrupt}>
+                    <CircleStop class="size-4" /> {interruptBusy ? 'Interrupting…' : 'Interrupt'}
+                  </Button>
+                {/if}
               </div>
             {:else if chatMessage.content.trim()}
               <Message.Response content={chatMessage.content} markdown={chatMessage.role === 'assistant'} />

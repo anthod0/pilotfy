@@ -43,6 +43,7 @@
     createSession,
     loadSessionDetail,
     loadSessions,
+    interruptSession,
     restartSession,
     resumeSession,
     sessionDetail,
@@ -438,6 +439,20 @@
     }
   }
 
+  async function interruptSelectedSession(): Promise<void> {
+    if (!selectedSessionId) return
+    actionBusy = true
+    actionError = null
+    try {
+      await interruptSession(selectedSessionId)
+      await loadSessionTimeline(selectedSessionId, { mode: 'rebuild' })
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error)
+    } finally {
+      actionBusy = false
+    }
+  }
+
   async function runSessionLifecycle(action: 'exit' | 'resume' | 'restart'): Promise<void> {
     if (!selectedSessionId) return
     actionBusy = true
@@ -609,6 +624,9 @@
             {plannerTaskId}
             {draftPlannerProposal}
             draftPlannerProposalLoading={$taskProposalsLoading}
+            interruptEnabled={selectedSession.state === 'busy' && selectedSession.capabilities.interrupt === true}
+            interruptBusy={actionBusy}
+            onInterrupt={() => void interruptSelectedSession()}
           />
 
           <div data-chat-composer-dock="fixed" class="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-[var(--sidebar-width)] md:p-6">

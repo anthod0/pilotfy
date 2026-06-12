@@ -197,6 +197,19 @@ test('sidebar only marks the current route as active', () => {
   expect(tasks).not.toHaveAttribute('data-active');
 });
 
+test('sidebar New Chat notifies mounted route components about the route change', async () => {
+  window.history.pushState({}, '', '/dashboard/chat/session-active');
+  const popstateListener = vi.fn();
+  window.addEventListener('popstate', popstateListener);
+
+  render(AppSidebarHost);
+  await fireEvent.click(screen.getByText('New Chat'));
+
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat');
+  expect(popstateListener).toHaveBeenCalledTimes(1);
+  window.removeEventListener('popstate', popstateListener);
+});
+
 test('sidebar highlights the matching recent session on chat and session console routes', () => {
   mocks.sessions.set([
     {
@@ -256,6 +269,19 @@ test('top bar omits static dashboard title and description copy and links settin
   expect(screen.queryByText('DAG tasks, workspaces, profiles, and execution diagnostics')).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: /new chat/i })).toHaveAttribute('href', '/dashboard/chat');
   expect(screen.getByRole('link', { name: /settings/i })).toHaveAttribute('href', '/dashboard/settings/common');
+});
+
+test('top bar New Chat uses SPA navigation and notifies mounted route components', async () => {
+  window.history.pushState({}, '', '/dashboard/chat/session-active');
+  const popstateListener = vi.fn();
+  window.addEventListener('popstate', popstateListener);
+
+  render(TopBarHost);
+  await fireEvent.click(screen.getByRole('link', { name: /new chat/i }));
+
+  expect(mocks.navigate).toHaveBeenCalledWith('/chat');
+  expect(popstateListener).toHaveBeenCalledTimes(1);
+  window.removeEventListener('popstate', popstateListener);
 });
 
 test('settings common page contains controls without owning the section switcher', () => {

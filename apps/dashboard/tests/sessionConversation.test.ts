@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { expect, test, vi } from 'vitest';
 import SessionConversation from '../src/lib/components/session-chat/SessionConversation.svelte';
 import type { SessionChatMessage } from '../src/lib/session-chat/sessionChat';
@@ -66,6 +66,34 @@ test('conversation uses session busy state to keep thought summary active withou
   expect(screen.getByText('read')).toBeInTheDocument();
   expect(screen.getByText('Agent working')).toBeInTheDocument();
   expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+});
+
+test('conversation renders an interrupt button on the agent working placeholder when enabled', async () => {
+  const onInterrupt = vi.fn();
+
+  render(SessionConversation, {
+    props: {
+      sessionState: 'busy',
+      messages: [
+        ...messages,
+        {
+          id: 'message-3',
+          role: 'user',
+          content: 'Keep going.',
+          status: 'sent',
+        },
+      ],
+      interruptEnabled: true,
+      onInterrupt,
+    },
+  });
+
+  const interruptButton = screen.getByRole('button', { name: /interrupt agent/i });
+  expect(interruptButton).toBeInTheDocument();
+
+  await fireEvent.click(interruptButton);
+
+  expect(onInterrupt).toHaveBeenCalledTimes(1);
 });
 
 test('conversation renders assistant loading placeholder when session is starting and the latest user message has no assistant output', () => {

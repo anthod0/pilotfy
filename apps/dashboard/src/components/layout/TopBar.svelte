@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PanelLeft, Search, Settings, SquarePen, TriangleAlert, Wifi, WifiOff } from '@lucide/svelte'
+  import { navigate } from 'svelte-mini-router'
   import * as Sidebar from '$lib/components/ui/sidebar/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -13,6 +14,12 @@
     reconnecting: 'SSE reconnecting',
     closed: 'SSE closed',
     error: 'SSE error',
+  }
+
+  function openNewChat(event: MouseEvent): void {
+    event.preventDefault()
+    navigate('/chat')
+    window.dispatchEvent(new PopStateEvent('popstate'))
   }
 </script>
 
@@ -35,7 +42,7 @@
     </Badge>
   {/if}
 
-  <Button variant="outline" size="sm" class="gap-2" href="/dashboard/chat">
+  <Button variant="outline" size="sm" class="gap-2" href="/dashboard/chat" onclick={openNewChat}>
     <SquarePen class="size-4" />
     <span class="sr-only sm:not-sr-only">New Chat</span>
   </Button>
