@@ -254,6 +254,7 @@ test('top bar omits static dashboard title and description copy and links settin
 
   expect(screen.queryByText('Dashboard v2')).not.toBeInTheDocument();
   expect(screen.queryByText('DAG tasks, workspaces, profiles, and execution diagnostics')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /new chat/i })).toHaveAttribute('href', '/dashboard/chat');
   expect(screen.getByRole('link', { name: /settings/i })).toHaveAttribute('href', '/dashboard/settings/common');
 });
 

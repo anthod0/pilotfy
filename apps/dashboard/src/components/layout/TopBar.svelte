@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PanelLeft, Search, Settings, TriangleAlert, Wifi, WifiOff } from '@lucide/svelte'
+  import { PanelLeft, Search, Settings, SquarePen, TriangleAlert, Wifi, WifiOff } from '@lucide/svelte'
   import * as Sidebar from '$lib/components/ui/sidebar/index.js'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -35,6 +35,10 @@
     </Badge>
   {/if}
 
+  <Button variant="outline" size="sm" class="gap-2" href="/dashboard/chat">
+    <SquarePen class="size-4" />
+    <span class="sr-only sm:not-sr-only">New Chat</span>
+  </Button>
   <Button variant="outline" size="sm" class="hidden gap-2 md:inline-flex" href="/dashboard/tasks">
     <Search class="size-4" />
     Browse tasks
