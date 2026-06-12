@@ -123,8 +123,8 @@
                   <p class="text-xs leading-5">{loadingPlaceholder.description}</p>
                 </div>
                 {#if loadingPlaceholder.title === 'Agent working' && interruptEnabled}
-                  <Button type="button" variant="outline" size="sm" class="gap-2" disabled={interruptBusy} aria-label="Interrupt agent" onclick={onInterrupt}>
-                    <CircleStop class="size-4" /> {interruptBusy ? 'Interrupting…' : 'Interrupt'}
+                  <Button type="button" variant="outline" size="icon-sm" disabled={interruptBusy} aria-label="Interrupt agent" title={interruptBusy ? 'Interrupting…' : 'Interrupt agent'} onclick={onInterrupt}>
+                    <CircleStop class="size-4" />
                   </Button>
                 {/if}
               </div>

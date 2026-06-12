@@ -90,6 +90,9 @@ test('conversation renders an interrupt button on the agent working placeholder 
 
   const interruptButton = screen.getByRole('button', { name: /interrupt agent/i });
   expect(interruptButton).toBeInTheDocument();
+  expect(interruptButton).toHaveAttribute('title', 'Interrupt agent');
+  expect(interruptButton.textContent?.trim()).toBe('');
+  expect(interruptButton.querySelector('svg')).toBeInTheDocument();
 
   await fireEvent.click(interruptButton);
 
