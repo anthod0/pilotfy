@@ -429,6 +429,7 @@
         {:else}
           <SessionConversation
             {messages}
+            sessionState={selectedSession.state}
             loading={$sessionDetailLoading || $timelineState.loading}
             {plannerTaskId}
             {draftPlannerProposal}

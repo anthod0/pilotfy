@@ -1,5 +1,6 @@
 <script lang="ts">
   import ThoughtSummaryCollapsed from './ThoughtSummaryCollapsed.svelte'
+  import ThoughtSummaryIdle from './ThoughtSummaryIdle.svelte'
   import ThoughtSummarySheet from './ThoughtSummarySheet.svelte'
   import type { SessionChatThoughtStep } from '../../session-chat/sessionChat'
 
@@ -13,5 +14,9 @@
   let sheetOpen = $state(false)
 </script>
 
-<ThoughtSummaryCollapsed {steps} {active} class={className} onOpen={() => (sheetOpen = true)} />
+{#if active}
+  <ThoughtSummaryCollapsed {steps} {active} class={className} onOpen={() => (sheetOpen = true)} />
+{:else}
+  <ThoughtSummaryIdle count={steps.length} class={className} onOpen={() => (sheetOpen = true)} />
+{/if}
 <ThoughtSummarySheet bind:open={sheetOpen} {steps} {active} />

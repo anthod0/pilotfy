@@ -26,3 +26,30 @@ test('conversation renders messages without role headers', () => {
   expect(screen.queryByText('You')).not.toBeInTheDocument();
   expect(screen.queryByText('AI')).not.toBeInTheDocument();
 });
+
+test('conversation uses session busy state to keep thought summary active', () => {
+  render(SessionConversation, {
+    props: {
+      sessionState: 'busy',
+      messages: [
+        ...messages,
+        {
+          id: 'message-3',
+          turnId: 'turn-live',
+          role: 'assistant',
+          content: 'Working…',
+          status: 'pending',
+          createdAt: '2026-06-11T00:00:00Z',
+          thoughtSteps: [
+            { id: 'thought-1', kind: 'tool_call', title: 'bash', status: 'started', content: 'rg ThoughtSummary', occurredAt: null },
+            { id: 'thought-2', kind: 'tool_call', title: 'read', status: 'started', content: 'ThoughtSummary.svelte', occurredAt: null },
+          ],
+        },
+      ],
+    },
+  });
+
+  expect(screen.getByLabelText('Thinking in progress')).toBeInTheDocument();
+  expect(screen.getByText('bash')).toBeInTheDocument();
+  expect(screen.getByText('read')).toBeInTheDocument();
+});

@@ -15,13 +15,14 @@
 
   interface Props {
     messages: SessionChatMessage[]
+    sessionState?: string | null
     loading?: boolean
     plannerTaskId?: string | null
     draftPlannerProposal?: DagProposalView | null
     draftPlannerProposalLoading?: boolean
   }
 
-  let { messages, loading = false, plannerTaskId = null, draftPlannerProposal = null, draftPlannerProposalLoading = false }: Props = $props()
+  let { messages, sessionState = null, loading = false, plannerTaskId = null, draftPlannerProposal = null, draftPlannerProposalLoading = false }: Props = $props()
   let scrollContainer = $state<HTMLDivElement | null>(null)
   let draftDagSheetOpen = $state(false)
   const scrollKey = $derived(chatAutoScrollKey(messages))
@@ -76,7 +77,7 @@
         <Message.Root from={chatMessage.role}>
           <Message.Content class={chatMessage.status === 'failed' ? 'border-destructive/40 text-destructive' : ''}>
             {#if chatMessage.role === 'assistant' && (chatMessage.thoughtSteps?.length || chatMessage.status === 'pending')}
-              <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps ?? []} active={chatMessage.status === 'pending'} />
+              <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps ?? []} active={(sessionState ? sessionState === 'busy' : true) && chatMessage.status === 'pending'} />
             {/if}
             <Message.Response content={chatMessage.content} markdown={chatMessage.role === 'assistant'} />
           </Message.Content>
