@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { cn } from '$lib/utils.js'
+  import BlocksWaveSpinner from './BlocksWaveSpinner.svelte'
   import { CheckCircle2, CircleDot, LoaderCircle, XCircle } from '@lucide/svelte'
   import type { SessionChatThoughtStep } from '../../session-chat/sessionChat'
 
@@ -90,10 +91,10 @@
   aria-label="View thought details"
   onclick={onOpen}
 >
-  <div class="flex min-w-0 items-center gap-3">
+  <div class="flex min-w-0 items-start gap-3">
     {#if active}
-      <span class="inline-flex size-5 shrink-0 items-center justify-center text-primary" aria-label="Thinking in progress" title="Thinking in progress">
-        <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
+      <span class="inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground" aria-label="Thinking in progress" title="Thinking in progress">
+        <BlocksWaveSpinner class="size-5" />
       </span>
     {/if}
     <div class="thought-summary-viewport min-w-0 flex-1 overflow-hidden">
