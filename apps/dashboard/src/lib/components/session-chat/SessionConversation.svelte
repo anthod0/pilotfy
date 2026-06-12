@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { Bot, GitBranch } from '@lucide/svelte'
+  import BlocksWaveSpinner from './BlocksWaveSpinner.svelte'
   import * as Conversation from '$lib/components/ai-elements/conversation/index.js'
   import * as Message from '$lib/components/ai-elements/message/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -25,13 +26,37 @@
   let { messages, sessionState = null, loading = false, plannerTaskId = null, draftPlannerProposal = null, draftPlannerProposalLoading = false }: Props = $props()
   let scrollContainer = $state<HTMLDivElement | null>(null)
   let draftDagSheetOpen = $state(false)
-  const scrollKey = $derived(chatAutoScrollKey(messages))
-  const plannerDraftAnchorId = $derived(lastAssistantMessageId(messages))
+  const loadingPlaceholder = $derived(assistantLoadingPlaceholder(sessionState))
+  const displayMessages = $derived(messagesForDisplay(messages, loadingPlaceholder))
+  const scrollKey = $derived(chatAutoScrollKey(displayMessages))
+  const plannerDraftAnchorId = $derived(lastAssistantMessageId(displayMessages))
 
   $effect(() => {
     scrollKey
     void tick().then(scrollDocumentToBottom)
   })
+
+  function assistantLoadingPlaceholder(state: string | null): { title: string; description: string } | null {
+    if (state === 'created') return { title: 'Session created', description: 'Waiting for the agent session to start.' }
+    if (state === 'starting') return { title: 'Session starting', description: 'Waiting for the agent session to become ready.' }
+    if (state === 'busy') return { title: 'Agent working', description: 'Waiting for the agent to report its next output.' }
+    return null
+  }
+
+  function messagesForDisplay(chatMessages: SessionChatMessage[], placeholder: { title: string; description: string } | null): SessionChatMessage[] {
+    if (!placeholder || chatMessages.at(-1)?.role === 'assistant') return chatMessages
+    return [
+      ...chatMessages,
+      {
+        id: `${sessionState ?? 'session'}:assistant-loading-placeholder`,
+        turnId: `${sessionState ?? 'session'}:assistant-loading-placeholder`,
+        role: 'assistant',
+        content: '',
+        status: 'pending',
+        createdAt: '',
+      },
+    ]
+  }
 
   function lastAssistantMessageId(chatMessages: SessionChatMessage[]): string | null {
     for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
@@ -63,7 +88,7 @@
 <Conversation.Root class="h-auto min-h-0 flex-1 overflow-visible">
   {#if loading}
     <Conversation.EmptyState title="Loading conversation…" description="Fetching the latest session transcript." />
-  {:else if !messages.length}
+  {:else if !displayMessages.length}
     <Empty.Root class="h-full">
       <Empty.Header>
         <Empty.Media><Bot class="size-6" /></Empty.Media>
@@ -73,13 +98,25 @@
     </Empty.Root>
   {:else}
     <Conversation.Content bind:ref={scrollContainer} class="overflow-visible">
-      {#each messages as chatMessage (chatMessage.id)}
+      {#each displayMessages as chatMessage (chatMessage.id)}
         <Message.Root from={chatMessage.role}>
           <Message.Content class={chatMessage.status === 'failed' ? 'border-destructive/40 text-destructive' : ''}>
-            {#if chatMessage.role === 'assistant' && (chatMessage.thoughtSteps?.length || chatMessage.status === 'pending')}
-              <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps ?? []} active={(sessionState ? sessionState === 'busy' : true) && chatMessage.status === 'pending'} />
+            {#if chatMessage.role === 'assistant' && chatMessage.thoughtSteps?.length}
+              <ThoughtSummary class="mb-3" steps={chatMessage.thoughtSteps} active={(sessionState ? sessionState === 'busy' : true) && chatMessage.status === 'pending'} />
             {/if}
-            <Message.Response content={chatMessage.content} markdown={chatMessage.role === 'assistant'} />
+            {#if chatMessage.role === 'assistant' && loadingPlaceholder && !chatMessage.content.trim()}
+              <div class="flex max-w-md items-start gap-3 rounded-xl border bg-muted/30 p-3 text-muted-foreground" aria-live="polite">
+                <span class="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
+                  <BlocksWaveSpinner class="size-5" />
+                </span>
+                <div class="min-w-0 space-y-1">
+                  <p class="text-sm font-medium text-foreground">{loadingPlaceholder.title}</p>
+                  <p class="text-xs leading-5">{loadingPlaceholder.description}</p>
+                </div>
+              </div>
+            {:else if chatMessage.content.trim()}
+              <Message.Response content={chatMessage.content} markdown={chatMessage.role === 'assistant'} />
+            {/if}
           </Message.Content>
         </Message.Root>
 

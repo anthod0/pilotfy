@@ -39,7 +39,7 @@ test('conversation scrolls the document to the bottom when a new message arrives
   await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 4096 }));
 });
 
-test('conversation uses session busy state to keep thought summary active', () => {
+test('conversation uses session busy state to keep thought summary active without showing Working text', () => {
   render(SessionConversation, {
     props: {
       sessionState: 'busy',
@@ -49,7 +49,7 @@ test('conversation uses session busy state to keep thought summary active', () =
           id: 'message-3',
           turnId: 'turn-live',
           role: 'assistant',
-          content: 'Working…',
+          content: '',
           status: 'pending',
           createdAt: '2026-06-11T00:00:00Z',
           thoughtSteps: [
@@ -64,4 +64,28 @@ test('conversation uses session busy state to keep thought summary active', () =
   expect(screen.getByLabelText('Thinking in progress')).toBeInTheDocument();
   expect(screen.getByText('bash')).toBeInTheDocument();
   expect(screen.getByText('read')).toBeInTheDocument();
+  expect(screen.getByText('Agent working')).toBeInTheDocument();
+  expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+});
+
+test('conversation renders assistant loading placeholder when session is starting and the latest user message has no assistant output', () => {
+  render(SessionConversation, {
+    props: {
+      sessionState: 'starting',
+      messages: [
+        ...messages,
+        {
+          id: 'message-3',
+          role: 'user',
+          content: 'Now inspect the tests.',
+          status: 'sent',
+        },
+      ],
+    },
+  });
+
+  expect(screen.getByText('Session starting')).toBeInTheDocument();
+  expect(screen.getByText('Waiting for the agent session to become ready.')).toBeInTheDocument();
+  expect(screen.queryByText('Working')).not.toBeInTheDocument();
+  expect(screen.queryByText('No messages yet')).not.toBeInTheDocument();
 });

@@ -103,7 +103,7 @@ test('maps timeline items into primary chat messages with assistant thought step
   ]);
 });
 
-test('creates a pending assistant working message for live thought steps before final output', () => {
+test('creates a pending assistant placeholder message for live thought steps before final output', () => {
   const messages = timelineItemsToChatMessages([
     timelineItem({ item_id: '1', kind: 'user', role: 'user', content_preview: 'Build the feature', occurred_at: '2026-01-01T00:00:00Z', turn_id: 'turn-live' }),
     timelineItem({ item_id: '2', kind: 'thinking', role: 'assistant', content_preview: 'Need to inspect files', occurred_at: '2026-01-01T00:00:01Z', turn_id: 'turn-live' }),
@@ -112,13 +112,13 @@ test('creates a pending assistant working message for live thought steps before 
 
   expect(messages.map((message) => [message.role, message.status, message.content])).toEqual([
     ['user', 'sent', 'Build the feature'],
-    ['assistant', 'pending', 'Working…'],
+    ['assistant', 'pending', ''],
   ]);
   expect(messages[1].id).toBe('turn-live:working');
   expect(messages[1].thoughtSteps?.map((step) => step.content)).toEqual(['Need to inspect files', 'read {"path":"src/app.ts"}']);
 });
 
-test('renders failed and pending turns as assistant status messages', () => {
+test('renders failed turns as messages and pending turns as empty assistant placeholders', () => {
   const messages = turnsToChatMessages([
     turn({ turn_id: 'failed', state: 'failed', output: null, failure: { message: 'tool failed' } }),
     turn({ turn_id: 'running', state: 'running', input: { summary: 'still working' }, output: null, failure: null, created_at: '2026-01-01T00:01:00Z' }),
@@ -127,7 +127,7 @@ test('renders failed and pending turns as assistant status messages', () => {
   expect(messages[1].status).toBe('failed');
   expect(messages[1].content).toMatch(/tool failed/);
   expect(messages[3].status).toBe('pending');
-  expect(messages[3].content).toBe('Working…');
+  expect(messages[3].content).toBe('');
 });
 
 test('allows sending non-empty messages unless the session is missing or errored', () => {

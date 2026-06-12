@@ -93,7 +93,7 @@ export function timelineItemsToChatMessages(items: TimelineItem[]): SessionChatM
         id: `${turnId}:working`,
         turnId,
         role: 'assistant',
-        content: 'Working…',
+        content: '',
         status: 'pending',
         createdAt: pendingThoughtOccurredAt ?? '',
         thoughtSteps: pendingThoughtSteps,
@@ -202,7 +202,7 @@ function assistantMessageForTurn(turn: TurnView): SessionChatMessage {
     id: `${turn.turn_id}:assistant`,
     turnId: turn.turn_id,
     role: 'assistant',
-    content: activePendingTurnStates.has(turn.state) ? 'Working…' : 'No assistant output was reported for this turn.',
+    content: activePendingTurnStates.has(turn.state) ? '' : 'No assistant output was reported for this turn.',
     status: activePendingTurnStates.has(turn.state) ? 'pending' : 'sent',
     createdAt: turn.completed_at ?? turn.created_at,
   };
