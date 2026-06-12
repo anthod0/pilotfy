@@ -9,7 +9,13 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::{Stream, wrappers::ReceiverStream};
 
-use crate::application::{AppState, DashboardStreamCursor, EventStreamScope, ExternalQueryService};
+use crate::{
+    application::{
+        AppState, DashboardStreamCursor, DashboardStreamEvent, EventStreamScope, EventView,
+        ExternalQueryService,
+    },
+    domain::{DomainEvent, EventType},
+};
 
 use super::common::{ExternalApiError, authenticate, ensure_session_exists};
 
@@ -132,6 +138,7 @@ fn dashboard_sse_stream(
     tokio::spawn(async move {
         let mut shutdown = state.shutdown.subscribe();
         let service = ExternalQueryService::new(state.db);
+        let mut volatile_events = state.volatile_events.subscribe();
         let mut cursor = after_cursor;
 
         loop {
@@ -150,6 +157,27 @@ fn dashboard_sse_stream(
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_millis(200)) => {}
                     _ = shutdown.changed() => break,
+                    received = volatile_events.recv() => {
+                        if let Ok(event) = received
+                            && event.event_type == EventType::SessionMessageUpdated
+                            && let Some(view) = event_view_from_domain_event(&event)
+                        {
+                            let stream_event = DashboardStreamEvent::SessionEvent {
+                                id: view.event_id.clone(),
+                                occurred_at: view.time.clone(),
+                                event: view,
+                            };
+                            let event = Event::default()
+                                .event("dashboard_event")
+                                .json_data(stream_event);
+                            let Ok(event) = event else {
+                                break;
+                            };
+                            if sender.send(Ok(event)).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
                 }
                 continue;
             }
@@ -189,6 +217,7 @@ fn event_sse_stream(
     tokio::spawn(async move {
         let mut shutdown = state.shutdown.subscribe();
         let service = ExternalQueryService::new(state.db);
+        let mut volatile_events = state.volatile_events.subscribe();
         let mut cursor = after_rowid;
 
         loop {
@@ -234,6 +263,25 @@ fn event_sse_stream(
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_millis(200)) => {}
                     _ = shutdown.changed() => break,
+                    received = volatile_events.recv() => {
+                        if let Ok(event) = received
+                            && event.event_type == EventType::SessionMessageUpdated
+                            && volatile_event_matches_target(&event, &target)
+                            && let Some(view) = event_view_from_domain_event(&event)
+                        {
+                            let event_id = view.event_id.clone();
+                            let event = Event::default()
+                                .id(event_id)
+                                .event("domain_event")
+                                .json_data(view);
+                            let Ok(event) = event else {
+                                break;
+                            };
+                            if sender.send(Ok(event)).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
                 }
                 continue;
             }
@@ -261,6 +309,29 @@ fn event_sse_stream(
     });
 
     Sse::new(ReceiverStream::new(receiver)).keep_alive(KeepAlive::default())
+}
+
+fn volatile_event_matches_target(event: &DomainEvent, target: &EventStreamTarget) -> bool {
+    match target {
+        EventStreamTarget::Session { session_id } => event.session_id == *session_id,
+        EventStreamTarget::Turn { .. } => false,
+    }
+}
+
+fn event_view_from_domain_event(event: &DomainEvent) -> Option<EventView> {
+    let time = event
+        .occurred_at
+        .format(&time::format_description::well_known::Rfc3339)
+        .ok()?;
+    Some(EventView {
+        event_id: event.event_id.clone(),
+        session_id: event.session_id.clone(),
+        turn_id: event.turn_id.clone(),
+        source: event.source.to_string(),
+        event_type: event.event_type.to_string(),
+        time,
+        payload: event.payload.clone(),
+    })
 }
 
 fn is_test_stream_once(headers: &HeaderMap) -> bool {

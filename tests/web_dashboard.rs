@@ -31,6 +31,7 @@ async fn test_state_with_dashboard(dashboard: ResolvedDashboard) -> AppState {
         workspace_browser: Default::default(),
         dashboard,
         shutdown: Default::default(),
+        volatile_events: Default::default(),
     }
 }
 

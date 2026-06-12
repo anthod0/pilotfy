@@ -1,9 +1,32 @@
 use super::*;
 use crate::{
     application::set_default_client_type,
+    domain::DomainEvent,
     runtime::{set_runtime_config, set_runtime_external_api_token},
     transport::http::dashboard::ResolvedDashboard,
 };
+
+#[derive(Clone)]
+pub struct VolatileEventBroker {
+    sender: tokio::sync::broadcast::Sender<DomainEvent>,
+}
+
+impl VolatileEventBroker {
+    pub fn publish(&self, event: DomainEvent) {
+        let _ = self.sender.send(event);
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<DomainEvent> {
+        self.sender.subscribe()
+    }
+}
+
+impl Default for VolatileEventBroker {
+    fn default() -> Self {
+        let (sender, _) = tokio::sync::broadcast::channel(1024);
+        Self { sender }
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -13,6 +36,7 @@ pub struct AppState {
     pub workspace_browser: WorkspaceBrowserConfig,
     pub dashboard: ResolvedDashboard,
     pub shutdown: ShutdownSignal,
+    pub volatile_events: VolatileEventBroker,
 }
 
 #[derive(Clone)]
@@ -56,5 +80,6 @@ pub async fn initialize(config: &AppConfig) -> Result<AppState> {
         workspace_browser: config.workspace_browser.clone(),
         dashboard,
         shutdown: ShutdownSignal::default(),
+        volatile_events: VolatileEventBroker::default(),
     })
 }

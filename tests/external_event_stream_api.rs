@@ -32,6 +32,7 @@ async fn test_state(name: &str) -> AppState {
         workspace_browser: Default::default(),
         dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
+        volatile_events: Default::default(),
     }
 }
 
@@ -100,6 +101,28 @@ async fn seed_session_events(state: &AppState) {
         ),
     )
     .await;
+}
+
+async fn post_internal_event(state: AppState, body: Value) -> (StatusCode, String) {
+    let response = http::router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/v1/events")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    (status, String::from_utf8(bytes.to_vec()).expect("utf8"))
 }
 
 async fn stream_get(
@@ -358,6 +381,171 @@ async fn event_stream_rejects_cursor_outside_requested_scope() {
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("invalid_request"));
+}
+
+#[tokio::test]
+async fn dashboard_event_stream_pushes_volatile_session_message_updated_after_cursor() {
+    let state = test_state("dashboard_volatile_message_update").await;
+    seed_session_events(&state).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("local addr");
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let shutdown = state.shutdown.clone();
+
+    let server = tokio::spawn(http::serve_with_shutdown_timeout(
+        listener,
+        http::router(state.clone()),
+        async move {
+            let _ = shutdown_rx.await;
+            shutdown.notify();
+        },
+        Duration::from_secs(5),
+    ));
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("connect sse client");
+    stream
+        .write_all(
+            b"GET /external/v1/dashboard/events/stream?after=session:999;task:0 HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer test-token\r\n\r\n",
+        )
+        .await
+        .expect("send request");
+
+    let mut response = Vec::new();
+    let mut buffer = [0_u8; 1024];
+    loop {
+        let read = stream.read(&mut buffer).await.expect("read response");
+        assert!(read > 0, "server closed stream before headers");
+        response.extend_from_slice(&buffer[..read]);
+        if response.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+    assert!(
+        String::from_utf8_lossy(&response).starts_with("HTTP/1.1 200 OK"),
+        "unexpected response: {}",
+        String::from_utf8_lossy(&response)
+    );
+
+    let (status, body) = post_internal_event(
+        state.clone(),
+        json!({
+            "event_id": "evt_volatile_message_update",
+            "session_id": "sess_stream_1",
+            "turn_id": null,
+            "source": "agent_client",
+            "client_type": "pi",
+            "type": "session.message_updated",
+            "time": "2026-05-04T00:00:00Z",
+            "seq": 3,
+            "payload": {"binding_id":"bind_1","reason":"update"}
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let mut body = String::from_utf8_lossy(&response).to_string();
+    tokio::time::timeout(Duration::from_millis(1000), async {
+        while !body.contains(r#""type":"session.message_updated""#) {
+            let read = stream.read(&mut buffer).await.expect("read stream body");
+            assert!(read > 0, "stream closed before volatile update");
+            body.push_str(&String::from_utf8_lossy(&buffer[..read]));
+        }
+    })
+    .await
+    .expect("volatile message update should be pushed");
+    assert!(body.contains(r#""event_id":"evt_volatile_message_update""#));
+    assert!(body.contains(r#""binding_id":"bind_1""#));
+
+    shutdown_tx.send(()).expect("send shutdown");
+    tokio::time::timeout(Duration::from_millis(500), server)
+        .await
+        .expect("server should stop promptly")
+        .expect("server task")
+        .expect("server result");
+}
+
+#[tokio::test]
+async fn session_event_stream_pushes_volatile_session_message_updated_after_cursor() {
+    let state = test_state("session_volatile_message_update").await;
+    seed_session_events(&state).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("local addr");
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let shutdown = state.shutdown.clone();
+
+    let server = tokio::spawn(http::serve_with_shutdown_timeout(
+        listener,
+        http::router(state.clone()),
+        async move {
+            let _ = shutdown_rx.await;
+            shutdown.notify();
+        },
+        Duration::from_secs(5),
+    ));
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("connect sse client");
+    stream
+        .write_all(
+            b"GET /external/v1/sessions/sess_stream_1/events/stream?after=evt_stream_2 HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer test-token\r\n\r\n",
+        )
+        .await
+        .expect("send request");
+
+    let mut response = Vec::new();
+    let mut buffer = [0_u8; 1024];
+    loop {
+        let read = stream.read(&mut buffer).await.expect("read response");
+        assert!(read > 0, "server closed stream before headers");
+        response.extend_from_slice(&buffer[..read]);
+        if response.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+
+    let (status, body) = post_internal_event(
+        state.clone(),
+        json!({
+            "event_id": "evt_session_volatile_message_update",
+            "session_id": "sess_stream_1",
+            "turn_id": null,
+            "source": "agent_client",
+            "client_type": "pi",
+            "type": "session.message_updated",
+            "time": "2026-05-04T00:00:00Z",
+            "seq": 3,
+            "payload": {"binding_id":"bind_session","reason":"update"}
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let mut body = String::from_utf8_lossy(&response).to_string();
+    tokio::time::timeout(Duration::from_millis(1000), async {
+        while !body.contains(r#""type":"session.message_updated""#) {
+            let read = stream.read(&mut buffer).await.expect("read stream body");
+            assert!(read > 0, "stream closed before volatile update");
+            body.push_str(&String::from_utf8_lossy(&buffer[..read]));
+        }
+    })
+    .await
+    .expect("volatile message update should be pushed to session stream");
+    assert!(body.contains("id: evt_session_volatile_message_update"));
+    assert!(body.contains(r#""binding_id":"bind_session""#));
+
+    shutdown_tx.send(()).expect("send shutdown");
+    tokio::time::timeout(Duration::from_millis(500), server)
+        .await
+        .expect("server should stop promptly")
+        .expect("server task")
+        .expect("server result");
 }
 
 #[tokio::test]

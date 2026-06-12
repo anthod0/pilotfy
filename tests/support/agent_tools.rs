@@ -32,6 +32,7 @@ pub async fn test_state() -> AppState {
         workspace_browser: config.workspace_browser,
         dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
+        volatile_events: Default::default(),
     }
 }
 

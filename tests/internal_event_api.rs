@@ -26,6 +26,7 @@ async fn test_state() -> AppState {
         workspace_browser: Default::default(),
         dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
+        volatile_events: Default::default(),
     }
 }
 
@@ -206,6 +207,13 @@ async fn internal_event_api_accepts_session_message_updated_without_changing_pro
     assert_eq!(status, StatusCode::OK, "{body:?}");
     assert_eq!(body["accepted"], true);
     assert_eq!(body["turn_id"], Value::Null);
+
+    let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE session_id = ?")
+        .bind("sess_m2_message_updated")
+        .fetch_one(&state.db)
+        .await
+        .expect("event count");
+    assert_eq!(event_count, 1);
 
     let service = EventIngestService::new(state.db);
     let session = service

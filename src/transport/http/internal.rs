@@ -50,7 +50,27 @@ pub async fn post_event(
     let Json(request) = request.map_err(|err| ApiError::invalid_request(err.body_text()))?;
     let event = request.into_domain_event()?;
     ensure_agent_client_ready_references_existing_session(&state, &event).await?;
-    let service = EventIngestService::new(state.db);
+    let service = EventIngestService::new(state.db.clone());
+
+    if event.event_type == EventType::SessionMessageUpdated {
+        let state_version: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE session_id = ?")
+                .bind(&event.session_id)
+                .fetch_one(&state.db)
+                .await
+                .map_err(Error::from)?;
+        state.volatile_events.publish(event.clone());
+        return Ok(Json(InternalEventResponse {
+            accepted: true,
+            duplicate: false,
+            event_id: event.event_id,
+            session_id: event.session_id,
+            turn_id: event.turn_id,
+            state_version,
+            warnings: Vec::new(),
+        }));
+    }
+
     let warnings = service.sequence_warnings(&event).await?;
     let result = service.ingest_event(event.clone()).await?;
     let warnings = if result.duplicate {
