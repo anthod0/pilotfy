@@ -144,7 +144,7 @@ test('sidebar shows recent sessions with active dot, including exited sessions, 
 });
 
 test('sidebar only marks the current route as active', () => {
-  window.history.pushState({}, '', '/dashboard/chat/session-active');
+  window.history.pushState({}, '', '/dashboard/chat');
 
   render(AppSidebarHost);
 
