@@ -96,7 +96,7 @@
       </Empty.Header>
     </Empty.Root>
   {:else}
-    <Conversation.Content bind:ref={scrollContainer} class="overflow-visible">
+    <Conversation.Content bind:ref={scrollContainer} data-chat-conversation-content class="overflow-visible px-0 py-4 sm:p-4">
       {#each displayMessages as chatMessage (chatMessage.id)}
         <Message.Root from={chatMessage.role}>
           <Message.Content class={chatMessage.status === 'failed' ? 'border-destructive/40 text-destructive' : ''}>

@@ -636,11 +636,25 @@ test('refreshes the selected chat when the browser returns to the foreground', a
 
 test('lets existing chat routes use document scroll with a fixed bottom composer', async () => {
   const selected = session({ session_id: 'session-2', state: 'idle' });
+  const selectedTurns = [turn({ session_id: 'session-2' })];
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [selected];
   mocks.sessions.set([selected]);
-  mocks.sessionDetail.set({ session: selected, turns: [turn({ session_id: 'session-2' })], inboxMessages: [], events: [], artifacts: [] });
+  mocks.sessionDetail.set({ session: selected, turns: selectedTurns, inboxMessages: [], events: [], artifacts: [] });
+  mocks.timelineState.set({
+    sessionId: 'session-2',
+    bindingId: 'binding-1',
+    items: timelineItemsFromTurns(selectedTurns),
+    nextCursor: null,
+    tailCursor: null,
+    sourceId: null,
+    hasMore: false,
+    isTail: true,
+    loading: false,
+    refreshing: false,
+    error: null,
+  });
 
   const { container } = render(ChatPage);
 
@@ -652,6 +666,11 @@ test('lets existing chat routes use document scroll with a fixed bottom composer
   expect(pageSection).not.toHaveClass('h-full');
   expect(pageSection).not.toHaveClass('min-h-0');
   expect(pageSection).toHaveClass('pb-40');
+  const conversationContent = container.querySelector('[data-chat-conversation-content]');
+  expect(conversationContent).not.toBeNull();
+  expect(conversationContent).toHaveClass('px-0');
+  expect(conversationContent).toHaveClass('py-4');
+  expect(conversationContent).toHaveClass('sm:p-4');
   const composerDock = container.querySelector('[data-chat-composer-dock="fixed"]');
   expect(composerDock).not.toBeNull();
   expect(composerDock).toHaveClass('fixed');
