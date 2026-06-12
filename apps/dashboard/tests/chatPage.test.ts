@@ -152,6 +152,16 @@ test('mobile session summary expands current metadata details', async () => {
   expect(within(details).getByText('pi')).toBeInTheDocument();
 });
 
+test('chat composer session status pill uses semantic color classes', async () => {
+  mocks.sessions.update((sessions) => sessions.map((session) => ({ ...session, state: 'busy' })));
+  mocks.sessionDetail.update((detail) => detail ? { ...detail, session: { ...detail.session, state: 'busy' } } : detail);
+
+  render(ChatPage);
+
+  const toolbar = await screen.findByLabelText('Session status and controls');
+  expect(within(toolbar).getByText('busy').closest('[data-slot="badge"]')).toHaveClass('border-blue-500/30', 'bg-blue-500/10', 'text-blue-700');
+});
+
 test('advanced controls menu opens above when there is not enough space below', async () => {
   const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
   const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');

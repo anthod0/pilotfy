@@ -200,6 +200,24 @@
     return clientType || 'Client'
   }
 
+  function sessionStateBadgeClass(state: string): string {
+    switch (state) {
+      case 'busy':
+      case 'starting':
+        return 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+      case 'idle':
+        return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+      case 'interrupted':
+        return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+      case 'exited':
+        return 'border-muted-foreground/25 bg-muted text-muted-foreground'
+      case 'error':
+        return 'border-destructive/30 bg-destructive/10 text-destructive'
+      default:
+        return ''
+    }
+  }
+
   function sessionProfileTitle(session: SessionView): string | null {
     if (!session.execution_profile_id) return null
     return session.execution_profile_version ? `${session.execution_profile_id}@${session.execution_profile_version}` : session.execution_profile_id
@@ -597,7 +615,7 @@
             <div class="mx-auto w-full max-w-7xl">
             <div role="group" aria-label="Session status and controls" class="mb-2 flex min-w-0 items-center justify-between gap-2 px-2">
               <div class="flex min-w-0 flex-1 items-center gap-2">
-                <Badge variant="secondary" class="h-7 shrink-0 gap-1.5 px-3 text-sm">
+                <Badge variant="secondary" class={`h-7 shrink-0 gap-1.5 px-3 text-sm ${sessionStateBadgeClass(selectedSession.state)}`}>
                   <Activity class="size-4" /> {selectedSession.state}
                 </Badge>
                 <div data-testid="session-status-desktop-metadata" class="hidden min-w-0 flex-1 flex-wrap items-center gap-2 sm:flex">
