@@ -190,7 +190,7 @@ test('chat session refreshes and shows workspace git status', async () => {
   const gitBadge = within(desktopMetadata).getByLabelText('Git status: main, dirty');
   expect(gitBadge).toBeInTheDocument();
   expect(within(gitBadge).getByText('main')).toBeInTheDocument();
-  expect(within(gitBadge).getByLabelText('dirty git status')).toBeInTheDocument();
+  expect(within(gitBadge).queryByLabelText('dirty git status')).not.toBeInTheDocument();
   expect(within(gitBadge).queryByText('dirty')).not.toBeInTheDocument();
   expect(within(gitBadge).getByLabelText('Git branch')).toHaveClass('text-amber-600');
   expect(within(desktopMetadata).getByText('↑1')).toHaveClass('text-blue-600');

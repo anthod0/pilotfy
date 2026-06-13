@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import { get } from 'svelte/store'
-  import { Activity, AtSign, Bot, CheckCircle2, Circle, CircleAlert, EllipsisVertical, Folder, GitBranch, LogOut, Pencil, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
+  import { Activity, AtSign, Bot, EllipsisVertical, Folder, GitBranch, LogOut, Pencil, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
   import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import { Badge } from '$lib/components/ui/badge/index.js'
@@ -283,10 +283,6 @@
 
   function gitStatusAriaLabel(status: WorkspaceGitStatusView | undefined): string {
     return `Git status: ${gitBranchLabel(status)}, ${gitStatusLabel(status)}`
-  }
-
-  function gitStatusIconLabel(status: WorkspaceGitStatusView | undefined): string {
-    return `${gitStatusLabel(status)} git status`
   }
 
   function gitStatusTitle(session: SessionView, status: WorkspaceGitStatusView | undefined): string {
@@ -715,17 +711,6 @@
                     >
                       <GitBranch class={`size-4 ${gitStatusToneClass(selectedSessionGitStatus)}`} aria-label="Git branch" />
                       <span class={gitStatusToneClass(selectedSessionGitStatus)}>{gitBranchLabel(selectedSessionGitStatus)}</span>
-                      <span class="inline-flex items-center" aria-label={gitStatusIconLabel(selectedSessionGitStatus)} title={gitStatusLabel(selectedSessionGitStatus)}>
-                        {#if selectedSessionGitStatus.state === 'error'}
-                          <CircleAlert class="size-4 text-destructive" aria-hidden="true" />
-                        {:else if selectedSessionGitStatus.state === 'unknown'}
-                          <Circle class="size-4 text-muted-foreground" aria-hidden="true" />
-                        {:else if selectedSessionGitStatus.clean}
-                          <CheckCircle2 class="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                        {:else}
-                          <CircleAlert class="size-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-                        {/if}
-                      </span>
                       {#if selectedSessionGitStatus.ahead}<span class="text-blue-600 dark:text-blue-400">↑{selectedSessionGitStatus.ahead}</span>{/if}
                       {#if selectedSessionGitStatus.behind}<span class="text-violet-600 dark:text-violet-400">↓{selectedSessionGitStatus.behind}</span>{/if}
                       {#if hasGitChangeCounts(selectedSessionGitStatus)}
