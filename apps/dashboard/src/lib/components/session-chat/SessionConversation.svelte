@@ -49,7 +49,10 @@
   const scrollKey = $derived(chatAutoScrollKey(displayMessages))
   const plannerDraftAnchorId = $derived(lastAssistantMessageId(displayMessages))
   const TOP_HISTORY_LOAD_THRESHOLD_PX = 80
+  const BOTTOM_AUTO_SCROLL_THRESHOLD_PX = 160
   let topHistoryLoadInFlight = false
+  let previousScrollKey: string | null = null
+  let shouldAutoScrollAfterUpdate = false
 
   onMount(() => {
     window.addEventListener('scroll', handleWindowScroll, { passive: true })
@@ -59,10 +62,22 @@
     window.removeEventListener('scroll', handleWindowScroll)
   })
 
-  $effect(() => {
+  $effect.pre(() => {
     scrollKey
-    void tick().then(scrollDocumentToBottom)
+    shouldAutoScrollAfterUpdate = previousScrollKey === null || isDocumentNearBottom()
   })
+
+  $effect(() => {
+    const nextScrollKey = scrollKey
+    if (previousScrollKey === nextScrollKey) return
+    previousScrollKey = nextScrollKey
+    if (shouldAutoScrollAfterUpdate) void tick().then(scrollDocumentToBottom)
+  })
+
+  function isDocumentNearBottom(): boolean {
+    const distanceFromBottom = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight)
+    return distanceFromBottom <= BOTTOM_AUTO_SCROLL_THRESHOLD_PX
+  }
 
   function assistantLoadingPlaceholder(state: string | null): { title: string; description: string } | null {
     if (state === 'created') return { title: 'Session created', description: 'Waiting for the agent session to start.' }

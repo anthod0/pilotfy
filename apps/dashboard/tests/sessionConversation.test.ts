@@ -43,8 +43,10 @@ test('conversation loads earlier history when scrolled to the top', async () => 
   await waitFor(() => expect(onLoadMoreHistory).toHaveBeenCalledTimes(1));
 });
 
-test('conversation scrolls the document to the bottom when a new message arrives', async () => {
+test('conversation scrolls the document to the bottom when a new message arrives while already near the bottom', async () => {
   const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  Object.defineProperty(window, 'scrollY', { configurable: true, value: 3200 });
   Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 4096 });
   const { rerender } = render(SessionConversation, { props: { messages: [messages[0]] } });
 
@@ -53,6 +55,22 @@ test('conversation scrolls the document to the bottom when a new message arrives
   await rerender({ messages });
 
   await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 4096 }));
+});
+
+test('conversation does not scroll the document to the bottom when refreshing while reading earlier messages', async () => {
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  Object.defineProperty(window, 'scrollY', { configurable: true, value: 600 });
+  Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 4096 });
+  const { rerender } = render(SessionConversation, { props: { messages } });
+
+  await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  scrollTo.mockClear();
+  await rerender({ messages: [...messages, { id: 'message-3', role: 'assistant', content: 'New background update.', status: 'sent' }] });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
 test('conversation uses session busy state to keep thought summary active without showing Working text', () => {

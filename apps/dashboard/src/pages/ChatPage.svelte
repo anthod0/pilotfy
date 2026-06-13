@@ -116,8 +116,7 @@
     await Promise.all([loadSessions(), loadWorkspaces(), loadAgentProfiles()])
     ensureCreateWorkspaceSelection()
     if (selectedSessionId) {
-      resetTimelineState(selectedSessionId)
-      await Promise.all([loadSessionDetail(selectedSessionId), loadSessionTimeline(selectedSessionId, { mode: 'rebuild' })])
+      await loadSelectedSession(selectedSessionId)
       await refreshSessionGitStatus(currentSelectedSession())
     }
     unsubscribeDashboardEvents = subscribeDashboardEvents(handleDashboardEvent)
@@ -357,7 +356,7 @@
 
     foregroundRefreshInFlight = Promise.all([
       loadSessionDetail(sessionId, { showLoading: false }),
-      loadSessionTimeline(sessionId, { mode: 'rebuild' }),
+      loadSessionTimeline(sessionId, { mode: timelineRefreshMode(sessionId) }),
     ]).then(() => undefined).finally(() => {
       foregroundRefreshInFlight = null
     })
@@ -452,12 +451,22 @@
     input = ''
     actionError = null
     if (selectedSessionId) {
-      resetTimelineState(selectedSessionId)
-      await Promise.all([loadSessionDetail(selectedSessionId), loadSessionTimeline(selectedSessionId, { mode: 'rebuild' })])
+      await loadSelectedSession(selectedSessionId)
       await refreshSessionGitStatus(currentSelectedSession())
     } else {
       resetTimelineState()
     }
+  }
+
+  function timelineRefreshMode(sessionId: string): 'rebuild' | 'append' {
+    const currentTimeline = get(timelineState)
+    return currentTimeline.sessionId === sessionId && currentTimeline.items.length ? 'append' : 'rebuild'
+  }
+
+  async function loadSelectedSession(sessionId: string): Promise<void> {
+    const mode = timelineRefreshMode(sessionId)
+    if (mode === 'rebuild') resetTimelineState(sessionId)
+    await Promise.all([loadSessionDetail(sessionId), loadSessionTimeline(sessionId, { mode })])
   }
 
   function handleNewChatKeydown(event: KeyboardEvent): void {

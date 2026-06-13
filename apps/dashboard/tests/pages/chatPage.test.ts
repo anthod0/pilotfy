@@ -666,17 +666,34 @@ test('loads earlier chat history when the chat scroll reaches the top', async ()
   await waitFor(() => expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'more' }));
 });
 
-test('refreshes the selected chat when the browser returns to the foreground', async () => {
+test('refreshes the selected chat when the browser returns to the foreground without rebuilding loaded history', async () => {
   const selected = session({ session_id: 'session-2', state: 'running' });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [selected];
   mocks.sessions.set([selected]);
   mocks.sessionDetail.set({ session: selected, turns: [turn({ session_id: 'session-2' })], inboxMessages: [], events: [], artifacts: [] });
+  mocks.timelineState.set({
+    sessionId: 'session-2',
+    bindingId: 'binding-1',
+    items: timelineItemsFromTurns([
+      turn({ turn_id: 'turn-older', session_id: 'session-2', input: { summary: 'older question' }, output: { summary: 'older answer' } }),
+      turn({ turn_id: 'turn-latest', session_id: 'session-2', input: { summary: 'latest question' }, output: { summary: 'latest answer' } }),
+    ]),
+    nextCursor: 'older-cursor',
+    tailCursor: 'tail-1',
+    sourceId: 'source-1',
+    hasMore: true,
+    isTail: true,
+    loading: false,
+    refreshing: false,
+    error: null,
+  });
 
   render(ChatPage);
 
-  await waitFor(() => expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'rebuild' }));
+  await waitFor(() => expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'append' }));
+  expect(mocks.resetTimelineState).not.toHaveBeenCalledWith('session-2');
   await waitFor(() => expect(mocks.dashboardEventListeners.size).toBe(1));
   mocks.loadSessionDetail.mockClear();
   mocks.loadSessionTimeline.mockClear();
@@ -684,7 +701,7 @@ test('refreshes the selected chat when the browser returns to the foreground', a
   window.dispatchEvent(new Event('focus'));
 
   await waitFor(() => expect(mocks.loadSessionDetail).toHaveBeenCalledWith('session-2', { showLoading: false }));
-  expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'rebuild' });
+  expect(mocks.loadSessionTimeline).toHaveBeenCalledWith('session-2', { mode: 'append' });
 });
 
 test('lets existing chat routes use document scroll with a fixed bottom composer', async () => {
