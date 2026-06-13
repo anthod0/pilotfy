@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use pilotfy::{
+use pontia::{
     adapters::AdapterCapabilities,
     application::{AppState, RuntimeObservationService},
     storage::sqlite::{connect_sqlite, run_migrations},
@@ -32,7 +32,7 @@ async fn test_state(name: &str) -> AppState {
         external_api_token: Some(TOKEN.to_string()),
         graph: Default::default(),
         workspace_browser: Default::default(),
-        dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
+        dashboard: pontia::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
         volatile_events: Default::default(),
     }

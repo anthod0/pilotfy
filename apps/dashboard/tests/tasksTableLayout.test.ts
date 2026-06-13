@@ -76,9 +76,9 @@ const task = (overrides: Partial<TaskView> = {}): TaskView => ({
 
 const workspace = (overrides: Partial<WorkspaceView> = {}): WorkspaceView => ({
   workspace_id: 'workspace-1',
-  name: 'pilotfy',
-  canonical_path: '/home/cheny/projects/pilotfy',
-  display_path: '/home/cheny/projects/pilotfy',
+  name: 'pontia',
+  canonical_path: '/home/cheny/projects/pontia',
+  display_path: '/home/cheny/projects/pontia',
   state: 'active',
   metadata: {},
   created_at: '2026-05-14T00:00:00Z',

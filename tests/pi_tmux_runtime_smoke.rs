@@ -9,7 +9,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use pilotfy::{
+use pontia::{
     application::AppState,
     storage::sqlite::{connect_sqlite, run_migrations},
     transport::http,
@@ -29,13 +29,13 @@ fn configure_test_runtime_env() {
         path
     });
     unsafe {
-        std::env::set_var("PILOTFY_DATA_DIR", data_dir);
+        std::env::set_var("PONTIA_DATA_DIR", data_dir);
         std::env::set_var(
-            "PILOTFY_INTERNAL_EVENT_URL",
+            "PONTIA_INTERNAL_EVENT_URL",
             "http://127.0.0.1:9/internal/v1/events",
         );
-        std::env::set_var("PILOTFY_EXTERNAL_API_URL", "http://127.0.0.1:9/external/v1");
-        std::env::set_var("PILOTFY_EXTERNAL_API_TOKEN", TOKEN);
+        std::env::set_var("PONTIA_EXTERNAL_API_URL", "http://127.0.0.1:9/external/v1");
+        std::env::set_var("PONTIA_EXTERNAL_API_TOKEN", TOKEN);
     }
 }
 
@@ -44,8 +44,8 @@ async fn test_state(name: &str) -> AppState {
     configure_test_runtime_env();
     unsafe {
         std::env::set_var(
-            "PILOTFY_PI_TUI_COMMAND",
-            "cat >> \"$PILOTFY_WORKSPACE/pi-tui-input.log\"",
+            "PONTIA_PI_TUI_COMMAND",
+            "cat >> \"$PONTIA_WORKSPACE/pi-tui-input.log\"",
         );
     }
     let dir = tempfile::tempdir().expect("tempdir");
@@ -59,7 +59,7 @@ async fn test_state(name: &str) -> AppState {
         external_api_token: Some(TOKEN.to_string()),
         graph: Default::default(),
         workspace_browser: Default::default(),
-        dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
+        dashboard: pontia::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
         volatile_events: Default::default(),
     }

@@ -1,9 +1,9 @@
 {
-  "name": "@pilotfy/pi-client-plugin",
+  "name": "@pontia/pi-client-plugin",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "keywords": ["pi-package", "pilotfy-client-plugin"],
+  "keywords": ["pi-package", "pontia-client-plugin"],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

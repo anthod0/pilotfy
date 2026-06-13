@@ -1,4 +1,4 @@
-# pilotfy Dashboard
+# pontia Dashboard
 
 Svelte + Vite + shadcn-svelte dashboard.
 
@@ -30,15 +30,15 @@ The Vite dev server proxies `/external/*` to `http://127.0.0.1:8080`.
 If you prefer separate terminals, run:
 
 ```bash
-PILOTFY_EXTERNAL_API_TOKEN=dev-token cargo run
+PONTIA_EXTERNAL_API_TOKEN=dev-token cargo run
 pnpm --dir=apps/dashboard run dev
 ```
 
-## Build and serve through pilotfy
+## Build and serve through pontia
 
 ```bash
 pnpm --dir=apps/dashboard run build
-PILOTFY_DASHBOARD_SOURCE=apps/dashboard/dist PILOTFY_EXTERNAL_API_TOKEN=dev-token cargo run
+PONTIA_DASHBOARD_SOURCE=apps/dashboard/dist PONTIA_EXTERNAL_API_TOKEN=dev-token cargo run
 ```
 
 Open <http://127.0.0.1:8080/dashboard>.

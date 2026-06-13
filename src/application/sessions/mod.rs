@@ -5,7 +5,7 @@ mod dispatch;
 mod persistence;
 mod validation;
 
-pub(crate) use validation::pilotfy_agent_kind;
+pub(crate) use validation::pontia_agent_kind;
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct CreateSessionRequest {

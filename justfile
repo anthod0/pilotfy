@@ -5,7 +5,7 @@ dev:
     ./scripts/dev-dashboard.sh
 
 backend:
-    PILOTFY_EXTERNAL_API_TOKEN=${PILOTFY_EXTERNAL_API_TOKEN:-dev-token} cargo run
+    PONTIA_EXTERNAL_API_TOKEN=${PONTIA_EXTERNAL_API_TOKEN:-dev-token} cargo run
 
 dashboard:
     pnpm --dir=apps/dashboard run dev

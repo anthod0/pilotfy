@@ -104,7 +104,7 @@
       <span class="flex size-8 shrink-0 items-center justify-center rounded-lg">
         <img src="/dashboard/logo.svg" alt="" class="size-6 shrink-0 object-contain" />
       </span>
-      <span class="truncate group-data-[collapsible=icon]:hidden">PILOTFY</span>
+      <span class="truncate group-data-[collapsible=icon]:hidden">PONTIA</span>
     </button>
   </Sidebar.Header>
   <Sidebar.Content>

@@ -313,7 +313,7 @@ mod tests {
             .chars()
             .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
             .collect();
-        format!("pilotfy_{sanitized}")
+        format!("pontia_{sanitized}")
     }
 
     async fn ingest_session_event(

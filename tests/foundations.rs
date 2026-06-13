@@ -1,4 +1,4 @@
-use pilotfy::{ids, time};
+use pontia::{ids, time};
 
 #[test]
 fn generated_ids_have_external_prefixes_and_are_unique() {

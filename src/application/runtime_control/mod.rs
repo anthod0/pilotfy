@@ -1,4 +1,4 @@
-use super::{sessions::pilotfy_agent_kind, *};
+use super::{sessions::pontia_agent_kind, *};
 use crate::agent_clients::ReadinessMode;
 
 mod commands;

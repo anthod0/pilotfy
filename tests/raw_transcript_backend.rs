@@ -1,6 +1,6 @@
 use std::fs;
 
-use pilotfy::application::{
+use pontia::application::{
     AgentBinding, AgentBindingResolveRequest, AgentBindingResolver, PiAgentBindingResolver,
     PiJsonlParser, RawTranscriptParser, TimelinePageRequest,
 };
@@ -61,7 +61,7 @@ fn pi_parser_returns_timeline_page_from_jsonl_with_cursor() {
     )
     .unwrap();
 
-    let source = pilotfy::application::ResolvedAgentBinding {
+    let source = pontia::application::ResolvedAgentBinding {
         id: "bind_1".to_string(),
         client_type: "pi".to_string(),
         format: "pi-jsonl".to_string(),
@@ -153,7 +153,7 @@ fn pi_parser_keeps_user_and_assistant_previews_full_but_truncates_other_kinds() 
     .join("\n");
     fs::write(&session_file, format!("{lines}\n")).unwrap();
 
-    let source = pilotfy::application::ResolvedAgentBinding {
+    let source = pontia::application::ResolvedAgentBinding {
         id: "bind_1".to_string(),
         client_type: "pi".to_string(),
         format: "pi-jsonl".to_string(),
@@ -192,7 +192,7 @@ fn pi_parser_falls_back_to_raw_kind_for_unmapped_message_roles() {
     )
     .unwrap();
 
-    let source = pilotfy::application::ResolvedAgentBinding {
+    let source = pontia::application::ResolvedAgentBinding {
         id: "bind_1".to_string(),
         client_type: "pi".to_string(),
         format: "pi-jsonl".to_string(),
@@ -244,7 +244,7 @@ async fn service_can_resolve_and_parse_primary_binding_for_session() {
     let resolver = PiAgentBindingResolver::with_agent_dir(agent_dir);
     let parser = PiJsonlParser::new();
 
-    let page = pilotfy::application::resolve_and_parse_timeline_page(
+    let page = pontia::application::resolve_and_parse_timeline_page(
         &binding, &resolver, &parser, None, 20,
     )
     .await

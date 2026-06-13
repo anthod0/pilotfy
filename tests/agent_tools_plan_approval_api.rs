@@ -7,16 +7,16 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use pilotfy::transport::http;
+use pontia::transport::http;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-fn isolate_graph(state: &mut pilotfy::application::AppState, dir: &tempfile::TempDir) {
+fn isolate_graph(state: &mut pontia::application::AppState, dir: &tempfile::TempDir) {
     state.graph.enabled = true;
     state.graph.db_dir = Some(dir.path().join("lbug").display().to_string());
 }
 
-async fn get_external(state: pilotfy::application::AppState, uri: &str) -> (StatusCode, Value) {
+async fn get_external(state: pontia::application::AppState, uri: &str) -> (StatusCode, Value) {
     let response = http::router(state)
         .oneshot(
             Request::builder()

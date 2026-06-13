@@ -33,7 +33,7 @@ pub(super) fn start_session(
         .format(&Rfc3339)
         .map_err(|err| Error::Domain(format!("invalid runtime timestamp: {err}")))?;
     let runtime_dir = std::env::temp_dir()
-        .join("pilotfy-test-runtimes")
+        .join("pontia-test-runtimes")
         .join(&request.session_id);
     std::fs::create_dir_all(&runtime_dir)?;
     let log_path = runtime_dir.join("runtime.log");

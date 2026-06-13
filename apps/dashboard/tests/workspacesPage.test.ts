@@ -60,9 +60,9 @@ vi.mock('../src/stores/workspaces', () => ({
 
 const workspace = (overrides: Partial<WorkspaceView> = {}): WorkspaceView => ({
   workspace_id: 'workspace-1',
-  name: 'pilotfy',
-  canonical_path: '/repo/pilotfy',
-  display_path: '/repo/pilotfy',
+  name: 'pontia',
+  canonical_path: '/repo/pontia',
+  display_path: '/repo/pontia',
   state: 'active',
   metadata: {},
   created_at: '2026-05-14T00:00:00Z',
@@ -79,7 +79,7 @@ beforeEach(() => {
     canonical_path: '/repo',
     parent_path: null,
     entries: [
-      { name: 'pilotfy', path: 'pilotfy', kind: 'directory', is_workspace: true },
+      { name: 'pontia', path: 'pontia', kind: 'directory', is_workspace: true },
       { name: 'sandbox', path: 'sandbox', kind: 'directory', is_workspace: false },
     ],
     warnings: [],
@@ -99,10 +99,10 @@ test('renders workspace browser and active workspace cards from store data', asy
 
   const activeSection = screen.getByText('Active workspaces').closest('.xl\\:order-2');
   expect(activeSection).not.toBeNull();
-  expect(within(activeSection as HTMLElement).getByText('pilotfy')).toBeInTheDocument();
+  expect(within(activeSection as HTMLElement).getByText('pontia')).toBeInTheDocument();
   expect(within(activeSection as HTMLElement).getByTestId('active-workspaces-list')).toBeInTheDocument();
   expect(container.querySelector('.workspace-folder-preview')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Rename pilotfy' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Rename pontia' })).toBeInTheDocument();
 });
 
 test('renders a compact directory/action table and opens directories through the folder-name button', async () => {
@@ -130,15 +130,15 @@ test('toggles workspace active state directly and keeps rename dialog for editin
   expect(mocks.registerWorkspace).toHaveBeenCalledWith({ root_id: 'root-1', path: 'sandbox', name: 'sandbox' });
   expect(screen.queryByRole('heading', { name: 'Confirm workspace registration' })).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole('button', { name: 'Deactivate pilotfy' }));
+  await user.click(screen.getByRole('button', { name: 'Deactivate pontia' }));
 
   expect(confirmSpy).not.toHaveBeenCalled();
   expect(mocks.deleteWorkspace).toHaveBeenCalledWith('workspace-1');
 
-  await user.click(screen.getByRole('button', { name: 'Rename pilotfy' }));
+  await user.click(screen.getByRole('button', { name: 'Rename pontia' }));
 
   expect(screen.getByRole('heading', { name: 'Confirm workspace rename' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Display name')).toHaveValue('pilotfy');
+  expect(screen.getByLabelText('Display name')).toHaveValue('pontia');
 
   confirmSpy.mockRestore();
 });

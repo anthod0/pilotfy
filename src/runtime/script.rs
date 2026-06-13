@@ -44,14 +44,13 @@ pub(super) fn write_runtime_script(
                 command.push_str(&shell_quote(&request.session_id));
             }
             (
-                "echo \"pilotfy runtime started\" >> \"$PILOTFY_RUNTIME_LOG\"".to_string(),
+                "echo \"pontia runtime started\" >> \"$PONTIA_RUNTIME_LOG\"".to_string(),
                 format!("exec sh -lc {}\n", shell_quote(&command)),
             )
         }
         RuntimeBehavior::InProcessTest => match client_spec.dispatch {
             DispatchBehavior::GenericTestAdapter | DispatchBehavior::None => (
-                "exec >> \"$PILOTFY_RUNTIME_LOG\" 2>&1\necho \"pilotfy runtime started\""
-                    .to_string(),
+                "exec >> \"$PONTIA_RUNTIME_LOG\" 2>&1\necho \"pontia runtime started\"".to_string(),
                 "trap 'exit 0' TERM INT\nwhile :; do sleep 60; done\n".to_string(),
             ),
             DispatchBehavior::TmuxPaste => {
@@ -65,7 +64,7 @@ pub(super) fn write_runtime_script(
     let agent_kind_export = request
         .agent_kind
         .as_ref()
-        .map(|agent_kind| format!("export PILOTFY_AGENT_KIND={}\n", shell_quote(agent_kind)))
+        .map(|agent_kind| format!("export PONTIA_AGENT_KIND={}\n", shell_quote(agent_kind)))
         .unwrap_or_default();
     let hook_log_export = client_spec
         .tmux_runtime()
@@ -81,17 +80,17 @@ pub(super) fn write_runtime_script(
         .unwrap_or_default();
     let content = format!(
         r#"#!/usr/bin/env sh
-export PILOTFY_SESSION_ID={}
-export PILOTFY_CLIENT_TYPE={}
-export PILOTFY_WORKSPACE={}
-export PILOTFY_RUNTIME_DIR={}
-export PILOTFY_RUNTIME_LOG={}
-export PILOTFY_ADAPTER_EVENT_LOG={}
-export PILOTFY_CURRENT_TURN_FILE={}
-export PILOTFY_INTERNAL_EVENT_URL={}
-export PILOTFY_EXTERNAL_API_URL={}
-export PILOTFY_EXTERNAL_API_TOKEN={}
-export PILOTFY_RUNTIME_INSTANCE_ID={}
+export PONTIA_SESSION_ID={}
+export PONTIA_CLIENT_TYPE={}
+export PONTIA_WORKSPACE={}
+export PONTIA_RUNTIME_DIR={}
+export PONTIA_RUNTIME_LOG={}
+export PONTIA_ADAPTER_EVENT_LOG={}
+export PONTIA_CURRENT_TURN_FILE={}
+export PONTIA_INTERNAL_EVENT_URL={}
+export PONTIA_EXTERNAL_API_URL={}
+export PONTIA_EXTERNAL_API_TOKEN={}
+export PONTIA_RUNTIME_INSTANCE_ID={}
 {}{}{}
 {}
 "#,
@@ -123,12 +122,12 @@ fn hook_log_path(
 }
 
 pub(super) fn internal_event_url() -> String {
-    std::env::var("PILOTFY_INTERNAL_EVENT_URL")
+    std::env::var("PONTIA_INTERNAL_EVENT_URL")
         .unwrap_or_else(|_| default_internal_event_url().to_string())
 }
 
 fn external_api_url() -> String {
-    std::env::var("PILOTFY_EXTERNAL_API_URL")
+    std::env::var("PONTIA_EXTERNAL_API_URL")
         .unwrap_or_else(|_| default_external_api_url().to_string())
 }
 
@@ -154,7 +153,7 @@ fn default_external_api_url() -> &'static str {
 
 fn external_api_token() -> String {
     configured_external_api_token()
-        .or_else(|| std::env::var("PILOTFY_EXTERNAL_API_TOKEN").ok())
+        .or_else(|| std::env::var("PONTIA_EXTERNAL_API_TOKEN").ok())
         .unwrap_or_default()
 }
 
@@ -231,12 +230,12 @@ mod tests {
         };
 
         unsafe {
-            std::env::remove_var("PILOTFY_EXTERNAL_API_TOKEN");
+            std::env::remove_var("PONTIA_EXTERNAL_API_TOKEN");
         }
         crate::runtime::set_runtime_external_api_token(None);
         let config = crate::config::AppConfig {
             bind_addr: "127.0.0.1:0".parse().expect("bind addr"),
-            database_url: format!("sqlite://{}", tempdir.path().join("pilotfy.db").display()),
+            database_url: format!("sqlite://{}", tempdir.path().join("pontia.db").display()),
             external_api_token: Some("config-token".to_string()),
             run_migrations: false,
             default_client_type: "pi".to_string(),
@@ -260,10 +259,10 @@ mod tests {
 
         let script = std::fs::read_to_string(script_path).expect("script");
         assert!(
-            script.contains("export PILOTFY_EXTERNAL_API_TOKEN='config-token'"),
+            script.contains("export PONTIA_EXTERNAL_API_TOKEN='config-token'"),
             "script was:\n{script}"
         );
-        assert!(script.contains("export PILOTFY_AGENT_KIND='planner'"));
+        assert!(script.contains("export PONTIA_AGENT_KIND='planner'"));
     }
 
     #[test]
@@ -297,11 +296,11 @@ mod tests {
 
         let script = std::fs::read_to_string(script_path).expect("script");
         assert!(
-            script.contains("export PILOTFY_CLAUDE_HOOK_LOG="),
+            script.contains("export PONTIA_CLAUDE_HOOK_LOG="),
             "script was:\n{script}"
         );
         assert!(
-            !script.contains("export PILOTFY_PI_HOOK_LOG="),
+            !script.contains("export PONTIA_PI_HOOK_LOG="),
             "script was:\n{script}"
         );
     }

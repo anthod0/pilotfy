@@ -65,7 +65,7 @@ test('blocks dashboard routes behind a token prompt when no token is saved', asy
 
   expect(screen.getByRole('heading', { name: /enter external api token/i })).toBeInTheDocument();
   expect(screen.getByLabelText(/bearer token/i)).toBeInTheDocument();
-  expect(screen.queryByText('PILOTFY')).not.toBeInTheDocument();
+  expect(screen.queryByText('PONTIA')).not.toBeInTheDocument();
   expect(mocks.loadTasks).not.toHaveBeenCalled();
   expect(mocks.loadWorkspaces).not.toHaveBeenCalled();
   expect(mocks.loadAgentProfiles).not.toHaveBeenCalled();
@@ -85,10 +85,10 @@ test('rejects an invalid entered token without opening the dashboard', async () 
   })));
   const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
   expect(headers.get('Authorization')).toBe('Bearer wrong-token');
-  expect(localStorage.getItem('pilotfy.externalApiToken')).not.toBe('wrong-token');
+  expect(localStorage.getItem('pontia.externalApiToken')).not.toBe('wrong-token');
   expect(screen.getByRole('heading', { name: /enter external api token/i })).toBeInTheDocument();
   expect(await screen.findByText(/invalid token/i)).toBeInTheDocument();
-  expect(screen.queryByText('PILOTFY')).not.toBeInTheDocument();
+  expect(screen.queryByText('PONTIA')).not.toBeInTheDocument();
   expect(mocks.startEventStream).not.toHaveBeenCalled();
 });
 
@@ -99,9 +99,9 @@ test('saves the entered token and opens the requested dashboard route after vali
   await fireEvent.input(screen.getByLabelText(/bearer token/i), { target: { value: ' dev-token ' } });
   await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-  await waitFor(() => expect(localStorage.getItem('pilotfy.externalApiToken')).toBe('dev-token'));
+  await waitFor(() => expect(localStorage.getItem('pontia.externalApiToken')).toBe('dev-token'));
   await waitFor(() => expect(screen.queryByRole('heading', { name: /enter external api token/i })).not.toBeInTheDocument());
-  expect(screen.getByText('PILOTFY')).toBeInTheDocument();
+  expect(screen.getByText('PONTIA')).toBeInTheDocument();
   expect(mocks.loadTasks).toHaveBeenCalled();
   expect(mocks.loadWorkspaces).toHaveBeenCalled();
   expect(mocks.loadAgentProfiles).toHaveBeenCalled();
@@ -110,15 +110,15 @@ test('saves the entered token and opens the requested dashboard route after vali
 });
 
 test('clears an invalid saved token before opening dashboard routes', async () => {
-  localStorage.setItem('pilotfy.externalApiToken', 'stale-token');
+  localStorage.setItem('pontia.externalApiToken', 'stale-token');
   token.set('stale-token');
   mockValidateToken(401);
 
   render(App);
 
-  await waitFor(() => expect(localStorage.getItem('pilotfy.externalApiToken')).toBe(''));
+  await waitFor(() => expect(localStorage.getItem('pontia.externalApiToken')).toBe(''));
   expect(screen.getByRole('heading', { name: /enter external api token/i })).toBeInTheDocument();
-  expect(screen.queryByText('PILOTFY')).not.toBeInTheDocument();
+  expect(screen.queryByText('PONTIA')).not.toBeInTheDocument();
   expect(mocks.loadTasks).not.toHaveBeenCalled();
   expect(mocks.startEventStream).not.toHaveBeenCalled();
 });

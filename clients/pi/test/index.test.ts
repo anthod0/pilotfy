@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createPilotfyPiExtension } from "../src/index.js";
+import { createPontiaPiExtension } from "../src/index.js";
 import type { TurnContext } from "../src/context.js";
 import type { InternalEvent } from "../src/events.js";
 
@@ -32,10 +32,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function install(overrides: Partial<Parameters<typeof createPilotfyPiExtension>[1]> = {}) {
+function install(overrides: Partial<Parameters<typeof createPontiaPiExtension>[1]> = {}) {
   const { pi, handlers } = fakePi();
   const reported: InternalEvent[] = [];
-  createPilotfyPiExtension(pi as any, {
+  createPontiaPiExtension(pi as any, {
     env: {},
     loadContext: vi.fn(async () => ({ ok: true as const, context, contextFile: "turn.json", logFile: "hook.log" })),
     makeReporter: vi.fn(() => ({ report: vi.fn(async (_ctx: TurnContext, event: InternalEvent) => {
@@ -49,13 +49,13 @@ function install(overrides: Partial<Parameters<typeof createPilotfyPiExtension>[
   return { handlers, reported };
 }
 
-describe("pilotfy pi extension lifecycle", () => {
+describe("pontia pi extension lifecycle", () => {
   test("session_start startup reports one-time agent client ready from runtime env", async () => {
     const { handlers, reported } = install({
       env: {
-        PILOTFY_SESSION_ID: "sess_ready",
-        PILOTFY_RUNTIME_INSTANCE_ID: "rtinst_1",
-        PILOTFY_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
+        PONTIA_SESSION_ID: "sess_ready",
+        PONTIA_RUNTIME_INSTANCE_ID: "rtinst_1",
+        PONTIA_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
       },
     });
 
@@ -87,9 +87,9 @@ describe("pilotfy pi extension lifecycle", () => {
   test("session_start non-startup does not report ready", async () => {
     const { handlers, reported } = install({
       env: {
-        PILOTFY_SESSION_ID: "sess_ready",
-        PILOTFY_RUNTIME_INSTANCE_ID: "rtinst_1",
-        PILOTFY_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
+        PONTIA_SESSION_ID: "sess_ready",
+        PONTIA_RUNTIME_INSTANCE_ID: "rtinst_1",
+        PONTIA_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
       },
     });
 
@@ -100,7 +100,7 @@ describe("pilotfy pi extension lifecycle", () => {
 
   test("registers pi lifecycle handlers", () => {
     const { pi } = fakePi();
-    createPilotfyPiExtension(pi as any, {
+    createPontiaPiExtension(pi as any, {
       env: {},
       loadContext: vi.fn(),
       makeReporter: vi.fn(),
@@ -127,9 +127,9 @@ describe("pilotfy pi extension lifecycle", () => {
     });
     const { handlers } = install({
       env: {
-        PILOTFY_SESSION_ID: "sess_1",
-        PILOTFY_EXTERNAL_API_URL: "http://localhost/external/v1",
-        PILOTFY_EXTERNAL_API_TOKEN: "token",
+        PONTIA_SESSION_ID: "sess_1",
+        PONTIA_EXTERNAL_API_URL: "http://localhost/external/v1",
+        PONTIA_EXTERNAL_API_TOKEN: "token",
       },
       fetch: fetchImpl as any,
     });
@@ -149,9 +149,9 @@ describe("pilotfy pi extension lifecycle", () => {
     });
     const { handlers } = install({
       env: {
-        PILOTFY_SESSION_ID: "sess_1",
-        PILOTFY_EXTERNAL_API_URL: "http://localhost/external/v1",
-        PILOTFY_EXTERNAL_API_TOKEN: "token",
+        PONTIA_SESSION_ID: "sess_1",
+        PONTIA_EXTERNAL_API_URL: "http://localhost/external/v1",
+        PONTIA_EXTERNAL_API_TOKEN: "token",
       },
       fetch: fetchImpl as any,
     });
@@ -215,7 +215,7 @@ describe("pilotfy pi extension lifecycle", () => {
     expect(reported[4]).toMatchObject({ source: "agent_client", turn_id: null, payload: { reason: "final" } });
   });
 
-  test("creates a fresh pilotfy turn for a TUI prompt after the dispatched turn completed", async () => {
+  test("creates a fresh pontia turn for a TUI prompt after the dispatched turn completed", async () => {
     const { handlers, reported } = install();
 
     await handlers.before_agent_start({ prompt: "first from dashboard", systemPrompt: "Base prompt" }, {});

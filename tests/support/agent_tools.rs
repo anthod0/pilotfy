@@ -5,7 +5,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use pilotfy::{
+use pontia::{
     application::AppState,
     config::AppConfig,
     storage::sqlite::{connect_sqlite, run_migrations},
@@ -30,7 +30,7 @@ pub async fn test_state() -> AppState {
         external_api_token: None,
         graph: config.graph,
         workspace_browser: config.workspace_browser,
-        dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
+        dashboard: pontia::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
         volatile_events: Default::default(),
     }
@@ -45,10 +45,10 @@ fn configure_test_runtime_env() {
         path
     });
     unsafe {
-        std::env::set_var("PILOTFY_DATA_DIR", data_dir);
+        std::env::set_var("PONTIA_DATA_DIR", data_dir);
         std::env::set_var(
-            "PILOTFY_PI_TUI_COMMAND",
-            "cat >> \"$PILOTFY_WORKSPACE/pi-tui-input.log\"",
+            "PONTIA_PI_TUI_COMMAND",
+            "cat >> \"$PONTIA_WORKSPACE/pi-tui-input.log\"",
         );
     }
 }

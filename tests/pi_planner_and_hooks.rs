@@ -10,7 +10,7 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use pilotfy::{
+use pontia::{
     adapters::GenericTestAdapter,
     application::{AdapterEventOutboxService, AppState},
     storage::sqlite::{connect_sqlite, run_migrations},
@@ -37,7 +37,7 @@ async fn test_state(name: &str) -> AppState {
         external_api_token: Some(TOKEN.to_string()),
         graph: Default::default(),
         workspace_browser: Default::default(),
-        dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
+        dashboard: pontia::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
         volatile_events: Default::default(),
     }
@@ -100,13 +100,13 @@ fn configure_test_runtime_env() {
         path
     });
     unsafe {
-        std::env::set_var("PILOTFY_DATA_DIR", data_dir);
+        std::env::set_var("PONTIA_DATA_DIR", data_dir);
         std::env::set_var(
-            "PILOTFY_INTERNAL_EVENT_URL",
+            "PONTIA_INTERNAL_EVENT_URL",
             "http://127.0.0.1:9/internal/v1/events",
         );
-        std::env::set_var("PILOTFY_EXTERNAL_API_URL", "http://127.0.0.1:9/external/v1");
-        std::env::set_var("PILOTFY_EXTERNAL_API_TOKEN", TOKEN);
+        std::env::set_var("PONTIA_EXTERNAL_API_URL", "http://127.0.0.1:9/external/v1");
+        std::env::set_var("PONTIA_EXTERNAL_API_TOKEN", TOKEN);
     }
 }
 
@@ -114,8 +114,8 @@ async fn create_pi_session(state: AppState, workspace: &Path) -> String {
     let _guard = pi_env_lock().lock().await;
     unsafe {
         std::env::set_var(
-            "PILOTFY_PI_TUI_COMMAND",
-            "cat >> \"$PILOTFY_WORKSPACE/pi-tui-input.log\"",
+            "PONTIA_PI_TUI_COMMAND",
+            "cat >> \"$PONTIA_WORKSPACE/pi-tui-input.log\"",
         );
     }
     let (status, body) = request_json(
@@ -228,7 +228,7 @@ async fn pi_runtime_binding_exposes_adapter_event_log() {
     let adapter_event_log = metadata["adapter_event_log"]
         .as_str()
         .expect("adapter event log");
-    assert!(!workspace.path().join(".pilotfy").exists());
+    assert!(!workspace.path().join(".pontia").exists());
     assert_eq!(
         adapter_event_log,
         PathBuf::from(metadata["runtime_dir"].as_str().expect("runtime_dir"))
@@ -451,7 +451,7 @@ async fn pi_dispatch_writes_current_turn_context_for_real_hook() {
     let turn = submit_pi_turn(state, &session_id, "write context for hook").await;
     let turn_id = turn["turn_id"].as_str().expect("turn id");
 
-    assert!(!workspace.path().join(".pilotfy").exists());
+    assert!(!workspace.path().join(".pontia").exists());
     let context_path = PathBuf::from(
         metadata["current_turn_file"]
             .as_str()
@@ -489,28 +489,28 @@ async fn pi_runtime_exports_real_hook_environment() {
         .expect("tmux session")
         .to_string();
 
-    assert!(!workspace.path().join(".pilotfy").exists());
+    assert!(!workspace.path().join(".pontia").exists());
     let runtime_dir = metadata["runtime_dir"].as_str().expect("runtime_dir");
-    assert!(!runtime_dir.contains(".local/share/pilotfy/runtimes"));
+    assert!(!runtime_dir.contains(".local/share/pontia/runtimes"));
     let runtime_script = std::fs::read_to_string(PathBuf::from(runtime_dir).join("runtime.sh"))
         .expect("runtime script");
-    assert!(runtime_script.contains("export PILOTFY_CURRENT_TURN_FILE="));
+    assert!(runtime_script.contains("export PONTIA_CURRENT_TURN_FILE="));
     assert!(runtime_script.contains("/runtimes/"));
     assert!(runtime_script.contains("current-turn.json"));
-    assert!(runtime_script.contains("export PILOTFY_RUNTIME_DIR="));
+    assert!(runtime_script.contains("export PONTIA_RUNTIME_DIR="));
     assert!(!runtime_script.contains("127.0.0.1:8080"));
-    assert!(runtime_script.contains("export PILOTFY_INTERNAL_EVENT_URL="));
+    assert!(runtime_script.contains("export PONTIA_INTERNAL_EVENT_URL="));
     assert!(runtime_script.contains("http://127.0.0.1:9/internal/v1/events"));
-    assert!(runtime_script.contains("export PILOTFY_EXTERNAL_API_URL="));
+    assert!(runtime_script.contains("export PONTIA_EXTERNAL_API_URL="));
     assert!(runtime_script.contains("http://127.0.0.1:9/external/v1"));
-    assert!(runtime_script.contains("export PILOTFY_EXTERNAL_API_TOKEN="));
+    assert!(runtime_script.contains("export PONTIA_EXTERNAL_API_TOKEN="));
     let runtime_instance_id = metadata["runtime_instance_id"]
         .as_str()
         .expect("runtime_instance_id");
     assert!(runtime_instance_id.starts_with("rtinst_"));
-    assert!(runtime_script.contains("export PILOTFY_RUNTIME_INSTANCE_ID="));
+    assert!(runtime_script.contains("export PONTIA_RUNTIME_INSTANCE_ID="));
     assert!(runtime_script.contains(runtime_instance_id));
-    assert!(runtime_script.contains("export PILOTFY_PI_HOOK_LOG="));
+    assert!(runtime_script.contains("export PONTIA_PI_HOOK_LOG="));
     assert!(runtime_script.contains("pi-hook.log"));
 
     cleanup_tmux(&tmux_session);

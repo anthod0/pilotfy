@@ -102,7 +102,7 @@
 
   const AUTO_RESUME_IDLE_TIMEOUT_MS = 30_000
   const DAG_TASK_ENTRIES_ENABLED = false
-  const LAST_NEW_CHAT_WORKSPACE_STORAGE_KEY = 'pilotfy.chat.lastWorkspaceId'
+  const LAST_NEW_CHAT_WORKSPACE_STORAGE_KEY = 'pontia.chat.lastWorkspaceId'
   const newChatSelectorTriggerClass = 'h-7 rounded-full px-3 text-sm font-normal text-muted-foreground'
 
   onMount(async () => {

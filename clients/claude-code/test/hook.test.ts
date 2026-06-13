@@ -31,9 +31,9 @@ describe("handleClaudeHook", () => {
   test("session-start reports one-time agent client ready from runtime env", async () => {
     const { deps, reported } = dependencies();
     deps.env = {
-      PILOTFY_SESSION_ID: "sess_ready",
-      PILOTFY_RUNTIME_INSTANCE_ID: "rtinst_1",
-      PILOTFY_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
+      PONTIA_SESSION_ID: "sess_ready",
+      PONTIA_RUNTIME_INSTANCE_ID: "rtinst_1",
+      PONTIA_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
     };
 
     const exitCode = await handleClaudeHook("session-start", { hook_event_name: "SessionStart", source: "startup" }, deps);

@@ -11,7 +11,7 @@ pub(super) fn workspace_path(request: &RuntimeStartRequest) -> Result<PathBuf> {
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             std::env::temp_dir()
-                .join("pilotfy-workspaces")
+                .join("pontia-workspaces")
                 .join(&request.session_id)
         });
     std::fs::create_dir_all(&path)?;
@@ -19,17 +19,17 @@ pub(super) fn workspace_path(request: &RuntimeStartRequest) -> Result<PathBuf> {
 }
 
 pub(super) fn runtime_dir(session_id: &str) -> Result<PathBuf> {
-    Ok(pilotfy_data_dir()?.join("runtimes").join(session_id))
+    Ok(pontia_data_dir()?.join("runtimes").join(session_id))
 }
 
-fn pilotfy_data_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("PILOTFY_DATA_DIR") {
+fn pontia_data_dir() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("PONTIA_DATA_DIR") {
         return Ok(PathBuf::from(path));
     }
 
     let home = std::env::var("HOME").map_err(|_| Error::InvalidConfig {
         key: "HOME",
-        message: "required to derive pilotfy data directory".to_string(),
+        message: "required to derive pontia data directory".to_string(),
     })?;
-    Ok(PathBuf::from(home).join(".local/share/pilotfy"))
+    Ok(PathBuf::from(home).join(".local/share/pontia"))
 }

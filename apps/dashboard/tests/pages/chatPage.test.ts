@@ -239,9 +239,9 @@ function timelineItemsFromTurns(turns: TurnView[]): TimelineItem[] {
 
 const workspace = (overrides: Partial<WorkspaceView> = {}): WorkspaceView => ({
   workspace_id: 'workspace-1',
-  canonical_path: '/repo/pilotfy',
-  display_path: '~/repo/pilotfy',
-  name: 'pilotfy',
+  canonical_path: '/repo/pontia',
+  display_path: '~/repo/pontia',
+  name: 'pontia',
   state: 'active',
   metadata: {},
   created_at: '2026-05-14T00:00:00Z',
@@ -360,9 +360,9 @@ beforeEach(() => {
 });
 
 test('prefers the last selected new chat workspace when it is still available', async () => {
-  window.localStorage.setItem('pilotfy.chat.lastWorkspaceId', 'workspace-2');
+  window.localStorage.setItem('pontia.chat.lastWorkspaceId', 'workspace-2');
   mocks.workspaces.set([
-    workspace({ workspace_id: 'workspace-1', name: 'pilotfy' }),
+    workspace({ workspace_id: 'workspace-1', name: 'pontia' }),
     workspace({ workspace_id: 'workspace-2', name: 'sandbox', canonical_path: '/repo/sandbox', display_path: '~/repo/sandbox' }),
   ]);
 
@@ -373,16 +373,16 @@ test('prefers the last selected new chat workspace when it is still available', 
 });
 
 test('falls back to the first new chat workspace when the remembered workspace is unavailable', async () => {
-  window.localStorage.setItem('pilotfy.chat.lastWorkspaceId', 'missing-workspace');
+  window.localStorage.setItem('pontia.chat.lastWorkspaceId', 'missing-workspace');
   mocks.workspaces.set([
-    workspace({ workspace_id: 'workspace-1', name: 'pilotfy' }),
+    workspace({ workspace_id: 'workspace-1', name: 'pontia' }),
     workspace({ workspace_id: 'workspace-2', name: 'sandbox', canonical_path: '/repo/sandbox', display_path: '~/repo/sandbox' }),
   ]);
 
   render(ChatPage);
 
   await screen.findByPlaceholderText('Ask the agent to implement, inspect, or explain something…');
-  expect(screen.getByLabelText(/workspace/i)).toHaveTextContent('pilotfy');
+  expect(screen.getByLabelText(/workspace/i)).toHaveTextContent('pontia');
 });
 
 test('remembers the selected new chat workspace after starting a chat', async () => {
@@ -390,7 +390,7 @@ test('remembers the selected new chat workspace after starting a chat', async ()
   const created = session({ session_id: 'session-selected-workspace' });
   mocks.createSession.mockResolvedValue({ session: created, initial_turn: turn({ session_id: 'session-selected-workspace' }) } satisfies CreateSessionResult);
   mocks.workspaces.set([
-    workspace({ workspace_id: 'workspace-1', name: 'pilotfy' }),
+    workspace({ workspace_id: 'workspace-1', name: 'pontia' }),
     workspace({ workspace_id: 'workspace-2', name: 'sandbox', canonical_path: '/repo/sandbox', display_path: '~/repo/sandbox' }),
   ]);
 
@@ -406,7 +406,7 @@ test('remembers the selected new chat workspace after starting a chat', async ()
   await user.click(screen.getByRole('button', { name: /start chat/i }));
 
   await vi.waitFor(() => expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({ workspace_id: 'workspace-2' })));
-  expect(window.localStorage.getItem('pilotfy.chat.lastWorkspaceId')).toBe('workspace-2');
+  expect(window.localStorage.getItem('pontia.chat.lastWorkspaceId')).toBe('workspace-2');
 });
 
 test('renders a clean centered prompt input on the bare chat route instead of selecting an existing session', async () => {
@@ -422,7 +422,7 @@ test('renders a clean centered prompt input on the bare chat route instead of se
   expect(centeredPanel).toContainElement(promptInput);
   expect(screen.queryByText(/Enter the first prompt/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/^Prompt$/i)).not.toBeInTheDocument();
-  expect(screen.getByLabelText(/workspace/i)).toHaveTextContent('pilotfy');
+  expect(screen.getByLabelText(/workspace/i)).toHaveTextContent('pontia');
   expect(screen.getByLabelText(/client/i)).toHaveTextContent('pi');
   expect(screen.queryByLabelText(/profile/i)).not.toBeInTheDocument();
   expect(mocks.loadSessionDetail).not.toHaveBeenCalled();
@@ -593,19 +593,19 @@ test('shows the initial prompt immediately after starting a chat while timeline 
 });
 
 test('shows workspace name in the selected chat composer pill while retaining full path metadata', async () => {
-  const selected = session({ session_id: 'session-2', state: 'idle', workspace_id: 'workspace-1', workspace: '/repo/pilotfy' });
+  const selected = session({ session_id: 'session-2', state: 'idle', workspace_id: 'workspace-1', workspace: '/repo/pontia' });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
   mocks.loadedSessions = [selected];
   mocks.sessions.set([selected]);
   mocks.sessionDetail.set({ session: selected, turns: [turn({ session_id: 'session-2' })], inboxMessages: [], events: [], artifacts: [] });
-  mocks.workspaces.set([workspace({ workspace_id: 'workspace-1', name: 'Pilotfy Workspace', canonical_path: '/repo/pilotfy', display_path: '~/repo/pilotfy' })]);
+  mocks.workspaces.set([workspace({ workspace_id: 'workspace-1', name: 'Pontia Workspace', canonical_path: '/repo/pontia', display_path: '~/repo/pontia' })]);
 
   render(ChatPage);
 
-  const workspacePill = await screen.findByLabelText('Workspace: /repo/pilotfy');
-  expect(workspacePill).toHaveTextContent('Pilotfy Workspace');
-  expect(workspacePill).not.toHaveTextContent('/repo/pilotfy');
+  const workspacePill = await screen.findByLabelText('Workspace: /repo/pontia');
+  expect(workspacePill).toHaveTextContent('Pontia Workspace');
+  expect(workspacePill).not.toHaveTextContent('/repo/pontia');
 });
 
 test('refreshes the selected chat when the browser returns to the foreground', async () => {
@@ -878,7 +878,7 @@ test('loads and renders an existing chat session with metadata, state, and works
     execution_profile_version: '1',
     state: 'busy',
     workspace_id: 'workspace-1',
-    workspace: '~/repo/pilotfy',
+    workspace: '~/repo/pontia',
   });
   window.history.pushState({}, '', '/dashboard/chat/session-2');
   mocks.pathParams = { sessionId: 'session-2' };
@@ -904,8 +904,8 @@ test('loads and renders an existing chat session with metadata, state, and works
   expect(screen.queryByText('Handle: second')).not.toBeInTheDocument();
   expect(screen.queryByText('Workspace: workspace-1')).not.toBeInTheDocument();
   const stateBadge = screen.getByText('busy').closest('[data-slot="badge"]');
-  const workspaceName = screen.getByText('pilotfy');
-  const workspaceBadge = screen.getByLabelText('Workspace: /repo/pilotfy');
+  const workspaceName = screen.getByText('pontia');
+  const workspaceBadge = screen.getByLabelText('Workspace: /repo/pontia');
   const clientDetail = screen.getByLabelText('Client: claude-code');
   const followUpInput = screen.getByPlaceholderText('Send a follow-up message…');
   expect(screen.queryByText('State: busy')).not.toBeInTheDocument();

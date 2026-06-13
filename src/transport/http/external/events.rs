@@ -336,7 +336,7 @@ fn event_view_from_domain_event(event: &DomainEvent) -> Option<EventView> {
 
 fn is_test_stream_once(headers: &HeaderMap) -> bool {
     headers
-        .get("x-pilotfy-test-stream-once")
+        .get("x-pontia-test-stream-once")
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.eq_ignore_ascii_case("true"))
 }

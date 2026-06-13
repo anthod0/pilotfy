@@ -12,24 +12,24 @@ afterEach(async () => {
 });
 
 async function tempWorkspace() {
-  const dir = await mkdtemp(join(tmpdir(), "pilotfy-claude-context-"));
+  const dir = await mkdtemp(join(tmpdir(), "pontia-claude-context-"));
   tmpDirs.push(dir);
   return dir;
 }
 
 describe("loadTurnContext", () => {
-  test("derives default context and log paths from PILOTFY_RUNTIME_DIR", async () => {
+  test("derives default context and log paths from PONTIA_RUNTIME_DIR", async () => {
     const runtimeDir = await tempWorkspace();
 
-    expect(defaultCurrentTurnFile({ PILOTFY_RUNTIME_DIR: runtimeDir })).toBe(join(runtimeDir, "current-turn.json"));
-    expect(defaultHookLogFile({ PILOTFY_RUNTIME_DIR: runtimeDir })).toBe(join(runtimeDir, "claude-hook.log"));
+    expect(defaultCurrentTurnFile({ PONTIA_RUNTIME_DIR: runtimeDir })).toBe(join(runtimeDir, "current-turn.json"));
+    expect(defaultHookLogFile({ PONTIA_RUNTIME_DIR: runtimeDir })).toBe(join(runtimeDir, "claude-hook.log"));
   });
 
-  test("silently skips missing fallback current-turn file when pilotfy env is absent", async () => {
+  test("silently skips missing fallback current-turn file when pontia env is absent", async () => {
     const workspace = await tempWorkspace();
     const logFile = join(workspace, "hook.log");
 
-    const result = await loadTurnContext({ PILOTFY_CLAUDE_HOOK_LOG: logFile });
+    const result = await loadTurnContext({ PONTIA_CLAUDE_HOOK_LOG: logFile });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected missing context");
@@ -52,8 +52,8 @@ describe("loadTurnContext", () => {
     );
 
     const result = await loadTurnContext({
-      PILOTFY_CURRENT_TURN_FILE: contextFile,
-      PILOTFY_INTERNAL_EVENT_URL: "http://from-env/internal/v1/events",
+      PONTIA_CURRENT_TURN_FILE: contextFile,
+      PONTIA_INTERNAL_EVENT_URL: "http://from-env/internal/v1/events",
     });
 
     expect(result.ok).toBe(true);
@@ -74,9 +74,9 @@ describe("loadTurnContext", () => {
     await writeFile(contextFile, JSON.stringify({ session_id: "sess_2", client_type: "pi" }));
 
     const result = await loadTurnContext({
-      PILOTFY_CURRENT_TURN_FILE: contextFile,
-      PILOTFY_CLAUDE_HOOK_LOG: logFile,
-      PILOTFY_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
+      PONTIA_CURRENT_TURN_FILE: contextFile,
+      PONTIA_CLAUDE_HOOK_LOG: logFile,
+      PONTIA_INTERNAL_EVENT_URL: "http://localhost/internal/v1/events",
     });
 
     expect(result.ok).toBe(false);

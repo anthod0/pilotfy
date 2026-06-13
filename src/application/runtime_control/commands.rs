@@ -241,7 +241,7 @@ impl RuntimeControlService {
                 workspace: session.workspace.clone(),
                 handle: session.handle.clone(),
                 role: session.role.clone(),
-                agent_kind: pilotfy_agent_kind(&session.metadata),
+                agent_kind: pontia_agent_kind(&session.metadata),
             },
             prior_restart_count + 1,
         )?;
@@ -337,7 +337,7 @@ impl RuntimeControlService {
                 workspace: session.workspace.clone(),
                 handle: session.handle.clone(),
                 role: session.role.clone(),
-                agent_kind: pilotfy_agent_kind(&session.metadata),
+                agent_kind: pontia_agent_kind(&session.metadata),
             },
             prior_restart_count + 1,
         )?;

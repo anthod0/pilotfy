@@ -104,7 +104,7 @@ impl SessionCommandService {
             workspace: runtime_workspace.clone(),
             handle: request.handle.clone(),
             role: request.role.clone(),
-            agent_kind: pilotfy_agent_kind(&request.metadata),
+            agent_kind: pontia_agent_kind(&request.metadata),
         })?;
         self.upsert_runtime_binding(&session_id, &runtime).await?;
         self.update_session_workspace(&session_id, workspace_record.as_ref())

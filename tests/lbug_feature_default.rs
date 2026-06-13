@@ -3,7 +3,7 @@ fn lbug_feature_is_enabled_by_default() {
     const {
         assert!(
             cfg!(feature = "lbug"),
-            "pilotfy's default build must include the mandatory lbug feature"
+            "pontia's default build must include the mandatory lbug feature"
         );
     }
 }

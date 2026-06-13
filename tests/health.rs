@@ -5,7 +5,7 @@ use axum::{
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use pilotfy::{
+use pontia::{
     application::AppState,
     storage::sqlite::{connect_sqlite, run_migrations},
     transport::http,
@@ -23,7 +23,7 @@ async fn test_state() -> AppState {
         external_api_token: None,
         graph: Default::default(),
         workspace_browser: Default::default(),
-        dashboard: pilotfy::transport::http::dashboard::ResolvedDashboard::local_default(),
+        dashboard: pontia::transport::http::dashboard::ResolvedDashboard::local_default(),
         shutdown: Default::default(),
         volatile_events: Default::default(),
     }

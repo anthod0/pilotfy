@@ -7,13 +7,13 @@ import { appendDiagnostic, type DiagnosticEntry } from "./diagnostics.js";
 import { buildSessionMessageUpdatedEvent, buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnCreatedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, type InternalEvent, type SessionMessageUpdatedReason } from "./events.js";
 import { EventReporter } from "./reporter.js";
 import { loadSessionContext } from "./session.js";
-import { buildPilotfyTools } from "./tools.js";
+import { buildPontiaTools } from "./tools.js";
 
 interface ReporterLike {
   report(context: { internalEventUrl: string }, event: InternalEvent): Promise<boolean>;
 }
 
-export interface PilotfyPiExtensionDependencies {
+export interface PontiaPiExtensionDependencies {
   env?: EnvLike;
   loadContext?: (env: EnvLike) => Promise<LoadTurnContextResult>;
   makeReporter?: (logFile: string) => ReporterLike;
@@ -30,9 +30,9 @@ interface ActiveTurnState {
   ended: boolean;
 }
 
-type PilotfyAgentKind = "planner" | "executor";
+type PontiaAgentKind = "planner" | "executor";
 
-const TOOL_NAMES_BY_AGENT_KIND: Record<PilotfyAgentKind, Set<string>> = {
+const TOOL_NAMES_BY_AGENT_KIND: Record<PontiaAgentKind, Set<string>> = {
   planner: new Set(["getContext", "submitPlan", "applyPlan", "raiseSignal"]),
   executor: new Set(["getContext", "submitResult", "raiseSignal"]),
 };
@@ -123,7 +123,7 @@ function piSessionDetailsFromHookContext(ctx: unknown): Pick<import("./session.j
 }
 
 function externalApiUrl(env: EnvLike): string | undefined {
-  return optionalString(env.PILOTFY_EXTERNAL_API_URL)?.replace(/\/+$/, "");
+  return optionalString(env.PONTIA_EXTERNAL_API_URL)?.replace(/\/+$/, "");
 }
 
 function freshTurnId(): string {
@@ -172,8 +172,8 @@ async function fetchJson(fetchImpl: typeof fetch, url: string, token: string): P
 
 async function loadProfileSystemPrompt(env: EnvLike, fetchImpl: typeof fetch): Promise<string | undefined> {
   const baseUrl = externalApiUrl(env);
-  const token = optionalString(env.PILOTFY_EXTERNAL_API_TOKEN);
-  const sessionId = optionalString(env.PILOTFY_SESSION_ID);
+  const token = optionalString(env.PONTIA_EXTERNAL_API_TOKEN);
+  const sessionId = optionalString(env.PONTIA_SESSION_ID);
   if (!baseUrl || !token || !sessionId) return undefined;
 
   const sessionBody = await fetchJson(fetchImpl, `${baseUrl}/sessions/${encodeURIComponent(sessionId)}`, token);
@@ -193,15 +193,15 @@ async function loadProfileSystemPrompt(env: EnvLike, fetchImpl: typeof fetch): P
   return optionalString((profile as Record<string, unknown>).system_prompt_template);
 }
 
-export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: PilotfyPiExtensionDependencies = {}): void {
+export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPiExtensionDependencies = {}): void {
   const env = dependencies.env ?? process.env;
   const contextLoader = dependencies.loadContext ?? loadTurnContext;
   const makeReporter = dependencies.makeReporter ?? ((logFile: string) => new EventReporter({ logFile }));
   const logDiagnostic = dependencies.logDiagnostic ?? appendDiagnostic;
   const writeContext = dependencies.writeContext ?? writeCurrentTurnContext;
   const fetchImpl = dependencies.fetch ?? fetch;
-  const allowedToolNames = allowedToolNamesForAgentKind(env.PILOTFY_AGENT_KIND);
-  for (const tool of buildPilotfyTools({
+  const allowedToolNames = allowedToolNamesForAgentKind(env.PONTIA_AGENT_KIND);
+  for (const tool of buildPontiaTools({
     env,
     loadContext: contextLoader,
     logDiagnostic,
@@ -253,10 +253,10 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
       if (!profilePrompt) return { systemPrompt: currentSystemPrompt };
       return { systemPrompt: `${currentSystemPrompt}\n\n${profilePrompt}` };
     } catch (error) {
-      await logDiagnostic(env.PILOTFY_PI_HOOK_LOG ?? defaultHookLogFile(env), {
+      await logDiagnostic(env.PONTIA_PI_HOOK_LOG ?? defaultHookLogFile(env), {
         level: "warn",
         code: "system_prompt_append_failed",
-        message: "failed to append pilotfy execution profile system prompt",
+        message: "failed to append pontia execution profile system prompt",
         details: error instanceof Error ? error.message : String(error),
       });
       return { systemPrompt: currentSystemPrompt };
@@ -276,18 +276,18 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
         await logDiagnostic(loaded.logFile, {
           level: "error",
           code: "missing_pi_client_session_key",
-          message: "ctx.sessionManager.getSessionId() is required to report pilotfy ready signal",
+          message: "ctx.sessionManager.getSessionId() is required to report pontia ready signal",
         });
         return;
       }
       const context = { ...loaded.context, ...sessionDetails };
       readyReported = await makeReporter(loaded.logFile).report(context, buildSessionReadyEvent(context));
     } catch (error) {
-      const logFile = env.PILOTFY_PI_HOOK_LOG ?? "pi-hook.log";
+      const logFile = env.PONTIA_PI_HOOK_LOG ?? "pi-hook.log";
       await logDiagnostic(logFile, {
         level: "error",
         code: "unexpected_extension_exception",
-        message: "failed to report pilotfy ready signal",
+        message: "failed to report pontia ready signal",
         details: error instanceof Error ? error.message : String(error),
       });
     }
@@ -298,7 +298,7 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
       const loaded = await contextLoader(env);
       if (!loaded.ok) {
         activeTurn = undefined;
-        if (!loaded.silent && ctx?.hasUI) ctx.ui.notify(`pilotfy: ${loaded.reason}`, "warning");
+        if (!loaded.silent && ctx?.hasUI) ctx.ui.notify(`pontia: ${loaded.reason}`, "warning");
         return;
       }
 
@@ -332,11 +332,11 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
       await reporter.report(context, buildTurnStartedEvent(context));
     } catch (error) {
       activeTurn = undefined;
-      const logFile = env.PILOTFY_PI_HOOK_LOG ?? "pi-hook.log";
+      const logFile = env.PONTIA_PI_HOOK_LOG ?? "pi-hook.log";
       await logDiagnostic(logFile, {
         level: "error",
         code: "unexpected_extension_exception",
-        message: "failed to initialize pilotfy active turn",
+        message: "failed to initialize pontia active turn",
         details: error instanceof Error ? error.message : String(error),
       });
     }
@@ -395,6 +395,6 @@ export function createPilotfyPiExtension(pi: ExtensionAPI, dependencies: Pilotfy
   });
 }
 
-export default function pilotfyPiExtension(pi: ExtensionAPI): void {
-  createPilotfyPiExtension(pi);
+export default function pontiaPiExtension(pi: ExtensionAPI): void {
+  createPontiaPiExtension(pi);
 }

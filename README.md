@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/anthod0/pilotfy/assets/assets/logo/dark/logo-transparent.png" width="120" alt="Pilotfy Logo" />
+  <img src="https://raw.githubusercontent.com/anthod0/pontia/assets/assets/logo/dark/logo-transparent.png" width="120" alt="Pontia Logo" />
 </p>
 
 <p align="center">An experimental control plane for coding agents.</p>
 
 > The project is in development, changes quickly, and is not stable yet. Breaking changes should be expected.
 
-## What pilotfy is
+## What pontia is
 
-`pilotfy` is for developers who want coding agents to keep working beyond one terminal window.
+`pontia` is for developers who want coding agents to keep working beyond one terminal window.
 
 It aims to provide:
 
@@ -16,7 +16,7 @@ It aims to provide:
 - **One long-lived session, control from anywhere** — start, continue, observe, or steer the same agent session from desktop, Web, mobile, or TUI surfaces.
 - **Observable long-running tasks** — let agents plan large tasks as DAGs, then expose each planning and implementation node so developers can understand, intervene, retry, and repair the work.
 
-In short: `pilotfy` keeps official agent work alive, visible, controllable, and fixable.
+In short: `pontia` keeps official agent work alive, visible, controllable, and fixable.
 
 ## Core product ideas
 
@@ -24,7 +24,7 @@ In short: `pilotfy` keeps official agent work alive, visible, controllable, and 
 
 Each vendor has its own TUI agent and subscription model. Since June 15, `claude -p` usage has also moved toward usage-based billing. It is reasonable to expect subscriptions to become more constrained over time and more strongly tied to official TUI clients.
 
-`pilotfy` therefore uses real agent TUIs as runtimes instead of subprocesses such as `claude -p`, allowing sessions to stay alive for a long time while using vendor subscriptions compliantly.
+`pontia` therefore uses real agent TUIs as runtimes instead of subprocesses such as `claude -p`, allowing sessions to stay alive for a long time while using vendor subscriptions compliantly.
 
 Current state: uses pi to implement the control model.
 
@@ -40,7 +40,7 @@ Current state: partially implemented with the Web Dashboard, tmux-backed runtime
 
 Long tasks should not be opaque prompts that run for hours with no structure.
 
-`pilotfy` models long-running work as a WorkItem DAG: an ordered dependency graph, similar to a structured todo list. A Planner creates the execution graph. Worker agents execute work items mechanically along that graph.
+`pontia` models long-running work as a WorkItem DAG: an ordered dependency graph, similar to a structured todo list. A Planner creates the execution graph. Worker agents execute work items mechanically along that graph.
 
 The goal is to concentrate intelligence in planning and replanning, while keeping workers simple and predictable. Developers can inspect the DAG, understand what happened, and repair the task at the node level.
 
@@ -64,10 +64,10 @@ Current state: early task, DAG, work-item, proposal, scheduler, and provenance m
 
 ## Architecture principles
 
-`pilotfy` is designed around a simple split:
+`pontia` is designed around a simple split:
 
 - **Use real agent TUIs as runtimes**: pi, Claude Code, and future clients run as long-lived real TUI processes, currently hosted through tmux, rather than short-lived subprocess commands such as `claude -p`. This keeps sessions alive while preserving official client behavior and legitimate subscription-based usage.
-- **pilotfy owns the durable control state**: sessions, turns, tasks, DAG nodes, events, artifacts, and projections live outside the agent process.
+- **pontia owns the durable control state**: sessions, turns, tasks, DAG nodes, events, artifacts, and projections live outside the agent process.
 - **Every UI is a control surface**: desktop TUI, Web Dashboard, mobile Web, HTTP API, and future clients should attach to the same underlying session instead of creating separate worlds.
 - **Long-running tasks are WorkItem DAGs**: large tasks are represented as ordered dependency graphs. A Planner creates and repairs the graph, while Workers stay intentionally simple and execute work items mechanically. Failures, new information, or human interruptions should patch the DAG into a new execution path, with each node remaining inspectable, retryable, and repairable.
 
@@ -89,24 +89,24 @@ pnpm --dir=apps/dashboard install
 pnpm --dir=apps/dashboard run build
 ```
 
-### Configure pilotfy
+### Configure pontia
 
-`pilotfy` can read configuration from `~/.config/pilotfy/config.toml`, from an explicit `--config` path, or from environment variables.
+`pontia` can read configuration from `~/.config/pontia/config.toml`, from an explicit `--config` path, or from environment variables.
 
 Minimal example:
 
 ```toml
 bind_addr = "127.0.0.1:8080"
-database_url = "sqlite://~/.local/share/pilotfy/pilotfy.db"
+database_url = "sqlite://~/.local/share/pontia/pontia.db"
 external_api_token = "dev-token"
 run_migrations = true
 
 [dashboard]
 source = "apps/dashboard/dist"
-cache_dir = "~/.cache/pilotfy/dashboard"
+cache_dir = "~/.cache/pontia/dashboard"
 
 [runtime.pi]
-tui_command = "pi --approve -e /absolute/path/to/pilotfy/clients/pi"
+tui_command = "pi --approve -e /absolute/path/to/pontia/clients/pi"
 
 [runtime.claude_code]
 tui_command = "claude"
