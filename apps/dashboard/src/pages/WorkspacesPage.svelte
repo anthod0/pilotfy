@@ -151,7 +151,7 @@
     </Alert.Root>
   {/if}
 
-  <Card.Root>
+  <Card.Root class="mx-auto max-w-5xl">
     <Card.Header>
       <Card.Title class="flex items-center gap-2"><FolderOpen class="size-5" /> Browser</Card.Title>
       <Card.Description>Select a root and browse directories. Active workspaces stay pinned at the top of the browser.</Card.Description>
@@ -232,14 +232,13 @@
                           </Button>
                         {/if}
                         <Button
-                          size="sm"
+                          size="icon-sm"
                           variant={entry.is_workspace ? 'secondary' : 'outline'}
                           aria-label={entry.is_workspace ? `Deactivate ${entry.name}` : `Activate ${entry.name}`}
                           title={entry.is_workspace ? 'Remove workspace registration' : 'Register as workspace'}
                           onclick={() => void activateEntry(entry)}
                           disabled={registering || (!!entryWorkspace && deletingWorkspaceId === entryWorkspace.workspace_id)}
                         >
-                          {entry.is_workspace ? 'Active' : 'Inactive'}
                           {#if entry.is_workspace}
                             <CheckCircle2 class="size-4 text-primary" />
                           {:else}

@@ -115,10 +115,16 @@ test('renders a single root browser with active workspace controls in the direct
   expect(screen.queryByText('Active workspaces')).not.toBeInTheDocument();
   expect(screen.queryByTestId('active-workspaces-list')).not.toBeInTheDocument();
 
+  const browserCard = screen.getByText('Browser').closest('[data-slot="card"]');
+  expect(browserCard).toHaveClass('mx-auto', 'max-w-5xl');
+
   const table = await screen.findByRole('table');
   expect(within(table).getAllByRole('button', { name: /Open directory/ })[0]).toHaveAccessibleName('Open directory pontia');
   const pontiaRow = within(table).getByRole('row', { name: /pontia/i });
-  expect(within(pontiaRow).getByRole('button', { name: 'Deactivate pontia' })).toBeInTheDocument();
+  const deactivateButton = within(pontiaRow).getByRole('button', { name: 'Deactivate pontia' });
+  expect(deactivateButton).toBeInTheDocument();
+  expect(deactivateButton.textContent?.trim()).toBe('');
+  expect(deactivateButton.querySelector('svg')).toBeInTheDocument();
   expect(within(pontiaRow).getByRole('button', { name: 'Rename pontia' })).toBeInTheDocument();
   expect(within(pontiaRow).queryByRole('button', { name: 'Delete pontia' })).not.toBeInTheDocument();
   expect(container.querySelector('.workspace-folder-preview')).not.toBeInTheDocument();
@@ -145,8 +151,9 @@ test('toggles workspace active state directly and keeps rename dialog for editin
   const confirmSpy = vi.spyOn(window, 'confirm');
   render(WorkspacesPage);
 
-  await screen.findByRole('button', { name: 'Activate sandbox' });
-  await user.click(screen.getByRole('button', { name: 'Activate sandbox' }));
+  const activateButton = await screen.findByRole('button', { name: 'Activate sandbox' });
+  expect(activateButton.textContent?.trim()).toBe('');
+  await user.click(activateButton);
 
   expect(mocks.registerWorkspace).toHaveBeenCalledWith({ root_id: 'root-1', path: 'sandbox', name: 'sandbox' });
   expect(screen.queryByRole('heading', { name: 'Confirm workspace registration' })).not.toBeInTheDocument();
