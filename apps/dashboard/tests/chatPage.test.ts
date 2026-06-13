@@ -187,9 +187,11 @@ test('chat session refreshes and shows workspace git status', async () => {
   const desktopMetadata = within(toolbar).getByTestId('session-status-desktop-metadata');
 
   await waitFor(() => expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1'));
-  expect(within(desktopMetadata).getByLabelText('Git status: main, dirty')).toBeInTheDocument();
-  expect(within(desktopMetadata).getByText('main')).toBeInTheDocument();
-  expect(within(desktopMetadata).getByText('dirty')).toBeInTheDocument();
+  const gitBadge = within(desktopMetadata).getByLabelText('Git status: main, dirty');
+  expect(gitBadge).toBeInTheDocument();
+  expect(within(gitBadge).getByText('main')).toBeInTheDocument();
+  expect(within(gitBadge).getByLabelText('dirty git status')).toBeInTheDocument();
+  expect(within(gitBadge).queryByText('dirty')).not.toBeInTheDocument();
   expect(within(desktopMetadata).getByText('↑1')).toBeInTheDocument();
   expect(within(desktopMetadata).getByText('↓2')).toBeInTheDocument();
   expect(within(desktopMetadata).getByText('+3')).toBeInTheDocument();

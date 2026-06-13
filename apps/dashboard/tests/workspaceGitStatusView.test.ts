@@ -55,7 +55,7 @@ const workspace = (): WorkspaceView => ({
   last_used_at: null,
 });
 
-test('shows workspace git status summary from store projection', () => {
+test('does not show workspace git status summary outside chat pages', () => {
   mocks.workspaces.set([workspace()]);
   mocks.workspaceGitStatuses.set({
     'workspace-1': {
@@ -80,10 +80,11 @@ test('shows workspace git status summary from store projection', () => {
   render(WorkspacesPage);
 
   const list = screen.getByTestId('active-workspaces-list');
-  expect(within(list).getByText('main')).toBeInTheDocument();
-  expect(within(list).getByText('dirty')).toBeInTheDocument();
-  expect(within(list).getByText('↓1')).toBeInTheDocument();
-  expect(within(list).getByText('+1')).toBeInTheDocument();
-  expect(within(list).getByText('~2')).toBeInTheDocument();
-  expect(within(list).getByText('?3')).toBeInTheDocument();
+  expect(within(list).queryByText('main')).not.toBeInTheDocument();
+  expect(within(list).queryByText('dirty')).not.toBeInTheDocument();
+  expect(within(list).queryByText('↓1')).not.toBeInTheDocument();
+  expect(within(list).queryByText('+1')).not.toBeInTheDocument();
+  expect(within(list).queryByText('~2')).not.toBeInTheDocument();
+  expect(within(list).queryByText('?3')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /refresh git status/i })).not.toBeInTheDocument();
 });

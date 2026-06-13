@@ -119,6 +119,8 @@ test('renders workspace browser and active workspace cards from store data', asy
   expect(within(activeSection as HTMLElement).getByTestId('active-workspaces-list')).toBeInTheDocument();
   expect(container.querySelector('.workspace-folder-preview')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Rename pontia' })).toBeInTheDocument();
+  expect(mocks.loadWorkspaceGitStatus).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: /refresh git status/i })).not.toBeInTheDocument();
 });
 
 test('renders a compact directory/action table and opens directories through the folder-name button', async () => {
