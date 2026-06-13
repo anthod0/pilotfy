@@ -46,7 +46,7 @@ impl AdapterCapabilities {
             stream_output: true,
             heartbeat: false,
             artifact_sources: true,
-            context_usage: ContextUsageCapability::Unsupported,
+            context_usage: ContextUsageCapability::Estimated,
         }
     }
 

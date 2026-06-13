@@ -199,6 +199,7 @@ async fn pi_session_creation_exposes_m0_capabilities() {
     assert_eq!(capabilities["artifact_sources"], true);
     assert_eq!(capabilities["interrupt"], true);
     assert_eq!(capabilities["heartbeat"], false);
+    assert_eq!(capabilities["context_usage"], "estimated");
 
     cleanup_session_runtime(&state, &session_id).await;
 }
