@@ -120,14 +120,14 @@
     unsubscribeDashboardEvents = subscribeDashboardEvents(handleDashboardEvent)
     window.addEventListener('focus', handleForegroundResume)
     window.addEventListener('pageshow', handleForegroundResume)
-    document.addEventListener('visibilitychange', handleForegroundResume)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
   })
 
   onDestroy(() => {
     unsubscribeDashboardEvents?.()
     window.removeEventListener('focus', handleForegroundResume)
     window.removeEventListener('pageshow', handleForegroundResume)
-    document.removeEventListener('visibilitychange', handleForegroundResume)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 
   $: selectedSession = selectedSessionId ? ($sessions.find((session) => session.session_id === selectedSessionId) ?? $sessionDetail?.session ?? null) : null
@@ -267,6 +267,10 @@
     await refreshWorkspaceGitStatus(session.workspace_id)
   }
 
+  async function refreshCurrentSessionGitStatus(): Promise<void> {
+    await refreshSessionGitStatus(currentSelectedSession())
+  }
+
   function gitStatusLabel(status: WorkspaceGitStatusView | undefined): string {
     if (!status || status.state === 'unknown') return 'Git unknown'
     if (status.state === 'error') return 'Git error'
@@ -355,9 +359,27 @@
     })
   }
 
+  function handleVisibilityChange(): void {
+    handleForegroundResume()
+    if (document.visibilityState === 'hidden') return
+    void refreshCurrentSessionGitStatus()
+  }
+
+  function isSessionIdleEvent(eventType: string): boolean {
+    return eventType === 'session.ready'
+      || eventType === 'turn.completed'
+      || eventType === 'turn.failed'
+      || eventType === 'turn.interrupted'
+      || eventType === 'turn.cancelled'
+  }
+
   function handleDashboardEvent(streamEvent: DashboardStreamEvent): void {
     if (streamEvent.kind === 'session_event') {
       if (streamEvent.event.session_id !== selectedSessionId) return
+      if (isSessionIdleEvent(streamEvent.event.type)) {
+        void refreshCurrentSessionGitStatus()
+        return
+      }
       if (streamEvent.event.type !== 'session.message_updated') return
       const rawBindingId = streamEvent.event.payload.binding_id
       const bindingId = typeof rawBindingId === 'string' ? rawBindingId : null
@@ -876,6 +898,7 @@
               submitDisabled={!canSend}
               onValueChange={(value) => (input = value)}
               onSubmit={() => void sendMessage()}
+              onFocus={() => void refreshCurrentSessionGitStatus()}
             />
             {#if selectedSession.state === 'exited'}
               <p class="mt-2 text-xs text-muted-foreground">Sending a message will resume this session automatically.</p>

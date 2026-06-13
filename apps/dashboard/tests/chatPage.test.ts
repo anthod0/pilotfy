@@ -201,6 +201,46 @@ test('chat session refreshes and shows workspace git status', async () => {
   expect(within(desktopMetadata).getByText('!6')).toHaveClass('text-destructive');
 });
 
+test('chat refreshes workspace git status when the composer receives focus', async () => {
+  render(ChatPage);
+  await waitFor(() => expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1'));
+  mocks.refreshWorkspaceGitStatus.mockClear();
+
+  await fireEvent.focus(await screen.findByPlaceholderText('Send a follow-up message…'));
+
+  expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1');
+});
+
+test('chat refreshes workspace git status when the page becomes visible', async () => {
+  render(ChatPage);
+  await waitFor(() => expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1'));
+  mocks.refreshWorkspaceGitStatus.mockClear();
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+
+  document.dispatchEvent(new Event('visibilitychange'));
+
+  expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1');
+});
+
+test('chat refreshes workspace git status when the selected session becomes idle', async () => {
+  render(ChatPage);
+  await waitFor(() => expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1'));
+  mocks.refreshWorkspaceGitStatus.mockClear();
+  const listener = mocks.subscribeDashboardEvents.mock.calls[0][0];
+
+  listener({
+    kind: 'session_event',
+    event: {
+      session_id: 'session-1',
+      type: 'session.ready',
+      payload: {},
+      created_at: '2026-05-14T01:31:00Z',
+    },
+  });
+
+  expect(mocks.refreshWorkspaceGitStatus).toHaveBeenCalledWith('workspace-1');
+});
+
 test('chat composer session status pill uses semantic color classes', async () => {
   mocks.sessions.update((sessions) => sessions.map((session) => ({ ...session, state: 'busy' })));
   mocks.sessionDetail.update((detail) => detail ? { ...detail, session: { ...detail.session, state: 'busy' } } : detail);

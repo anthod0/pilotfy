@@ -9,6 +9,7 @@
     busy?: boolean
     onValueChange: (value: string) => void
     onSubmit: () => void
+    onFocus?: () => void
   }
 
   let {
@@ -19,6 +20,7 @@
     busy = false,
     onValueChange,
     onSubmit,
+    onFocus,
   }: Props = $props()
 
   $effect(() => {
@@ -35,7 +37,7 @@
 
 <PromptInput.Root class="w-full" {onSubmit}>
   <PromptInput.Body>
-    <PromptInput.Textarea bind:value {placeholder} {disabled} onkeydown={handleKeydown} class="h-10 min-h-10 md:h-auto md:min-h-20" />
+    <PromptInput.Textarea bind:value {placeholder} {disabled} onkeydown={handleKeydown} onfocus={onFocus} class="h-10 min-h-10 md:h-auto md:min-h-20" />
   </PromptInput.Body>
   <PromptInput.Toolbar class="justify-between">
     <p class="px-2 text-xs text-muted-foreground">Enter to send · Shift+Enter for newline</p>
