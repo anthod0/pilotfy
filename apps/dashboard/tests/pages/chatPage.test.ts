@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import ChatPage from '../../src/pages/ChatPage.svelte';
 import type { SessionConsoleDetail } from '../../src/stores/sessions';
-import type { AgentProfileView, CreateDagTaskResult, CreateSessionResult, SessionView, TimelineItem, TurnView, WorkspaceView } from '../../src/api/types';
+import type { AgentProfileView, CreateDagTaskResult, CreateSessionResult, InboxMessageView, SessionView, TimelineItem, TurnView, WorkspaceView } from '../../src/api/types';
 
 const mocks = vi.hoisted(() => {
   function writableStore<T>(initial: T) {
@@ -213,6 +213,23 @@ const turn = (overrides: Partial<TurnView> = {}): TurnView => ({
   started_at: '2026-05-14T00:00:01Z',
   completed_at: '2026-05-14T00:00:02Z',
   metadata: {},
+  ...overrides,
+});
+
+const inboxMessage = (overrides: Partial<InboxMessageView> = {}): InboxMessageView => ({
+  message_id: 'message-1',
+  session_id: 'session-1',
+  state: 'pending',
+  delivery_policy: 'after_idle',
+  input: { summary: 'queued follow-up' },
+  metadata: {},
+  turn_id: null,
+  superseded_by_message_id: null,
+  failure_message: null,
+  created_at: '2026-05-14T00:00:03Z',
+  updated_at: '2026-05-14T00:00:04Z',
+  dispatched_at: null,
+  cancelled_at: null,
   ...overrides,
 });
 
@@ -906,6 +923,70 @@ test('highlights fenced code blocks in assistant markdown', async () => {
   expect(markdownContainer?.className).not.toContain('[&_pre]:p-3');
   expect(markdownContainer?.className).not.toContain('[&_pre_code]:bg-transparent');
   expect(markdownContainer?.className).not.toContain('[&_pre_code]:p-0');
+});
+
+test('opens an inbox sheet from the chat controls and renders inbox messages', async () => {
+  const selected = session({ session_id: 'session-2', state: 'idle' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({
+    session: selected,
+    turns: [],
+    inboxMessages: [
+      inboxMessage({
+        message_id: 'message-2',
+        session_id: 'session-2',
+        state: 'failed',
+        input: { summary: 'Fix the failing dashboard test' },
+        turn_id: 'turn-2',
+        failure_message: 'runtime unavailable',
+        updated_at: '2026-05-14T00:00:05Z',
+      }),
+      inboxMessage({
+        message_id: 'message-1',
+        session_id: 'session-2',
+        state: 'pending',
+        input: { summary: 'Continue implementation' },
+      }),
+    ],
+    events: [],
+    artifacts: [],
+  });
+
+  render(ChatPage);
+
+  const inboxButton = await screen.findByRole('button', { name: /open inbox, 2 messages/i });
+  expect(inboxButton).toHaveTextContent('Inbox');
+  expect(inboxButton).toHaveTextContent('2');
+
+  await userEvent.click(inboxButton);
+
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByText('Fix the failing dashboard test')).toBeInTheDocument();
+  expect(screen.getByText('Continue implementation')).toBeInTheDocument();
+  expect(screen.getByText('failed')).toBeInTheDocument();
+  expect(screen.getByText('pending')).toBeInTheDocument();
+  expect(screen.getByText('runtime unavailable')).toBeInTheDocument();
+});
+
+test('opens an empty inbox sheet when the selected chat has no inbox messages', async () => {
+  const selected = session({ session_id: 'session-2', state: 'idle' });
+  window.history.pushState({}, '', '/dashboard/chat/session-2');
+  mocks.pathParams = { sessionId: 'session-2' };
+  mocks.loadedSessions = [selected];
+  mocks.sessions.set([selected]);
+  mocks.sessionDetail.set({ session: selected, turns: [], inboxMessages: [], events: [], artifacts: [] });
+
+  render(ChatPage);
+
+  const inboxButton = await screen.findByRole('button', { name: /open inbox, 0 messages/i });
+  await userEvent.click(inboxButton);
+
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByText('No inbox messages')).toBeInTheDocument();
+  expect(screen.getByText('Follow-up messages submitted from this chat will appear here.')).toBeInTheDocument();
 });
 
 test('loads and renders an existing chat session with metadata, state, and workspace name above the prompt input without a page header', async () => {

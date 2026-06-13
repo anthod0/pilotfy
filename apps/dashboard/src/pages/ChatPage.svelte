@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import { get } from 'svelte/store'
-  import { Activity, AtSign, Bot, EllipsisVertical, Folder, GitBranch, LogOut, Pencil, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
+  import { Activity, AtSign, Bot, EllipsisVertical, Folder, GitBranch, Inbox, LogOut, Pencil, RotateCw, Terminal, TerminalSquare } from '@lucide/svelte'
   import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
+  import * as Sheet from '$lib/components/ui/sheet/index.js'
   import { Skeleton } from '$lib/components/ui/skeleton/index.js'
   import * as PromptInput from '$lib/components/ai-elements/prompt-input/index.js'
   import * as Select from '$lib/components/ui/select/index.js'
@@ -72,6 +73,7 @@
     timelineState,
   } from '../stores/timeline'
   import { subscribeDashboardEvents } from '../services/eventStream'
+  import { formatDateTime, shortId } from '../components/tasks/format'
 
   let selectedSessionId = ''
   let prompt = ''
@@ -88,6 +90,7 @@
   let lastToastedError: string | null = null
   let advancedControlsOpen = false
   let sessionDetailsOpen = false
+  let inboxSheetOpen = false
   let advancedControlsTriggerEl: HTMLButtonElement | null = null
   let advancedControlsMenuEl: HTMLDivElement | null = null
   let advancedControlsPlacement: 'top' | 'bottom' = 'bottom'
@@ -135,6 +138,7 @@
   $: selectedSessionMetadataItems = selectedSession ? sessionMetadataItems(selectedSession, selectedSessionGitStatus) : []
   $: selectedSessionMetadataSummary = sessionMetadataSummary(selectedSessionMetadataItems)
   $: messages = chatMessagesWithOptimistic(selectedSessionId, $timelineState.sessionId === selectedSessionId ? timelineItemsToChatMessages($timelineState.items) : [], $optimisticInitialMessages)
+  $: selectedInboxMessages = selectedSessionId && $sessionDetail?.session.session_id === selectedSessionId ? $sessionDetail.inboxMessages : []
   $: if ($workspaces.length && (!createWorkspaceId || !$workspaces.some((workspace) => workspace.workspace_id === createWorkspaceId))) {
     createWorkspaceId = preferredCreateWorkspaceId()
   }
@@ -814,6 +818,17 @@
                 </div>
               </div>
               <div class="flex shrink-0 items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="gap-2"
+                  aria-label={`Open inbox, ${selectedInboxMessages.length} message${selectedInboxMessages.length === 1 ? '' : 's'}`}
+                  onclick={() => (inboxSheetOpen = true)}
+                >
+                  <Inbox class="size-4" />
+                  <span class="hidden sm:inline">Inbox</span>
+                  <Badge variant="secondary" class="h-5 min-w-5 rounded-full px-1.5 text-xs">{selectedInboxMessages.length}</Badge>
+                </Button>
                 {#if !isTerminalChatSession(selectedSession)}
                   <Button class="hidden sm:inline-flex" variant="destructive" size="sm" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
                 {/if}
@@ -912,3 +927,41 @@
     </div>
   {/if}
 </section>
+
+<Sheet.Root bind:open={inboxSheetOpen}>
+  <Sheet.Content class="w-[92vw] gap-0 overflow-hidden p-0 sm:max-w-xl">
+    <Sheet.Header class="border-b px-6 py-4">
+      <Sheet.Title>Inbox</Sheet.Title>
+      <Sheet.Description>{selectedInboxMessages.length} message{selectedInboxMessages.length === 1 ? '' : 's'} · follow-up input queue</Sheet.Description>
+    </Sheet.Header>
+    <div class="max-h-[calc(100vh-7rem)] overflow-y-auto p-6">
+      {#if selectedInboxMessages.length}
+        <div class="space-y-3">
+          {#each selectedInboxMessages.slice().reverse() as message (message.message_id)}
+            <article class="rounded-lg border p-3 text-sm">
+              <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-medium">{message.input.summary}</p>
+                <Badge variant={message.state === 'failed' ? 'destructive' : 'secondary'}>{message.state}</Badge>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>{message.delivery_policy}</span>
+                <span>turn {shortId(message.turn_id)}</span>
+                <span>{formatDateTime(message.updated_at)}</span>
+              </div>
+              {#if message.failure_message}
+                <p class="mt-2 text-xs text-destructive">{message.failure_message}</p>
+              {/if}
+            </article>
+          {/each}
+        </div>
+      {:else}
+        <Empty.Root class="py-12">
+          <Empty.Header>
+            <Empty.Title>No inbox messages</Empty.Title>
+            <Empty.Description>Follow-up messages submitted from this chat will appear here.</Empty.Description>
+          </Empty.Header>
+        </Empty.Root>
+      {/if}
+    </div>
+  </Sheet.Content>
+</Sheet.Root>
