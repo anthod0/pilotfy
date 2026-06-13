@@ -1,14 +1,16 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Activity, EllipsisVertical, Inbox, LogOut, Pencil, RotateCw, TerminalSquare } from '@lucide/svelte'
+  import { Activity, EllipsisVertical, GitBranch, Inbox, LogOut, Pencil, RotateCw, TerminalSquare } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import SessionMessageComposer from '$lib/components/session-chat/SessionMessageComposer.svelte'
   import type { SessionView, WorkspaceGitStatusView, WorkspaceView } from '../../api/types'
   import { canSendSessionMessage, isTerminalChatSession } from '$lib/session-chat/sessionChat'
-  import GitStatusBadge from './GitStatusBadge.svelte'
+  import GitStatusInline from './GitStatusInline.svelte'
   import SessionMetadataBadges from './SessionMetadataBadges.svelte'
   import {
+    gitStatusAriaLabel,
+    gitStatusTitle,
     sessionContextUsageLabel,
     sessionHandleTitle,
     sessionProfileTitle,
@@ -99,7 +101,14 @@
             <span data-chat-session-details-summary class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left">
               <span class="min-w-0 shrink truncate">{sessionWorkspaceTitle(session, workspaces)}</span>
               {#if gitStatus}
-                <GitStatusBadge {session} {gitStatus} {gitStatusErrors} />
+                <span
+                  class="inline-flex h-7 shrink-0 items-center gap-1.5 text-sm font-normal text-muted-foreground"
+                  title={gitStatusTitle(session, gitStatus, gitStatusErrors)}
+                  aria-label={gitStatusAriaLabel(gitStatus)}
+                >
+                  <GitBranch class="size-4" aria-label="Git branch" />
+                  <GitStatusInline {gitStatus} />
+                </span>
               {/if}
               {#if sessionContextUsageLabel(session)}
                 <span class="shrink-0 text-muted-foreground">{sessionContextUsageLabel(session)}</span>

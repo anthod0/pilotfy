@@ -196,7 +196,7 @@ test('chat session refreshes and shows workspace git status', async () => {
   expect(within(gitBadge).getByText('main')).toBeInTheDocument();
   expect(within(gitBadge).queryByLabelText('dirty git status')).not.toBeInTheDocument();
   expect(within(gitBadge).queryByText('dirty')).not.toBeInTheDocument();
-  expect(within(gitBadge).getByLabelText('Git branch')).toHaveClass('text-amber-600');
+  expect(within(gitBadge).getByLabelText('Git branch')).not.toHaveClass('text-amber-600');
   expect(within(desktopMetadata).getByText('↑1')).toHaveClass('text-blue-600');
   expect(within(desktopMetadata).getByText('↓2')).toHaveClass('text-violet-600');
   expect(within(desktopMetadata).getByText('+3')).toHaveClass('text-emerald-600');
@@ -207,7 +207,7 @@ test('chat session refreshes and shows workspace git status', async () => {
   expect(within(mobileMetadata).queryByLabelText('Workspace: /work/project')).not.toBeInTheDocument();
   expect(within(mobileMetadata).queryByLabelText('Client: pi')).not.toBeInTheDocument();
   const mobileGitBadge = within(mobileMetadata).getByLabelText('Git status: main, dirty');
-  expect(within(mobileGitBadge).getByLabelText('Git branch')).toHaveClass('text-amber-600');
+  expect(within(mobileGitBadge).getByLabelText('Git branch')).not.toHaveClass('text-amber-600');
   expect(within(mobileGitBadge).getByText('↑1')).toHaveClass('text-blue-600');
   expect(within(mobileGitBadge).getByText('↓2')).toHaveClass('text-violet-600');
   expect(within(mobileGitBadge).getByText('+3')).toHaveClass('text-emerald-600');

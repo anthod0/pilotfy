@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { AtSign, Bot, Folder, Gauge, Terminal } from '@lucide/svelte'
+  import { AtSign, Bot, Folder, Gauge, GitBranch, Terminal } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge/index.js'
   import type { SessionView, WorkspaceGitStatusView, WorkspaceView } from '../../api/types'
-  import GitStatusBadge from './GitStatusBadge.svelte'
-  import { sessionContextUsageLabel, sessionHandleTitle, sessionProfileTitle, sessionWorkspacePath, sessionWorkspaceTitle } from './sessionMetadata'
+  import GitStatusInline from './GitStatusInline.svelte'
+  import { gitStatusAriaLabel, gitStatusTitle, sessionContextUsageLabel, sessionHandleTitle, sessionProfileTitle, sessionWorkspacePath, sessionWorkspaceTitle } from './sessionMetadata'
 
   interface Props {
     session: SessionView
@@ -20,7 +20,15 @@
   <span class="min-w-0 truncate">{sessionWorkspaceTitle(session, workspaces)}</span>
 </Badge>
 {#if gitStatus}
-  <GitStatusBadge {session} {gitStatus} {gitStatusErrors} />
+  <Badge
+    variant={gitStatus.state === 'error' ? 'destructive' : 'outline'}
+    class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+    title={gitStatusTitle(session, gitStatus, gitStatusErrors)}
+    aria-label={gitStatusAriaLabel(gitStatus)}
+  >
+    <GitBranch class="size-4" aria-label="Git branch" />
+    <GitStatusInline {gitStatus} />
+  </Badge>
 {/if}
 {#if sessionContextUsageLabel(session)}
   <Badge variant="outline" class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground" title={`Context usage: ${sessionContextUsageLabel(session)}`} aria-label={`Context usage: ${sessionContextUsageLabel(session)}`}>
