@@ -190,7 +190,7 @@
             <Settings />
             <span>Settings</span>
           </DropdownMenu.Trigger>
-          <DropdownMenu.Content side="right" align="end" class="w-48">
+          <DropdownMenu.Content side="top" align="end" class="w-48">
             <DropdownMenu.Label>Settings</DropdownMenu.Label>
             <DropdownMenu.Separator />
             {#each settingsSections as section}

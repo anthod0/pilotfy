@@ -31,3 +31,8 @@ test('hides hover-only sidebar menu actions by default on mobile and desktop', (
   expect(sidebarMenuActionSource).toContain('group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-open:opacity-100 opacity-0');
   expect(sidebarMenuActionSource).not.toContain('data-open:opacity-100 md:opacity-0');
 });
+
+test('opens the settings menu above the trigger to avoid mobile viewport overflow', () => {
+  expect(appSidebarSource).toContain('<DropdownMenu.Content side="top" align="end" class="w-48">');
+  expect(appSidebarSource).not.toContain('<DropdownMenu.Content side="right" align="end" class="w-48">');
+});
