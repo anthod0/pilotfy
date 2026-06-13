@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { defaultHookLogFile, loadTurnContext, type EnvLike, type LoadTurnContextResult, type TurnContext } from "./context.js";
 import { appendDiagnostic, type DiagnosticEntry } from "./diagnostics.js";
-import { buildSessionMessageUpdatedEvent, buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnCreatedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, type InternalEvent, type SessionMessageUpdatedReason } from "./events.js";
+import { buildSessionContextUsageUpdatedEvent, buildSessionMessageUpdatedEvent, buildSessionReadyEvent, buildTurnCompletedEvent, buildTurnCreatedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, contextUsageFromPiEvent, type InternalEvent, type SessionMessageUpdatedReason } from "./events.js";
 import { EventReporter } from "./reporter.js";
 import { loadSessionContext } from "./session.js";
 
@@ -192,6 +192,7 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
   let readyReported = false;
   let pendingPrompt: string | undefined;
   let pendingRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastContextUsageJson: string | undefined;
   const endedTurnIds = new Set<string>();
 
   function clearPendingRefresh(): void {
@@ -219,6 +220,16 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
   async function reportFinalMessageRefresh(state: ActiveTurnState): Promise<void> {
     clearPendingRefresh();
     await state.reporter.report(state.context, buildSessionMessageUpdatedEvent(state.context, "final"));
+  }
+
+  async function reportContextUsageFromHookEvent(event: unknown): Promise<void> {
+    if (!activeTurn || activeTurn.ended) return;
+    const usage = contextUsageFromPiEvent(event);
+    if (!usage) return;
+    const usageJson = JSON.stringify(usage);
+    if (usageJson === lastContextUsageJson) return;
+    lastContextUsageJson = usageJson;
+    await activeTurn.reporter.report(activeTurn.context, buildSessionContextUsageUpdatedEvent(activeTurn.context, usage));
   }
 
   pi.on("before_agent_start", async (event) => {
@@ -292,6 +303,7 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
       }
 
       const reporter = makeReporter(loaded.logFile);
+      lastContextUsageJson = undefined;
       activeTurn = {
         context,
         logFile: loaded.logFile,
@@ -321,6 +333,7 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
 
   pi.on("message_update", async (event) => {
     if (!activeTurn || activeTurn.ended) return;
+    await reportContextUsageFromHookEvent(event);
 
     const fullText = assistantTextFromMessage((event as unknown as Record<string, unknown> | undefined)?.message);
     if (fullText) {
@@ -338,6 +351,7 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
 
   pi.on("message_end", async (event) => {
     if (!activeTurn || activeTurn.ended) return;
+    await reportContextUsageFromHookEvent(event);
     const fullText = assistantTextFromMessage((event as unknown as Record<string, unknown> | undefined)?.message);
     if (fullText) activeTurn.output = fullText;
     await scheduleMessageRefresh("append");
@@ -345,6 +359,7 @@ export function createPontiaPiExtension(pi: ExtensionAPI, dependencies: PontiaPi
 
   pi.on("agent_end", async (event) => {
     if (!activeTurn || activeTurn.ended) return;
+    await reportContextUsageFromHookEvent(event);
     activeTurn.ended = true;
 
     const state = activeTurn;

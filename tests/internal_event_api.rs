@@ -169,6 +169,120 @@ async fn internal_event_api_rejects_turn_event_without_turn_id() {
 }
 
 #[tokio::test]
+async fn internal_event_api_accepts_context_usage_and_updates_session_metadata_only() {
+    let state = test_state().await;
+    let mut created = event_body(
+        "evt_m2_context_created",
+        "session.created",
+        "sess_m2_context",
+        None,
+        1,
+    );
+    created["payload"] = json!({"metadata":{"purpose":"context-test"}});
+    assert_eq!(post_event(state.clone(), created).await.0, StatusCode::OK);
+    assert_eq!(
+        post_event(
+            state.clone(),
+            event_body(
+                "evt_m2_context_ready",
+                "session.ready",
+                "sess_m2_context",
+                None,
+                2
+            ),
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    let mut event = event_body(
+        "evt_m2_context_usage",
+        "session.context_usage_updated",
+        "sess_m2_context",
+        Some("turn_m2_context"),
+        3,
+    );
+    event["source"] = json!("agent_client");
+    event["client_type"] = json!("pi");
+    event["payload"] = json!({
+        "context_usage": {
+            "used_tokens": 42000,
+            "max_tokens": 128000,
+            "remaining_tokens": 86000,
+            "usage_ratio": 0.328125,
+            "input_tokens": 40000,
+            "output_tokens": 2000,
+            "cache_tokens": 1000,
+            "model": "example-model",
+            "confidence": "exact"
+        }
+    });
+
+    let (status, body) = post_event(state.clone(), event).await;
+
+    assert_eq!(status, StatusCode::OK, "{body:?}");
+    assert_eq!(body["turn_id"], "turn_m2_context");
+
+    let service = EventIngestService::new(state.db());
+    let session = service
+        .get_session("sess_m2_context")
+        .await
+        .expect("session query")
+        .expect("session projection");
+    assert_eq!(session.state, SessionState::Idle);
+    assert_eq!(session.current_turn_id, None);
+    assert_eq!(session.metadata["purpose"], "context-test");
+    assert_eq!(session.metadata["context_usage"]["used_tokens"], 42000);
+    assert_eq!(session.metadata["context_usage"]["max_tokens"], 128000);
+    assert_eq!(session.metadata["context_usage"]["confidence"], "exact");
+    assert_eq!(
+        session.metadata["context_usage"]["observed_at"],
+        "2026-04-24T12:00:00Z"
+    );
+}
+
+#[tokio::test]
+async fn internal_event_api_rejects_invalid_context_usage_values() {
+    let state = test_state().await;
+    let invalid_cases = [
+        (
+            "evt_m2_context_negative",
+            json!({"context_usage":{"used_tokens":-1,"confidence":"exact"}}),
+        ),
+        (
+            "evt_m2_context_ratio",
+            json!({"context_usage":{"usage_ratio":1.5,"confidence":"exact"}}),
+        ),
+        (
+            "evt_m2_context_confidence",
+            json!({"context_usage":{"used_tokens":1,"confidence":"approximate"}}),
+        ),
+        (
+            "evt_m2_context_missing_object",
+            json!({"context_usage":null}),
+        ),
+    ];
+
+    for (event_id, payload) in invalid_cases {
+        let mut event = event_body(
+            event_id,
+            "session.context_usage_updated",
+            "sess_m2_context_invalid",
+            None,
+            1,
+        );
+        event["source"] = json!("agent_client");
+        event["payload"] = payload;
+
+        let (status, body) = post_event(state.clone(), event).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{event_id}: {body:?}");
+        assert_eq!(body["error"]["code"], "invalid_request");
+    }
+}
+
+#[tokio::test]
 async fn internal_event_api_accepts_session_message_updated_without_changing_projection() {
     let state = test_state().await;
     let (created_status, _) = post_event(

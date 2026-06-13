@@ -135,6 +135,10 @@ impl InternalEventRequest {
             return Err(ApiError::invalid_request("payload must be a JSON object"));
         }
 
+        if event_type == EventType::SessionContextUsageUpdated {
+            validate_context_usage_payload(&self.payload)?;
+        }
+
         if event_type == EventType::SessionReady && source == EventSource::AgentClient {
             let runtime_instance_id = self
                 .payload
@@ -184,6 +188,59 @@ impl InternalEventRequest {
             payload: self.payload,
         })
     }
+}
+
+fn validate_context_usage_payload(payload: &Value) -> Result<(), ApiError> {
+    let usage = payload
+        .get("context_usage")
+        .and_then(Value::as_object)
+        .ok_or_else(|| ApiError::invalid_request("payload.context_usage must be a JSON object"))?;
+
+    for field in [
+        "used_tokens",
+        "max_tokens",
+        "remaining_tokens",
+        "input_tokens",
+        "output_tokens",
+        "cache_tokens",
+    ] {
+        if let Some(value) = usage.get(field)
+            && !value.is_null()
+            && value.as_u64().is_none()
+        {
+            return Err(ApiError::invalid_request(format!(
+                "payload.context_usage.{field} must be a non-negative integer"
+            )));
+        }
+    }
+
+    if let Some(value) = usage.get("usage_ratio")
+        && !value.is_null()
+    {
+        let ratio = value.as_f64().ok_or_else(|| {
+            ApiError::invalid_request("payload.context_usage.usage_ratio must be between 0 and 1")
+        })?;
+        if !(0.0..=1.0).contains(&ratio) {
+            return Err(ApiError::invalid_request(
+                "payload.context_usage.usage_ratio must be between 0 and 1",
+            ));
+        }
+    }
+
+    if let Some(value) = usage.get("confidence")
+        && !value.is_null()
+    {
+        match value.as_str() {
+            Some("exact" | "estimated" | "unknown") => {}
+            _ => {
+                return Err(ApiError::invalid_request(
+                    "payload.context_usage.confidence must be exact, estimated, or unknown",
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug)]

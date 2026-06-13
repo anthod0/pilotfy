@@ -1,14 +1,46 @@
 use super::*;
 
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextUsageCapability {
+    #[default]
+    Unsupported,
+    Estimated,
+    Exact,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionCapabilities {
+    #[serde(default)]
     pub accept_task: bool,
+    #[serde(default)]
     pub report_turn_started: bool,
+    #[serde(default)]
     pub report_turn_finished: bool,
+    #[serde(default)]
     pub interrupt: bool,
+    #[serde(default)]
     pub stream_output: bool,
+    #[serde(default)]
     pub heartbeat: bool,
+    #[serde(default)]
     pub artifact_sources: bool,
+    #[serde(default)]
+    pub context_usage: ContextUsageCapability,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContextUsageView {
+    pub used_tokens: Option<u64>,
+    pub max_tokens: Option<u64>,
+    pub remaining_tokens: Option<u64>,
+    pub usage_ratio: Option<f64>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_tokens: Option<u64>,
+    pub model: Option<String>,
+    pub confidence: String,
+    pub observed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -26,6 +58,7 @@ pub struct SessionView {
     pub workspace_id: Option<String>,
     pub workspace: Option<String>,
     pub capabilities: SessionCapabilities,
+    pub context_usage: Option<ContextUsageView>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Value,

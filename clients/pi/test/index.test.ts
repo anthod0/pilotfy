@@ -162,6 +162,38 @@ describe("pontia pi extension lifecycle", () => {
     expect(result).toEqual({ systemPrompt: "Base prompt" });
   });
 
+  test("reports context usage when a hook event exposes valid usage", async () => {
+    const { handlers, reported } = install();
+
+    await handlers.agent_start({}, {});
+    await handlers.message_update({ context_usage: { used_tokens: 2, max_tokens: 8, usage_ratio: 0.25, confidence: "estimated" } }, {});
+
+    expect(reported.map((event) => event.type)).toEqual(["turn.started", "session.context_usage_updated"]);
+    expect(reported[1]).toMatchObject({
+      source: "agent_client",
+      turn_id: "turn_1",
+      payload: {
+        context_usage: {
+          used_tokens: 2,
+          max_tokens: 8,
+          remaining_tokens: null,
+          usage_ratio: 0.25,
+          confidence: "estimated",
+        },
+      },
+    });
+  });
+
+  test("does not report fake context usage when hook events do not expose usage", async () => {
+    const { handlers, reported } = install();
+
+    await handlers.agent_start({}, {});
+    await handlers.message_update({ assistantMessageEvent: { text_delta: "hello " } }, {});
+    await handlers.agent_end({ messages: [] }, {});
+
+    expect(reported.map((event) => event.type)).not.toContain("session.context_usage_updated");
+  });
+
   test("reads context on agent_start and reports started, output, then completed", async () => {
     const { handlers, reported } = install();
 

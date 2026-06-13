@@ -92,7 +92,8 @@ const session = (overrides: Partial<SessionView> = {}): SessionView => ({
   current_turn_id: null,
   workspace_id: 'workspace-1',
   workspace: null,
-  capabilities: {},
+  capabilities: { context_usage: 'unsupported' },
+  context_usage: null,
   created_at: '2026-05-14T00:00:00Z',
   updated_at: '2026-05-14T00:00:00Z',
   metadata: {},
@@ -129,6 +130,43 @@ test('sessions index rows navigate to the session detail page', async () => {
 
   await fireEvent.click(await screen.findByRole('button', { name: /first/i }));
   expect(mocks.navigate).toHaveBeenCalledWith('/sessions/session-1');
+});
+
+test('session detail page shows unsupported context usage state', async () => {
+  window.history.pushState({}, '', '/dashboard/sessions/session-1');
+  mocks.pathParams = { sessionId: 'session-1' };
+
+  render(SessionDetailPage);
+
+  expect(await screen.findByText(/context usage not supported by this client/i)).toBeInTheDocument();
+});
+
+test('session detail page renders populated context usage', async () => {
+  const withUsage = session({
+    session_id: 'session-usage',
+    capabilities: { context_usage: 'estimated' },
+    context_usage: {
+      used_tokens: 42000,
+      max_tokens: 128000,
+      remaining_tokens: 86000,
+      usage_ratio: 0.328125,
+      input_tokens: null,
+      output_tokens: null,
+      cache_tokens: null,
+      model: 'example-model',
+      confidence: 'estimated',
+      observed_at: '2026-06-13T00:00:00Z',
+    },
+  });
+  mocks.loadedSessions = [withUsage];
+  mocks.sessions.set([withUsage]);
+  window.history.pushState({}, '', '/dashboard/sessions/session-usage');
+  mocks.pathParams = { sessionId: 'session-usage' };
+
+  render(SessionDetailPage);
+
+  expect(await screen.findByText(/context 42k \/ 128k · 33% · estimated/i)).toBeInTheDocument();
+  expect(screen.getByText(/example-model/i)).toBeInTheDocument();
 });
 
 test('session detail page loads the selected session without the transcript timeline panel', async () => {

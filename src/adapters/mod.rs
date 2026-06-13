@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::runtime::AgentInput;
+use crate::{application::ContextUsageCapability, runtime::AgentInput};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterCapabilities {
@@ -20,6 +20,7 @@ pub struct AdapterCapabilities {
     pub stream_output: bool,
     pub heartbeat: bool,
     pub artifact_sources: bool,
+    pub context_usage: ContextUsageCapability,
 }
 
 impl AdapterCapabilities {
@@ -32,6 +33,7 @@ impl AdapterCapabilities {
             stream_output: false,
             heartbeat: false,
             artifact_sources: false,
+            context_usage: ContextUsageCapability::Unsupported,
         }
     }
 
@@ -44,6 +46,7 @@ impl AdapterCapabilities {
             stream_output: true,
             heartbeat: false,
             artifact_sources: true,
+            context_usage: ContextUsageCapability::Unsupported,
         }
     }
 
@@ -56,6 +59,7 @@ impl AdapterCapabilities {
             stream_output: false,
             heartbeat: false,
             artifact_sources: false,
+            context_usage: ContextUsageCapability::Unsupported,
         }
     }
 }

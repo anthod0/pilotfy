@@ -2,6 +2,12 @@ use super::*;
 
 pub(crate) fn row_to_session_view(row: sqlx::sqlite::SqliteRow) -> Result<SessionView> {
     let metadata: String = row.try_get("metadata")?;
+    let metadata: Value = serde_json::from_str(&metadata)?;
+    let context_usage = metadata
+        .get("context_usage")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()?;
 
     Ok(SessionView {
         session_id: row.try_get("session_id")?,
@@ -17,9 +23,10 @@ pub(crate) fn row_to_session_view(row: sqlx::sqlite::SqliteRow) -> Result<Sessio
         workspace_id: row.try_get("workspace_id")?,
         workspace: row.try_get("workspace_ref")?,
         capabilities: SessionCapabilities::default(),
+        context_usage,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
-        metadata: serde_json::from_str(&metadata)?,
+        metadata,
     })
 }
 

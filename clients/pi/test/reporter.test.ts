@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent } from "../src/events.js";
+import { buildSessionContextUsageUpdatedEvent, buildTurnCompletedEvent, buildTurnFailedEvent, buildTurnOutputEvent, buildTurnStartedEvent, contextUsageFromPiEvent } from "../src/events.js";
 import { EventReporter } from "../src/reporter.js";
 import type { TurnContext } from "../src/context.js";
 
@@ -76,6 +76,70 @@ describe("event builders", () => {
     expect(buildTurnFailedEvent(context, "boom")).toMatchObject({
       type: "turn.failed",
       payload: { failure: { message: "boom" } },
+    });
+  });
+
+  test("builds session.context_usage_updated payload shape", () => {
+    const event = buildSessionContextUsageUpdatedEvent(context, {
+      used_tokens: 42,
+      max_tokens: 100,
+      remaining_tokens: 58,
+      usage_ratio: 0.42,
+      input_tokens: 40,
+      output_tokens: 2,
+      cache_tokens: null,
+      model: "example-model",
+      confidence: "exact",
+    });
+
+    expect(event).toMatchObject({
+      session_id: "sess_1",
+      turn_id: "turn_1",
+      source: "agent_client",
+      client_type: "pi",
+      type: "session.context_usage_updated",
+      seq: null,
+      payload: {
+        context_usage: {
+          used_tokens: 42,
+          max_tokens: 100,
+          remaining_tokens: 58,
+          usage_ratio: 0.42,
+          input_tokens: 40,
+          output_tokens: 2,
+          cache_tokens: null,
+          model: "example-model",
+          confidence: "exact",
+        },
+      },
+    });
+  });
+
+  test("does not extract context usage from unsupported pi hook payloads", () => {
+    expect(contextUsageFromPiEvent({ assistantMessageEvent: { text_delta: "hello" } })).toBeUndefined();
+    expect(contextUsageFromPiEvent({ messages: [] })).toBeUndefined();
+  });
+
+  test("extracts context usage only when a hook payload exposes a valid context_usage object", () => {
+    expect(
+      contextUsageFromPiEvent({
+        context_usage: {
+          used_tokens: 1,
+          max_tokens: 4,
+          usage_ratio: 0.25,
+          confidence: "estimated",
+        },
+      }),
+    ).toEqual({
+      used_tokens: 1,
+      max_tokens: 4,
+      remaining_tokens: null,
+      usage_ratio: 0.25,
+      input_tokens: null,
+      output_tokens: null,
+      cache_tokens: null,
+      model: null,
+      confidence: "estimated",
     });
   });
 });

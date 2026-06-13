@@ -12,7 +12,7 @@
   import * as Table from '$lib/components/ui/table/index.js'
   import { Textarea } from '$lib/components/ui/textarea/index.js'
   import { formatDateTime, jsonPreview, shortId } from '../components/tasks/format'
-  import type { InboxDeliveryPolicy, SessionView } from '../api/types'
+  import type { ContextUsageView, InboxDeliveryPolicy, SessionView } from '../api/types'
   import { selectCurrentTurnOutput } from './sessions/currentTurnOutput'
   import { sessionEventDetailRows, sessionEventSummary, sessionEventTurnLabel } from './sessions/sessionEvents'
   import { isTerminalSession, sessionDisplayTitle } from './sessions/sessionList'
@@ -52,6 +52,36 @@
 
   function sessionTitle(session: SessionView): string {
     return sessionDisplayTitle(session)
+  }
+
+  function formatTokenCount(value: number): string {
+    if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}m`
+    if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+    return String(value)
+  }
+
+  function contextUsageRatio(usage: ContextUsageView): number | null {
+    if (usage.usage_ratio !== null) return usage.usage_ratio
+    if (usage.used_tokens !== null && usage.max_tokens !== null && usage.max_tokens > 0) return usage.used_tokens / usage.max_tokens
+    return null
+  }
+
+  function contextUsageSummary(usage: ContextUsageView): string {
+    const ratio = contextUsageRatio(usage)
+    const percent = ratio === null ? null : `${Math.round(ratio * 100)}%`
+    const usageLabel = usage.used_tokens !== null && usage.max_tokens !== null
+      ? `${formatTokenCount(usage.used_tokens)} / ${formatTokenCount(usage.max_tokens)}`
+      : usage.used_tokens !== null
+        ? formatTokenCount(usage.used_tokens)
+        : 'unknown'
+    return `Context ${[usageLabel, percent, usage.confidence].filter(Boolean).join(' · ')}`
+  }
+
+  function contextUsageTone(usage: ContextUsageView): string {
+    const ratio = contextUsageRatio(usage)
+    if (ratio === null || ratio < 0.7) return 'bg-emerald-500'
+    if (ratio <= 0.9) return 'bg-amber-500'
+    return 'bg-destructive'
   }
 
   function interruptUnsupportedReason(session: SessionView | null): string | null {
@@ -197,6 +227,35 @@
         </div>
         {#if interruptReason || restartReason || terminateReason}
           <p class="text-xs text-muted-foreground">Unsupported/degraded controls: {interruptReason ?? restartReason ?? terminateReason}</p>
+        {/if}
+      </Card.Content>
+    </Card.Root>
+
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Context usage</Card.Title>
+        <Card.Description>Latest session-level context window usage reported by the agent client.</Card.Description>
+      </Card.Header>
+      <Card.Content class="space-y-3">
+        {#if ($sessionDetail.session.capabilities?.context_usage ?? 'unsupported') === 'unsupported'}
+          <p class="text-sm text-muted-foreground">Context usage not supported by this client.</p>
+        {:else if !$sessionDetail.session.context_usage}
+          <p class="text-sm text-muted-foreground">Waiting for context usage...</p>
+        {:else}
+          {@const usage = $sessionDetail.session.context_usage}
+          {@const ratio = contextUsageRatio(usage)}
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="font-medium">{contextUsageSummary(usage)}</div>
+              {#if usage.model}<Badge variant="secondary">{usage.model}</Badge>{/if}
+            </div>
+            {#if ratio !== null}
+              <div class="h-2 overflow-hidden rounded-full bg-muted" aria-label="Context usage progress">
+                <div class={`h-full ${contextUsageTone(usage)}`} style={`width: ${Math.min(100, Math.max(0, ratio * 100))}%`}></div>
+              </div>
+            {/if}
+            <p class="text-xs text-muted-foreground">Observed {formatDateTime(usage.observed_at)}</p>
+          </div>
         {/if}
       </Card.Content>
     </Card.Root>

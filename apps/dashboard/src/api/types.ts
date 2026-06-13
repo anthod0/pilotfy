@@ -6,13 +6,29 @@ export type TurnState = 'queued' | 'running' | 'completed' | 'failed' | 'interru
 export type InboxDeliveryPolicy = 'after_idle' | 'interrupt_now';
 export type InboxMessageState = 'pending' | 'dispatching' | 'dispatched' | 'cancelled' | 'superseded' | 'failed';
 
+export type ContextUsageCapability = 'unsupported' | 'estimated' | 'exact';
+
 export interface SessionCapabilities {
   accept_task?: boolean;
   interrupt?: boolean;
   stream_output?: boolean;
   heartbeat?: boolean;
   artifact_sources?: boolean;
+  context_usage?: ContextUsageCapability;
   [key: string]: unknown;
+}
+
+export interface ContextUsageView {
+  used_tokens: number | null;
+  max_tokens: number | null;
+  remaining_tokens: number | null;
+  usage_ratio: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_tokens: number | null;
+  model: string | null;
+  confidence: 'exact' | 'estimated' | 'unknown';
+  observed_at: string;
 }
 
 export type AgentKind = 'planner' | 'executor';
@@ -74,6 +90,7 @@ export interface SessionView {
   workspace_id: string | null;
   workspace: string | null;
   capabilities: SessionCapabilities;
+  context_usage: ContextUsageView | null;
   created_at: string;
   updated_at: string;
   metadata: JsonObject;

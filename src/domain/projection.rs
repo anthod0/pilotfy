@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::{DomainEvent, EventType, SessionState, TurnState};
 use crate::error::Error;
@@ -101,6 +101,7 @@ impl ProjectionState {
             && !(session.state == SessionState::Exited
                 && event.event_type == EventType::SessionResuming)
             && event.event_type != EventType::SessionTitleUpdated
+            && event.event_type != EventType::SessionContextUsageUpdated
         {
             return Ok(());
         }
@@ -122,6 +123,7 @@ impl ProjectionState {
                     .unwrap_or(SessionState::Created),
             ),
             EventType::SessionMessageUpdated => Ok(()),
+            EventType::SessionContextUsageUpdated => self.apply_context_usage(event),
             EventType::TurnCreated | EventType::TurnQueued => {
                 self.apply_turn(event, TurnState::Queued)
             }
@@ -208,6 +210,43 @@ impl ProjectionState {
         }
         if state.is_terminal() {
             session.current_turn_id = None;
+        }
+        session.state_version += 1;
+        Ok(())
+    }
+
+    fn apply_context_usage(&mut self, event: &DomainEvent) -> crate::error::Result<()> {
+        let Some(session) = self.sessions.get_mut(&event.session_id) else {
+            return Ok(());
+        };
+        let usage = event
+            .payload
+            .get("context_usage")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                Error::Domain("payload.context_usage must be a JSON object".to_string())
+            })?;
+        let observed_at = event
+            .occurred_at
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|err| Error::Domain(format!("invalid event timestamp: {err}")))?;
+        let context_usage = json!({
+            "used_tokens": usage.get("used_tokens").cloned().unwrap_or(Value::Null),
+            "max_tokens": usage.get("max_tokens").cloned().unwrap_or(Value::Null),
+            "remaining_tokens": usage.get("remaining_tokens").cloned().unwrap_or(Value::Null),
+            "usage_ratio": usage.get("usage_ratio").cloned().unwrap_or(Value::Null),
+            "input_tokens": usage.get("input_tokens").cloned().unwrap_or(Value::Null),
+            "output_tokens": usage.get("output_tokens").cloned().unwrap_or(Value::Null),
+            "cache_tokens": usage.get("cache_tokens").cloned().unwrap_or(Value::Null),
+            "model": usage.get("model").cloned().unwrap_or(Value::Null),
+            "confidence": usage.get("confidence").cloned().unwrap_or_else(|| json!("unknown")),
+            "observed_at": observed_at,
+        });
+        if !session.metadata.is_object() {
+            session.metadata = json!({});
+        }
+        if let Some(metadata) = session.metadata.as_object_mut() {
+            metadata.insert("context_usage".to_string(), context_usage);
         }
         session.state_version += 1;
         Ok(())

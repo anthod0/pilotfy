@@ -38,6 +38,7 @@ impl From<AdapterCapabilities> for SessionCapabilities {
             stream_output: capabilities.stream_output,
             heartbeat: capabilities.heartbeat,
             artifact_sources: capabilities.artifact_sources,
+            context_usage: capabilities.context_usage,
         }
     }
 }

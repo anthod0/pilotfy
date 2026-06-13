@@ -5,6 +5,7 @@ use crate::{
         InterruptBehavior, ReadinessBehavior, RuntimeBehavior, StartupHook,
         SystemPromptInjectionBehavior, TmuxRuntimeBehavior, TurnContextBehavior,
     },
+    application::ContextUsageCapability,
 };
 
 pub const CAPABILITIES: AdapterCapabilities = AdapterCapabilities {
@@ -15,6 +16,7 @@ pub const CAPABILITIES: AdapterCapabilities = AdapterCapabilities {
     stream_output: false,
     heartbeat: false,
     artifact_sources: false,
+    context_usage: ContextUsageCapability::Unsupported,
 };
 
 pub const SPEC: AgentClientSpec = AgentClientSpec {

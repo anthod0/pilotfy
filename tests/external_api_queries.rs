@@ -204,10 +204,79 @@ async fn external_api_lists_and_gets_session_views() {
     assert_eq!(list_body["data"]["sessions"][0]["state"], "idle");
     assert_eq!(list_body["data"]["sessions"][0]["client_type"], "generic");
     assert!(list_body["data"]["sessions"][0]["capabilities"].is_object());
+    assert_eq!(
+        list_body["data"]["sessions"][0]["capabilities"]["context_usage"],
+        "unsupported"
+    );
+    assert_eq!(
+        list_body["data"]["sessions"][0]["context_usage"],
+        Value::Null
+    );
 
     assert_eq!(get_status, StatusCode::OK);
     assert_eq!(get_body["data"]["session"]["session_id"], "sess_m3_1");
     assert_eq!(get_body["data"]["session"]["current_turn_id"], Value::Null);
+    assert_eq!(get_body["data"]["session"]["context_usage"], Value::Null);
+}
+
+#[tokio::test]
+async fn external_api_exposes_projected_session_context_usage() {
+    let state = test_state().await;
+    let service = EventIngestService::new(state.db());
+    service
+        .ingest_event(event(
+            "evt_m3_context_created",
+            EventType::SessionCreated,
+            "sess_m3_context",
+            None,
+            json!({"metadata":{"kept":"yes"}}),
+        ))
+        .await
+        .unwrap();
+    service
+        .ingest_event(event(
+            "evt_m3_context_usage",
+            EventType::SessionContextUsageUpdated,
+            "sess_m3_context",
+            None,
+            json!({
+                "context_usage": {
+                    "used_tokens": 7,
+                    "max_tokens": 10,
+                    "usage_ratio": 0.7,
+                    "confidence": "estimated",
+                    "model": "m"
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let (list_status, list_body) = get(state.clone(), "/external/v1/sessions", Some(TOKEN)).await;
+    let (get_status, get_body) =
+        get(state, "/external/v1/sessions/sess_m3_context", Some(TOKEN)).await;
+
+    assert_eq!(list_status, StatusCode::OK);
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(
+        list_body["data"]["sessions"][0]["context_usage"]["used_tokens"],
+        7
+    );
+    assert_eq!(
+        list_body["data"]["sessions"][0]["context_usage"]["max_tokens"],
+        10
+    );
+    assert_eq!(
+        list_body["data"]["sessions"][0]["context_usage"]["usage_ratio"],
+        0.7
+    );
+    assert_eq!(
+        list_body["data"]["sessions"][0]["context_usage"]["confidence"],
+        "estimated"
+    );
+    assert!(list_body["data"]["sessions"][0]["context_usage"]["observed_at"].is_string());
+    assert_eq!(get_body["data"]["session"]["context_usage"]["model"], "m");
+    assert_eq!(get_body["data"]["session"]["metadata"]["kept"], "yes");
 }
 
 #[tokio::test]
