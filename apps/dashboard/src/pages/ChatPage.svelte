@@ -1,23 +1,15 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { get } from 'svelte/store'
-  import { Activity, AtSign, Bot, EllipsisVertical, Folder, Gauge, GitBranch, Inbox, LogOut, Pencil, RotateCw, RotateCcw, Terminal, TerminalSquare, X } from '@lucide/svelte'
   import { toast } from 'svelte-sonner'
   import { getPathParams, navigate } from 'svelte-mini-router'
-  import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
-  import * as Sheet from '$lib/components/ui/sheet/index.js'
   import { Skeleton } from '$lib/components/ui/skeleton/index.js'
-  import * as PromptInput from '$lib/components/ai-elements/prompt-input/index.js'
-  import * as Select from '$lib/components/ui/select/index.js'
   import SessionConversation from '$lib/components/session-chat/SessionConversation.svelte'
-  import SessionMessageComposer from '$lib/components/session-chat/SessionMessageComposer.svelte'
-  import { contextUsageSummary } from '$lib/contextUsage'
-  import type { AgentProfileView, DashboardStreamEvent, InboxMessageView, SessionView, WorkspaceGitStatusView, WorkspaceView } from '../api/types'
+  import type { DashboardStreamEvent, InboxMessageView, SessionView } from '../api/types'
   import {
     canSendSessionMessage,
-    isTerminalChatSession,
     timelineItemsToChatMessages,
     titleFromInitialPrompt,
   } from '$lib/session-chat/sessionChat'
@@ -75,7 +67,10 @@
     timelineState,
   } from '../stores/timeline'
   import { subscribeDashboardEvents } from '../services/eventStream'
-  import { formatDateTime, shortId } from '../components/tasks/format'
+  import NewChatPanel from '../components/chat/NewChatPanel.svelte'
+  import SessionComposerDock from '../components/chat/SessionComposerDock.svelte'
+  import InboxSheet from '../components/chat/InboxSheet.svelte'
+  import { sessionMetadataItems, sessionMetadataSummary, visibleChatInboxMessages } from '../components/chat/sessionMetadata'
 
   let selectedSessionId = ''
   let prompt = ''
@@ -91,23 +86,12 @@
   let inboxActionMessageId: string | null = null
   let actionError: string | null = null
   let lastToastedError: string | null = null
-  let advancedControlsOpen = false
-  let sessionDetailsOpen = false
   let inboxSheetOpen = false
-  let advancedControlsTriggerEl: HTMLButtonElement | null = null
-  let advancedControlsMenuEl: HTMLDivElement | null = null
-  let advancedControlsPlacement: 'top' | 'bottom' = 'bottom'
   let loadedProposalTaskId = ''
   let appliedRedirectTaskId = ''
   let unsubscribeDashboardEvents: (() => void) | null = null
   let foregroundRefreshInFlight: Promise<void> | null = null
 
-  type SessionMetadataItem = {
-    key: string
-    label: string
-    value: string
-    title: string
-  }
 
   const AUTO_RESUME_IDLE_TIMEOUT_MS = 30_000
   const DAG_TASK_ENTRIES_ENABLED = false
@@ -137,7 +121,7 @@
 
   $: selectedSession = selectedSessionId ? ($sessions.find((session) => session.session_id === selectedSessionId) ?? $sessionDetail?.session ?? null) : null
   $: selectedSessionGitStatus = selectedSession ? $workspaceGitStatuses[selectedSession.workspace_id ?? ''] : undefined
-  $: selectedSessionMetadataItems = selectedSession ? sessionMetadataItems(selectedSession, selectedSessionGitStatus) : []
+  $: selectedSessionMetadataItems = selectedSession ? sessionMetadataItems(selectedSession, $workspaces, selectedSessionGitStatus, $workspaceGitStatusErrors) : []
   $: selectedSessionMetadataSummary = sessionMetadataSummary(selectedSessionMetadataItems)
   $: messages = chatMessagesWithOptimistic(selectedSessionId, $timelineState.sessionId === selectedSessionId ? timelineItemsToChatMessages($timelineState.items) : [], $optimisticInitialMessages)
   $: selectedInboxMessages = selectedSessionId && $sessionDetail?.session.session_id === selectedSessionId ? $sessionDetail.inboxMessages : []
@@ -180,10 +164,6 @@
     return getPathParams().sessionId ?? new URLSearchParams(window.location.search).get('session') ?? ''
   }
 
-  function workspaceTitle(workspace: WorkspaceView): string {
-    return workspace.name ?? workspace.display_path ?? workspace.workspace_id
-  }
-
   function readRememberedWorkspaceId(): string | null {
     try {
       return window.localStorage.getItem(LAST_NEW_CHAT_WORKSPACE_STORAGE_KEY)
@@ -213,68 +193,6 @@
     createWorkspaceId = preferredCreateWorkspaceId()
   }
 
-  function profileTitle(profile: AgentProfileView): string {
-    return `${profile.name} (${profile.profile_id}@${profile.version})`
-  }
-
-  function clientTitle(clientType: string): string {
-    return clientType || 'Client'
-  }
-
-  function sessionContextUsageLabel(session: SessionView): string | null {
-    if ((session.capabilities?.context_usage ?? 'unsupported') === 'unsupported') return null
-    const summary = session.context_usage ? contextUsageSummary(session.context_usage, { includeConfidence: false }) : 'Context waiting…'
-    return summary.replace(/^Context\s+/, '')
-  }
-
-  function sessionStateBadgeClass(state: string): string {
-    switch (state) {
-      case 'busy':
-      case 'starting':
-        return 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-      case 'idle':
-        return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-      case 'interrupted':
-        return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-      case 'exited':
-        return 'border-muted-foreground/25 bg-muted text-muted-foreground'
-      case 'error':
-        return 'border-destructive/30 bg-destructive/10 text-destructive'
-      default:
-        return ''
-    }
-  }
-
-  function sessionProfileTitle(session: SessionView): string | null {
-    if (!session.execution_profile_id) return null
-    return session.execution_profile_version ? `${session.execution_profile_id}@${session.execution_profile_version}` : session.execution_profile_id
-  }
-
-  function sessionTitle(session: SessionView): string | null {
-    const title = session.title?.trim()
-    return title || null
-  }
-
-  function sessionHandleTitle(session: SessionView): string | null {
-    const handle = session.handle?.trim()
-    return handle || null
-  }
-
-  function sessionWorkspace(session: SessionView): WorkspaceView | null {
-    if (!session.workspace_id) return null
-    return $workspaces.find((workspace) => workspace.workspace_id === session.workspace_id) ?? null
-  }
-
-  function sessionWorkspaceTitle(session: SessionView): string {
-    const workspace = sessionWorkspace(session)
-    return workspace?.name ?? workspace?.display_path ?? session.workspace ?? session.workspace_id ?? 'No workspace'
-  }
-
-  function sessionWorkspacePath(session: SessionView): string {
-    const workspace = sessionWorkspace(session)
-    return workspace?.canonical_path ?? workspace?.display_path ?? session.workspace ?? session.workspace_id ?? 'No workspace'
-  }
-
   function currentSelectedSession(): SessionView | null {
     if (!selectedSessionId) return null
     const detail = get(sessionDetail)
@@ -289,86 +207,6 @@
 
   async function refreshCurrentSessionGitStatus(): Promise<void> {
     await refreshSessionGitStatus(currentSelectedSession())
-  }
-
-  function gitStatusLabel(status: WorkspaceGitStatusView | undefined): string {
-    if (!status || status.state === 'unknown') return 'Git unknown'
-    if (status.state === 'error') return 'Git error'
-    return status.clean ? 'clean' : 'dirty'
-  }
-
-  function gitBranchLabel(status: WorkspaceGitStatusView | undefined): string {
-    return status?.branch ?? 'No branch'
-  }
-
-  function hasGitChangeCounts(status: WorkspaceGitStatusView | undefined): boolean {
-    return !!status && (status.staged_count > 0 || status.unstaged_count > 0 || status.untracked_count > 0 || status.conflicted_count > 0 || status.ahead > 0 || status.behind > 0)
-  }
-
-  function gitStatusAriaLabel(status: WorkspaceGitStatusView | undefined): string {
-    return `Git status: ${gitBranchLabel(status)}, ${gitStatusLabel(status)}`
-  }
-
-  function gitStatusTitle(session: SessionView, status: WorkspaceGitStatusView | undefined): string {
-    const error = session.workspace_id ? $workspaceGitStatusErrors[session.workspace_id] : null
-    return status?.failure ?? error ?? gitStatusAriaLabel(status)
-  }
-
-  function gitStatusToneClass(status: WorkspaceGitStatusView | undefined): string {
-    if (!status || status.state === 'unknown') return 'text-muted-foreground'
-    if (status.state === 'error') return 'text-destructive'
-    return status.clean ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
-  }
-
-  function sessionMetadataItems(session: SessionView, gitStatus: WorkspaceGitStatusView | undefined): SessionMetadataItem[] {
-    const items: SessionMetadataItem[] = [
-      {
-        key: 'workspace',
-        label: 'Workspace',
-        value: sessionWorkspaceTitle(session),
-        title: sessionWorkspacePath(session),
-      },
-      {
-        key: 'client',
-        label: 'Client',
-        value: session.client_type,
-        title: session.client_type,
-      },
-    ]
-    if (gitStatus) {
-      const value = `${gitBranchLabel(gitStatus)} · ${gitStatusLabel(gitStatus)}`
-      items.push({ key: 'git', label: 'Git', value, title: gitStatusTitle(session, gitStatus) })
-    }
-    const contextUsageLabel = sessionContextUsageLabel(session)
-    if (contextUsageLabel) items.push({ key: 'context', label: 'Usage', value: contextUsageLabel, title: `Context usage: ${contextUsageLabel}` })
-    const profileTitle = sessionProfileTitle(session)
-    if (profileTitle) items.push({ key: 'profile', label: 'Profile', value: profileTitle, title: profileTitle })
-    const handleTitle = sessionHandleTitle(session)
-    if (handleTitle) items.push({ key: 'handle', label: 'Handle', value: handleTitle, title: handleTitle })
-    return items
-  }
-
-  function sessionMetadataSummary(items: SessionMetadataItem[]): string {
-    if (!items.length) return 'Session details'
-    return items.map((item) => item.value).join(' · ')
-  }
-
-  function visibleChatInboxMessages(messages: InboxMessageView[]): InboxMessageView[] {
-    const actionable = messages
-      .filter((message) => message.state === 'pending' || message.state === 'failed')
-      .slice()
-      .reverse()
-    const dispatching = messages
-      .filter((message) => message.state === 'dispatching')
-      .slice()
-      .reverse()
-    return [...dispatching, ...actionable]
-  }
-
-  function inboxBadgeVariant(message: InboxMessageView): 'default' | 'secondary' | 'destructive' | 'outline' {
-    if (message.state === 'failed') return 'destructive'
-    if (message.state === 'dispatching') return 'outline'
-    return 'secondary'
   }
 
   async function cancelPendingInboxMessage(message: InboxMessageView): Promise<void> {
@@ -480,23 +318,6 @@
 
   function openSessionConsole(): void {
     navigate(selectedSessionId ? `/sessions/${selectedSessionId}` : '/sessions')
-  }
-
-  function updateAdvancedControlsPlacement(): void {
-    if (!advancedControlsTriggerEl || !advancedControlsMenuEl) return
-    const triggerRect = advancedControlsTriggerEl.getBoundingClientRect()
-    const menuHeight = advancedControlsMenuEl.offsetHeight || 192
-    const gap = 8
-    const spaceBelow = window.innerHeight - triggerRect.bottom
-    const spaceAbove = triggerRect.top
-    advancedControlsPlacement = spaceBelow >= menuHeight + gap || spaceBelow >= spaceAbove ? 'bottom' : 'top'
-  }
-
-  async function toggleAdvancedControls(): Promise<void> {
-    advancedControlsOpen = !advancedControlsOpen
-    if (!advancedControlsOpen) return
-    await tick()
-    updateAdvancedControlsPlacement()
   }
 
   function openNewChat(): void {
@@ -694,156 +515,26 @@
       submitting = false
     }
   }
-</script>
-
-{#snippet gitStatusBadge(session: SessionView, gitStatus: WorkspaceGitStatusView)}
-  <Badge
-    variant={gitStatus.state === 'error' ? 'destructive' : 'outline'}
-    class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-    title={gitStatusTitle(session, gitStatus)}
-    aria-label={gitStatusAriaLabel(gitStatus)}
-  >
-    <GitBranch class={`size-4 ${gitStatusToneClass(gitStatus)}`} aria-label="Git branch" />
-    <span class={gitStatusToneClass(gitStatus)}>{gitBranchLabel(gitStatus)}</span>
-    {#if gitStatus.ahead}<span class="text-blue-600 dark:text-blue-400">↑{gitStatus.ahead}</span>{/if}
-    {#if gitStatus.behind}<span class="text-violet-600 dark:text-violet-400">↓{gitStatus.behind}</span>{/if}
-    {#if hasGitChangeCounts(gitStatus)}
-      {#if gitStatus.staged_count}<span class="text-emerald-600 dark:text-emerald-400">+{gitStatus.staged_count}</span>{/if}
-      {#if gitStatus.unstaged_count}<span class="text-amber-600 dark:text-amber-400">~{gitStatus.unstaged_count}</span>{/if}
-      {#if gitStatus.untracked_count}<span class="text-cyan-600 dark:text-cyan-400">?{gitStatus.untracked_count}</span>{/if}
-      {#if gitStatus.conflicted_count}<span class="text-destructive">!{gitStatus.conflicted_count}</span>{/if}
-    {/if}
-  </Badge>
-{/snippet}
-
-{#snippet sessionMetadataBadges(session: SessionView, gitStatus: WorkspaceGitStatusView | undefined)}
-  <Badge
-    variant="outline"
-    class="h-7 max-w-full justify-start gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-    title={`Workspace: ${sessionWorkspacePath(session)}`}
-    aria-label={`Workspace: ${sessionWorkspacePath(session)}`}
-  >
-    <Folder class="size-4" aria-hidden="true" />
-    <span class="min-w-0 truncate">{sessionWorkspaceTitle(session)}</span>
-  </Badge>
-  {#if gitStatus}
-    {@render gitStatusBadge(session, gitStatus)}
-  {/if}
-  {#if sessionContextUsageLabel(session)}
-    <Badge
-      variant="outline"
-      class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-      title={`Context usage: ${sessionContextUsageLabel(session)}`}
-      aria-label={`Context usage: ${sessionContextUsageLabel(session)}`}
-    >
-      <Gauge class="size-4" aria-hidden="true" /> {sessionContextUsageLabel(session)}
-    </Badge>
-  {/if}
-  <Badge
-    variant="outline"
-    class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-    title={`Client: ${session.client_type}`}
-    aria-label={`Client: ${session.client_type}`}
-  >
-    <Terminal class="size-4" aria-hidden="true" /> {session.client_type}
-  </Badge>
-  {#if sessionProfileTitle(session)}
-    <Badge
-      variant="outline"
-      class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-      title={`Profile: ${sessionProfileTitle(session)}`}
-      aria-label={`Profile: ${sessionProfileTitle(session)}`}
-    >
-      <Bot class="size-4" aria-hidden="true" /> {sessionProfileTitle(session)}
-    </Badge>
-  {/if}
-  {#if sessionHandleTitle(session)}
-    <Badge
-      variant="outline"
-      class="h-7 gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-      title={`Handle: ${sessionHandleTitle(session)}`}
-      aria-label={`Handle: ${sessionHandleTitle(session)}`}
-    >
-      <AtSign class="size-4" aria-hidden="true" /> {sessionHandleTitle(session)}
-    </Badge>
-  {/if}
-{/snippet}
-
-<svelte:window onpopstate={() => void selectSessionFromLocation()} />
+</script><svelte:window onpopstate={() => void selectSessionFromLocation()} />
 
 <section class={selectedSessionId ? 'flex flex-col gap-4 pb-40' : 'flex min-h-[calc(100vh-9.5rem)] flex-col'}>
   {#if !selectedSessionId}
-    <div data-testid="new-chat-centered-panel" class="flex min-h-0 flex-1 flex-col justify-center">
-      <div class="mx-auto w-full max-w-4xl space-y-6">
-        <div class="space-y-2">
-          <h2 class="text-3xl font-semibold tracking-tight">New Chat</h2>
-          <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
-        </div>
-
-        <div class="space-y-3">
-          <div class="flex min-w-0 flex-wrap items-center gap-2 px-1">
-          {#if DAG_TASK_ENTRIES_ENABLED}
-            <Button
-              type="button"
-              size="sm"
-              variant={taskMode ? 'default' : 'outline'}
-              class="h-7 rounded-full px-3 text-sm font-normal"
-              aria-pressed={taskMode}
-              aria-label={taskMode ? 'Task mode on' : 'Task mode off'}
-              onclick={() => (taskMode = !taskMode)}
-            >
-              <GitBranch class="size-4" /> Task
-            </Button>
-          {/if}
-
-          <Select.Root type="single" bind:value={createWorkspaceId} disabled={$workspacesLoading}>
-            <Select.Trigger class={`${newChatSelectorTriggerClass} max-w-56`} aria-label="Workspace" title={selectedWorkspace?.canonical_path ?? undefined}>
-              <Folder class="size-4" aria-hidden="true" />
-              <span class="min-w-0 truncate">{#if selectedWorkspace}{workspaceTitle(selectedWorkspace)}{:else}Workspace{/if}</span>
-            </Select.Trigger>
-            <Select.Content align="start">
-              {#each $workspaces as workspace (workspace.workspace_id)}
-                <Select.Item value={workspace.workspace_id} label={workspaceTitle(workspace)}>
-                  <div class="flex min-w-0 flex-col">
-                    <span class="truncate">{workspaceTitle(workspace)}</span>
-                    <span class="truncate text-xs text-muted-foreground">{workspace.display_path}</span>
-                  </div>
-                </Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
-
-          <Select.Root type="single" bind:value={createClientType}>
-            <Select.Trigger class={`${newChatSelectorTriggerClass} max-w-44`} aria-label="Client">
-              <Terminal class="size-4" aria-hidden="true" />
-              <span class="min-w-0 truncate">{clientTitle(createClientType)}</span>
-            </Select.Trigger>
-            <Select.Content align="start">
-              {#each clientTypeOptions as clientType (clientType)}
-                <Select.Item value={clientType} label={clientType}>{clientType}</Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
-        </div>
-
-          <PromptInput.Root class="w-full" onSubmit={() => void startChat()}>
-            <PromptInput.Body>
-              <PromptInput.Textarea
-                id="chat-prompt"
-                bind:value={prompt}
-                placeholder="Ask the agent to implement, inspect, or explain something…"
-                onkeydown={handleNewChatKeydown}
-              />
-            </PromptInput.Body>
-
-            <PromptInput.Toolbar class="justify-between gap-2 pt-1">
-              <p class="px-2 text-xs text-muted-foreground">Enter to send · Shift+Enter for newline</p>
-              <PromptInput.Submit disabled={!canCreate || creating} aria-label={creating ? (taskMode ? 'Creating task' : 'Starting chat') : (taskMode ? 'Create task' : 'Start chat')} />
-            </PromptInput.Toolbar>
-          </PromptInput.Root>
-        </div>
-      </div>
-    </div>
+    <NewChatPanel
+      bind:prompt
+      bind:workspaceId={createWorkspaceId}
+      bind:clientType={createClientType}
+      bind:taskMode
+      taskEntriesEnabled={DAG_TASK_ENTRIES_ENABLED}
+      {creating}
+      {canCreate}
+      workspaces={$workspaces}
+      workspacesLoading={$workspacesLoading}
+      {selectedWorkspace}
+      {clientTypeOptions}
+      selectorTriggerClass={newChatSelectorTriggerClass}
+      onPromptKeydown={handleNewChatKeydown}
+      onStartChat={() => void startChat()}
+    />
   {:else}
     <div class="flex-1">
       <div class="flex flex-col rounded-xl bg-transparent">
@@ -873,256 +564,37 @@
             onLoadMoreHistory={loadEarlierMessages}
           />
 
-          <div data-chat-composer-dock="fixed" class="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-[var(--sidebar-width)] md:p-6">
-            <div class="mx-auto w-full max-w-7xl">
-            <div role="group" aria-label="Session status and controls" class="mb-2 flex min-w-0 items-center justify-between gap-2 px-2">
-              <div class="flex min-w-0 flex-1 items-center gap-2">
-                <Badge
-                  variant="secondary"
-                  class={`h-7 shrink-0 gap-1.5 px-2 sm:px-3 text-sm ${sessionStateBadgeClass(selectedSession.state)}`}
-                  aria-label={`Session state: ${selectedSession.state}`}
-                >
-                  <Activity class="size-4" />
-                  <span data-chat-session-state-label class="hidden sm:inline">{selectedSession.state}</span>
-                </Badge>
-                <div data-testid="session-status-desktop-metadata" class="hidden min-w-0 flex-1 flex-wrap items-center gap-2 sm:flex">
-                  {@render sessionMetadataBadges(selectedSession, selectedSessionGitStatus)}
-                </div>
-                <div data-testid="session-status-mobile-metadata" class="relative min-w-0 flex-1 sm:hidden">
-                  <button
-                    type="button"
-                    class="flex h-7 w-full min-w-0 items-center justify-start bg-transparent px-0 text-sm text-muted-foreground outline-none hover:bg-transparent hover:text-foreground focus-visible:text-foreground"
-                    aria-haspopup="dialog"
-                    aria-expanded={sessionDetailsOpen}
-                    aria-label={`Session details: ${selectedSessionMetadataSummary}`}
-                    onclick={() => (sessionDetailsOpen = !sessionDetailsOpen)}
-                  >
-                    <span data-chat-session-details-summary class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left">
-                      <span class="min-w-0 shrink truncate">{sessionWorkspaceTitle(selectedSession)}</span>
-                      {#if selectedSessionGitStatus}
-                        {@render gitStatusBadge(selectedSession, selectedSessionGitStatus)}
-                      {/if}
-                      {#if sessionContextUsageLabel(selectedSession)}
-                        <span class="shrink-0 text-muted-foreground">{sessionContextUsageLabel(selectedSession)}</span>
-                      {/if}
-                      <span class="shrink-0 text-muted-foreground">{selectedSession.client_type}</span>
-                      {#if sessionProfileTitle(selectedSession)}
-                        <span class="shrink-0 text-muted-foreground">{sessionProfileTitle(selectedSession)}</span>
-                      {/if}
-                      {#if sessionHandleTitle(selectedSession)}
-                        <span class="shrink-0 text-muted-foreground">{sessionHandleTitle(selectedSession)}</span>
-                      {/if}
-                    </span>
-                  </button>
-                  {#if sessionDetailsOpen}
-                    <div role="dialog" aria-label="Session details" class="absolute bottom-full left-0 z-20 mb-2 w-[min(20rem,calc(100vw-2rem))] rounded-lg border bg-popover p-3 text-popover-foreground shadow-md">
-                      <div class="mb-2 text-sm font-medium">Session details</div>
-                      <dl class="space-y-2 text-sm">
-                        {#each selectedSessionMetadataItems as item (item.key)}
-                          <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2">
-                            <dt class="text-muted-foreground">{item.label}</dt>
-                            <dd class="min-w-0 truncate" title={item.title}>{item.value}</dd>
-                          </div>
-                        {/each}
-                      </dl>
-                    </div>
-                  {/if}
-                </div>
-              </div>
-              <div class="flex shrink-0 items-center justify-end gap-2">
-                <div data-chat-desktop-inbox class="relative hidden sm:block">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="gap-2"
-                    aria-label={`Open inbox, ${inboxActionableCount} message${inboxActionableCount === 1 ? '' : 's'}`}
-                    onclick={() => (inboxSheetOpen = true)}
-                  >
-                    <Inbox class="size-4" />
-                    <span>Inbox</span>
-                  </Button>
-                  {#if inboxActionableCount > 0}
-                    <Badge variant="secondary" class="absolute -right-2 -top-2 h-5 min-w-5 rounded-full px-1.5 text-xs shadow-sm">{inboxActionableCount}</Badge>
-                  {/if}
-                </div>
-                {#if !isTerminalChatSession(selectedSession)}
-                  <Button class="hidden sm:inline-flex" variant="destructive" size="sm" disabled={actionBusy} aria-label="Exit session" onclick={() => void runSessionLifecycle('exit')}><LogOut class="size-4" /> Exit</Button>
-                {/if}
-                <div class="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={actionBusy}
-                    aria-haspopup="menu"
-                    aria-expanded={advancedControlsOpen}
-                    bind:ref={advancedControlsTriggerEl}
-                    aria-label={inboxActionableCount > 0 ? `Advanced session controls, ${inboxActionableCount} inbox message${inboxActionableCount === 1 ? '' : 's'}` : 'Advanced session controls'}
-                    onclick={() => void toggleAdvancedControls()}
-                  >
-                    <EllipsisVertical class="size-4" />
-                  </Button>
-                  {#if inboxActionableCount > 0}
-                    <Badge data-chat-mobile-inbox-count variant="secondary" class="absolute -right-2 -top-2 h-5 min-w-5 rounded-full px-1.5 text-xs shadow-sm sm:hidden">{inboxActionableCount}</Badge>
-                  {/if}
-                  {#if advancedControlsOpen}
-                    <div
-                      bind:this={advancedControlsMenuEl}
-                      role="menu"
-                      data-placement={advancedControlsPlacement}
-                      class={`absolute right-0 z-10 w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md ${advancedControlsPlacement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted sm:hidden"
-                        aria-label={`Open inbox, ${inboxActionableCount} message${inboxActionableCount === 1 ? '' : 's'}`}
-                        onclick={() => {
-                          advancedControlsOpen = false
-                          inboxSheetOpen = true
-                        }}
-                      >
-                        <Inbox class="size-4" /> Inbox
-                        {#if inboxActionableCount > 0}
-                          <Badge variant="secondary" class="ml-auto h-5 min-w-5 rounded-full px-1.5 text-xs">{inboxActionableCount}</Badge>
-                        {/if}
-                      </button>
-                      {#if !isTerminalChatSession(selectedSession)}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-muted disabled:pointer-events-none disabled:opacity-50 sm:hidden"
-                          disabled={actionBusy}
-                          onclick={() => {
-                            advancedControlsOpen = false
-                            void runSessionLifecycle('exit')
-                          }}
-                        >
-                          <LogOut class="size-4" /> Exit session
-                        </button>
-                      {/if}
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                        onclick={() => {
-                          advancedControlsOpen = false
-                          openSessionConsole()
-                        }}
-                      >
-                        <TerminalSquare class="size-4" /> Session Console
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                        disabled={actionBusy}
-                        onclick={() => {
-                          advancedControlsOpen = false
-                          void renameSelectedSession()
-                        }}
-                      >
-                        <Pencil class="size-4" /> Rename session
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                        disabled={actionBusy}
-                        onclick={() => {
-                          advancedControlsOpen = false
-                          void runSessionLifecycle('restart')
-                        }}
-                      >
-                        <RotateCw class="size-4" /> Restart session
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            </div>
-            <SessionMessageComposer
-              bind:value={input}
-              busy={submitting}
-              disabled={!canSendSessionMessage(selectedSession, 'x') || submitting}
-              submitDisabled={!canSend}
-              onValueChange={(value) => (input = value)}
-              onSubmit={() => void sendMessage()}
-              onFocus={() => void refreshCurrentSessionGitStatus()}
-            />
-            {#if selectedSession.state === 'exited'}
-              <p class="mt-2 text-xs text-muted-foreground">Sending a message will resume this session automatically.</p>
-            {:else if canSendSessionMessage(selectedSession, 'x') === false}
-              <p class="mt-2 text-xs text-muted-foreground">This session cannot accept new messages.</p>
-            {/if}
-            </div>
-          </div>
+          <SessionComposerDock
+            bind:input
+            session={selectedSession}
+            gitStatus={selectedSessionGitStatus}
+            gitStatusErrors={$workspaceGitStatusErrors}
+            workspaces={$workspaces}
+            metadataItems={selectedSessionMetadataItems}
+            metadataSummary={selectedSessionMetadataSummary}
+            {inboxActionableCount}
+            {submitting}
+            {actionBusy}
+            {canSend}
+            onOpenInbox={() => (inboxSheetOpen = true)}
+            onExit={() => void runSessionLifecycle('exit')}
+            onOpenConsole={openSessionConsole}
+            onRename={() => void renameSelectedSession()}
+            onRestart={() => void runSessionLifecycle('restart')}
+            onSend={() => void sendMessage()}
+            onFocus={() => void refreshCurrentSessionGitStatus()}
+          />
         {/if}
       </div>
     </div>
   {/if}
 </section>
 
-<Sheet.Root bind:open={inboxSheetOpen}>
-  <Sheet.Content class="w-[92vw] gap-0 overflow-hidden p-0 sm:max-w-xl">
-    <Sheet.Header class="border-b px-6 py-4">
-      <Sheet.Title>Inbox</Sheet.Title>
-      <Sheet.Description>{inboxActionableCount} message{inboxActionableCount === 1 ? '' : 's'} · follow-up input queue</Sheet.Description>
-    </Sheet.Header>
-    <div class="max-h-[calc(100vh-7rem)] overflow-y-auto p-6">
-      {#if visibleInboxMessages.length}
-        <div class="space-y-3">
-          {#each visibleInboxMessages as message (message.message_id)}
-            <article class="rounded-lg border p-3 text-sm">
-              <div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-medium">{message.input.summary}</p>
-                <Badge variant={inboxBadgeVariant(message)}>{message.state}</Badge>
-              </div>
-              <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>{message.delivery_policy}</span>
-                <span>turn {shortId(message.turn_id)}</span>
-                <span>{formatDateTime(message.updated_at)}</span>
-              </div>
-              {#if message.failure_message}
-                <p class="mt-2 text-xs text-destructive">{message.failure_message}</p>
-              {/if}
-              {#if message.state === 'pending' || message.state === 'failed'}
-                <div class="mt-3 flex flex-wrap justify-end gap-2">
-                  {#if message.state === 'pending'}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      class="gap-1.5"
-                      disabled={inboxActionMessageId === message.message_id}
-                      aria-label={`Cancel inbox message ${message.input.summary}`}
-                      onclick={() => void cancelPendingInboxMessage(message)}
-                    >
-                      <X class="size-3.5" /> Cancel
-                    </Button>
-                  {:else if message.state === 'failed'}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      class="gap-1.5"
-                      disabled={inboxActionMessageId === message.message_id}
-                      aria-label={`Retry inbox message ${message.input.summary}`}
-                      onclick={() => void retryFailedInboxMessage(message)}
-                    >
-                      <RotateCcw class="size-3.5" /> Retry
-                    </Button>
-                  {/if}
-                </div>
-              {/if}
-            </article>
-          {/each}
-        </div>
-      {:else}
-        <Empty.Root class="py-12">
-          <Empty.Header>
-            <Empty.Title>No inbox messages</Empty.Title>
-            <Empty.Description>Follow-up messages submitted from this chat will appear here.</Empty.Description>
-          </Empty.Header>
-        </Empty.Root>
-      {/if}
-    </div>
-  </Sheet.Content>
-</Sheet.Root>
+<InboxSheet
+  bind:open={inboxSheetOpen}
+  {inboxActionableCount}
+  {visibleInboxMessages}
+  busyMessageId={inboxActionMessageId}
+  onCancel={(message) => void cancelPendingInboxMessage(message)}
+  onRetry={(message) => void retryFailedInboxMessage(message)}
+/>

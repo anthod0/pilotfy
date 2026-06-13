@@ -1,0 +1,101 @@
+<script lang="ts">
+  import { Folder, GitBranch, Terminal } from '@lucide/svelte'
+  import { Button } from '$lib/components/ui/button/index.js'
+  import * as PromptInput from '$lib/components/ai-elements/prompt-input/index.js'
+  import * as Select from '$lib/components/ui/select/index.js'
+  import type { WorkspaceView } from '../../api/types'
+  import { clientTitle, workspaceTitle } from './sessionMetadata'
+
+  interface Props {
+    prompt: string
+    workspaceId: string
+    clientType: string
+    taskMode?: boolean
+    taskEntriesEnabled?: boolean
+    creating?: boolean
+    canCreate?: boolean
+    workspaces: WorkspaceView[]
+    workspacesLoading?: boolean
+    selectedWorkspace: WorkspaceView | null
+    clientTypeOptions: string[]
+    selectorTriggerClass: string
+    onPromptKeydown: (event: KeyboardEvent) => void
+    onStartChat: () => void
+  }
+
+  let {
+    prompt = $bindable(''),
+    workspaceId = $bindable(''),
+    clientType = $bindable('pi'),
+    taskMode = $bindable(false),
+    taskEntriesEnabled = false,
+    creating = false,
+    canCreate = false,
+    workspaces,
+    workspacesLoading = false,
+    selectedWorkspace,
+    clientTypeOptions,
+    selectorTriggerClass,
+    onPromptKeydown,
+    onStartChat,
+  }: Props = $props()
+</script>
+
+<div data-testid="new-chat-centered-panel" class="flex min-h-0 flex-1 flex-col justify-center">
+  <div class="mx-auto w-full max-w-4xl space-y-6">
+    <div class="space-y-2">
+      <h2 class="text-3xl font-semibold tracking-tight">New Chat</h2>
+      <p class="max-w-3xl text-muted-foreground">Start a new agent session from a prompt, workspace, client, and profile.</p>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex min-w-0 flex-wrap items-center gap-2 px-1">
+        {#if taskEntriesEnabled}
+          <Button type="button" size="sm" variant={taskMode ? 'default' : 'outline'} class="h-7 rounded-full px-3 text-sm font-normal" aria-pressed={taskMode} aria-label={taskMode ? 'Task mode on' : 'Task mode off'} onclick={() => (taskMode = !taskMode)}>
+            <GitBranch class="size-4" /> Task
+          </Button>
+        {/if}
+
+        <Select.Root type="single" bind:value={workspaceId} disabled={workspacesLoading}>
+          <Select.Trigger class={`${selectorTriggerClass} max-w-56`} aria-label="Workspace" title={selectedWorkspace?.canonical_path ?? undefined}>
+            <Folder class="size-4" aria-hidden="true" />
+            <span class="min-w-0 truncate">{#if selectedWorkspace}{workspaceTitle(selectedWorkspace)}{:else}Workspace{/if}</span>
+          </Select.Trigger>
+          <Select.Content align="start">
+            {#each workspaces as workspace (workspace.workspace_id)}
+              <Select.Item value={workspace.workspace_id} label={workspaceTitle(workspace)}>
+                <div class="flex min-w-0 flex-col">
+                  <span class="truncate">{workspaceTitle(workspace)}</span>
+                  <span class="truncate text-xs text-muted-foreground">{workspace.display_path}</span>
+                </div>
+              </Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+
+        <Select.Root type="single" bind:value={clientType}>
+          <Select.Trigger class={`${selectorTriggerClass} max-w-44`} aria-label="Client">
+            <Terminal class="size-4" aria-hidden="true" />
+            <span class="min-w-0 truncate">{clientTitle(clientType)}</span>
+          </Select.Trigger>
+          <Select.Content align="start">
+            {#each clientTypeOptions as option (option)}
+              <Select.Item value={option} label={option}>{option}</Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </div>
+
+      <PromptInput.Root class="w-full" onSubmit={onStartChat}>
+        <PromptInput.Body>
+          <PromptInput.Textarea id="chat-prompt" bind:value={prompt} placeholder="Ask the agent to implement, inspect, or explain something…" onkeydown={onPromptKeydown} />
+        </PromptInput.Body>
+
+        <PromptInput.Toolbar class="justify-between gap-2 pt-1">
+          <p class="px-2 text-xs text-muted-foreground">Enter to send · Shift+Enter for newline</p>
+          <PromptInput.Submit disabled={!canCreate || creating} aria-label={creating ? (taskMode ? 'Creating task' : 'Starting chat') : (taskMode ? 'Create task' : 'Start chat')} />
+        </PromptInput.Toolbar>
+      </PromptInput.Root>
+    </div>
+  </div>
+</div>
