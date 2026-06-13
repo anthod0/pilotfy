@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
 import type { Writable } from 'svelte/store';
 import { expect, test, vi } from 'vitest';
 import WorkspacesPage from '../src/pages/WorkspacesPage.svelte';
@@ -79,12 +79,12 @@ test('does not show workspace git status summary outside chat pages', () => {
 
   render(WorkspacesPage);
 
-  const list = screen.getByTestId('active-workspaces-list');
-  expect(within(list).queryByText('main')).not.toBeInTheDocument();
-  expect(within(list).queryByText('dirty')).not.toBeInTheDocument();
-  expect(within(list).queryByText('↓1')).not.toBeInTheDocument();
-  expect(within(list).queryByText('+1')).not.toBeInTheDocument();
-  expect(within(list).queryByText('~2')).not.toBeInTheDocument();
-  expect(within(list).queryByText('?3')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('active-workspaces-list')).not.toBeInTheDocument();
+  expect(screen.queryByText('main')).not.toBeInTheDocument();
+  expect(screen.queryByText('dirty')).not.toBeInTheDocument();
+  expect(screen.queryByText('↓1')).not.toBeInTheDocument();
+  expect(screen.queryByText('+1')).not.toBeInTheDocument();
+  expect(screen.queryByText('~2')).not.toBeInTheDocument();
+  expect(screen.queryByText('?3')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /refresh git status/i })).not.toBeInTheDocument();
 });

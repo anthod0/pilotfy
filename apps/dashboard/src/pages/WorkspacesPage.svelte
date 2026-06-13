@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CheckCircle2, Circle, CircleAlert, CornerUpLeft, FolderOpen, Pencil, RefreshCw, Trash2 } from '@lucide/svelte'
+  import { CheckCircle2, Circle, CircleAlert, CornerUpLeft, FolderOpen, Pencil, RefreshCw } from '@lucide/svelte'
   import * as Alert from '$lib/components/ui/alert/index.js'
-  import { Badge } from '$lib/components/ui/badge/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Card from '$lib/components/ui/card/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
@@ -10,7 +9,6 @@
   import { Label } from '$lib/components/ui/label/index.js'
   import { Skeleton } from '$lib/components/ui/skeleton/index.js'
   import * as Table from '$lib/components/ui/table/index.js'
-  import { formatDateTime } from '../components/tasks/format'
   import type { WorkspaceDirectoryEntryView, WorkspaceDirectoryListingView, WorkspaceView } from '../api/types'
   import { browseWorkspaceRoot, deleteWorkspace, loadWorkspaceRoots, loadWorkspaces, registerWorkspace, renameWorkspace, workspaceRoots, workspaces, workspacesError, workspacesLoading } from '../stores/workspaces'
 
@@ -153,62 +151,10 @@
     </Alert.Root>
   {/if}
 
-  <div class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] xl:items-start">
-  <div class="xl:order-2">
-  <Card.Root>
-    <Card.Header><Card.Title>Active workspaces</Card.Title><Card.Description>{$workspaces.length} available for DAG task creation.</Card.Description></Card.Header>
-    <Card.Content>
-      {#if $workspacesLoading}
-        <div class="grid gap-3 md:grid-cols-2"><Skeleton class="h-20 w-full" /><Skeleton class="h-20 w-full" /></div>
-      {:else if !$workspaces.length}
-        <Empty.Root><Empty.Header><Empty.Title>No workspaces</Empty.Title><Empty.Description>Use Active in the browser below to register a directory.</Empty.Description></Empty.Header></Empty.Root>
-      {:else}
-        <div class="divide-y rounded-lg border" data-testid="active-workspaces-list">
-          {#each $workspaces as workspace}
-            {@const workspaceLabel = workspace.name ?? workspace.display_path}
-            <div class="flex flex-col gap-3 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <div class="min-w-0 flex-1">
-                <div class="font-medium">{workspaceLabel}</div>
-                <div class="truncate text-muted-foreground" title={workspace.canonical_path}>{workspace.canonical_path}</div>
-                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary">{workspace.state}</Badge>
-                  <span>Updated {formatDateTime(workspace.updated_at)}</span>
-                </div>
-              </div>
-              <div class="flex shrink-0 gap-2 sm:justify-end">
-                <Button
-                  size="icon-sm"
-                  variant="outline"
-                  aria-label={`Rename ${workspaceLabel}`}
-                  title="Rename workspace"
-                  onclick={() => startRenamingWorkspace(workspace)}
-                >
-                  <Pencil class="size-4" />
-                </Button>
-                <Button
-                  size="icon-sm"
-                  variant="outline"
-                  aria-label={deletingWorkspaceId === workspace.workspace_id ? `Deleting ${workspaceLabel}` : `Delete ${workspaceLabel}`}
-                  title={deletingWorkspaceId === workspace.workspace_id ? 'Deleting…' : 'Delete workspace'}
-                  onclick={() => void deleteRegisteredWorkspace(workspace.workspace_id)}
-                  disabled={deletingWorkspaceId === workspace.workspace_id}
-                >
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </Card.Content>
-  </Card.Root>
-  </div>
-
-  <div class="xl:order-1">
   <Card.Root>
     <Card.Header>
       <Card.Title class="flex items-center gap-2"><FolderOpen class="size-5" /> Root browser</Card.Title>
-      <Card.Description>Select a root, browse directories, then use Active to register or remove workspaces.</Card.Description>
+      <Card.Description>Select a root and browse directories. Active workspaces stay pinned at the top of the browser.</Card.Description>
     </Card.Header>
     <Card.Content class="space-y-4">
       <div class="grid gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
@@ -227,9 +173,16 @@
         <Button variant="outline" onclick={() => void openPath(browsePath)} disabled={!rootId || browserLoading}>Open</Button>
       </div>
 
-      {#if selectedRoot}
-        <p class="text-xs text-muted-foreground">Root state: {selectedRoot.state} · {selectedRoot.canonical_path ?? 'virtual root'}</p>
-      {/if}
+      <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        {#if selectedRoot}
+          <p>Root state: {selectedRoot.state} · {selectedRoot.canonical_path ?? 'virtual root'}</p>
+        {/if}
+        {#if $workspacesLoading}
+          <p>Loading active workspaces…</p>
+        {:else}
+          <p>{$workspaces.length} active workspace{$workspaces.length === 1 ? '' : 's'}</p>
+        {/if}
+      </div>
 
       {#if browserLoading}
         <div class="space-y-2"><Skeleton class="h-9 w-full" /><Skeleton class="h-9 w-full" /><Skeleton class="h-9 w-full" /></div>
@@ -246,11 +199,12 @@
           {#if listing.warnings.length}
             <div class="border-b bg-muted/40 p-3 text-xs text-muted-foreground">{listing.warnings.join(' · ')}</div>
           {/if}
-          <div class="max-h-[28rem] overflow-auto">
+          <div class="max-h-[32rem] overflow-auto">
             <Table.Root>
               <Table.Header><Table.Row><Table.Head>Directory</Table.Head><Table.Head class="text-right">Action</Table.Head></Table.Row></Table.Header>
               <Table.Body>
-                {#each listing.entries as entry}
+                {#each [...listing.entries].sort((left, right) => Number(right.is_workspace) - Number(left.is_workspace) || left.name.localeCompare(right.name)) as entry}
+                  {@const entryWorkspace = workspaceForEntry(entry)}
                   <Table.Row>
                     <Table.Cell class="font-medium">
                       <button
@@ -260,27 +214,39 @@
                         title="Open directory"
                         onclick={() => void openPath(entry.path)}
                       >
-                        <FolderOpen class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <FolderOpen class={entry.is_workspace ? 'size-4 shrink-0 text-primary' : 'size-4 shrink-0 text-muted-foreground'} aria-hidden="true" />
                         <span class="truncate">{entry.name}/</span>
                       </button>
                     </Table.Cell>
                     <Table.Cell class="text-right">
-                      {@const entryWorkspace = workspaceForEntry(entry)}
-                      <Button
-                        size="sm"
-                        variant={entry.is_workspace ? 'secondary' : 'outline'}
-                        aria-label={entry.is_workspace ? `Deactivate ${entry.name}` : `Activate ${entry.name}`}
-                        title={entry.is_workspace ? 'Remove workspace registration' : 'Register as workspace'}
-                        onclick={() => void activateEntry(entry)}
-                        disabled={registering || (!!entryWorkspace && deletingWorkspaceId === entryWorkspace.workspace_id)}
-                      >
-                        {entry.is_workspace ? 'Active' : 'Inactive'}
-                        {#if entry.is_workspace}
-                          <CheckCircle2 class="size-4 text-primary" />
-                        {:else}
-                          <Circle class="size-4 text-muted-foreground" />
+                      <div class="flex justify-end gap-2">
+                        {#if entryWorkspace}
+                          <Button
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label={`Rename ${entryWorkspace.name ?? entry.name}`}
+                            title="Rename workspace"
+                            onclick={() => startRenamingWorkspace(entryWorkspace)}
+                          >
+                            <Pencil class="size-4" />
+                          </Button>
                         {/if}
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant={entry.is_workspace ? 'secondary' : 'outline'}
+                          aria-label={entry.is_workspace ? `Deactivate ${entry.name}` : `Activate ${entry.name}`}
+                          title={entry.is_workspace ? 'Remove workspace registration' : 'Register as workspace'}
+                          onclick={() => void activateEntry(entry)}
+                          disabled={registering || (!!entryWorkspace && deletingWorkspaceId === entryWorkspace.workspace_id)}
+                        >
+                          {entry.is_workspace ? 'Active' : 'Inactive'}
+                          {#if entry.is_workspace}
+                            <CheckCircle2 class="size-4 text-primary" />
+                          {:else}
+                            <Circle class="size-4 text-muted-foreground" />
+                          {/if}
+                        </Button>
+                      </div>
                     </Table.Cell>
                   </Table.Row>
                 {/each}
@@ -293,8 +259,6 @@
       {/if}
     </Card.Content>
   </Card.Root>
-  </div>
-  </div>
 </section>
 
 {#if renamingWorkspace}

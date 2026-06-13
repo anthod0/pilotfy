@@ -107,18 +107,20 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test('renders workspace browser and active workspace cards from store data', async () => {
+test('renders a single root browser with active workspace controls in the directory list', async () => {
   const { container } = render(WorkspacesPage);
 
   expect(await screen.findByText('Root browser')).toBeInTheDocument();
-  expect(screen.getByText('Active workspaces')).toBeInTheDocument();
+  expect(screen.queryByText('Active workspaces')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('active-workspaces-list')).not.toBeInTheDocument();
 
-  const activeSection = screen.getByText('Active workspaces').closest('.xl\\:order-2');
-  expect(activeSection).not.toBeNull();
-  expect(within(activeSection as HTMLElement).getByText('pontia')).toBeInTheDocument();
-  expect(within(activeSection as HTMLElement).getByTestId('active-workspaces-list')).toBeInTheDocument();
+  const table = await screen.findByRole('table');
+  expect(within(table).getAllByRole('button', { name: /Open directory/ })[0]).toHaveAccessibleName('Open directory pontia');
+  const pontiaRow = within(table).getByRole('row', { name: /pontia/i });
+  expect(within(pontiaRow).getByRole('button', { name: 'Deactivate pontia' })).toBeInTheDocument();
+  expect(within(pontiaRow).getByRole('button', { name: 'Rename pontia' })).toBeInTheDocument();
+  expect(within(pontiaRow).queryByRole('button', { name: 'Delete pontia' })).not.toBeInTheDocument();
   expect(container.querySelector('.workspace-folder-preview')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Rename pontia' })).toBeInTheDocument();
   expect(mocks.loadWorkspaceGitStatus).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: /refresh git status/i })).not.toBeInTheDocument();
 });
